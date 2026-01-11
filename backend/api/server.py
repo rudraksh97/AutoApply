@@ -106,13 +106,34 @@ async def upload_resume(file: UploadFile = File(...)):
 
 @app.post("/parse-resume", tags=["Settings"])
 async def parse_resume(source: str = "resume"):
+    # Retrieve file path based on source
+    from src.profile_manager import ProfileManager
+    pm = ProfileManager()
+    profile = pm.get_profile()
+    
+    file_path = None
+    
+    if source == "template":
+        # Check for template
+        potential_path = "data/resume_base.tex"
+        if os.path.exists(potential_path):
+            file_path = potential_path
+        else:
+            raise HTTPException(status_code=400, detail="No custom LaTeX template found (data/resume_base.tex).")
+    else:
+        # Default to resume
+        file_path = profile.get("uploaded_resume_path")
+        if not file_path or not os.path.exists(file_path):
+             raise HTTPException(status_code=400, detail="No uploaded resume found. Please upload one first.")
+
     # Parse with ResumeParser
     try:
         from src.resume_parser import ResumeParser
         parser = ResumeParser()
-        return await parser.parse_file(pdf_path)
+        return await parser.parse_file(file_path)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Resume Parsing Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Parsing failed: {str(e)}")
 
 @app.post("/start", tags=["Control"])
 async def start_automation(continuous: bool = False):
