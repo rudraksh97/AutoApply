@@ -110,6 +110,32 @@ class ProfileManager:
         with open(PROFILE_FILE, 'w') as f:
             json.dump(profile_data, f, indent=2)
 
+    def update_from_resume_data(self, parsed_data: dict, resume_path: str = None):
+        """
+        Updates the profile with data parsed from a resume.
+
+        Args:
+            parsed_data: The structured JSON data returned by ResumeParser.
+            resume_path: Optional path to the resume file to set as 'uploaded_resume_path'.
+        """
+        profile = self.get_profile()
+        
+        # Deep merge strategy
+        if parsed_data.get("basics"):
+            profile["basics"].update(parsed_data["basics"])
+        if parsed_data.get("urls"):
+            profile["urls"].update(parsed_data["urls"])
+        if parsed_data.get("education"):
+            profile["education"] = parsed_data["education"]
+        if parsed_data.get("experience"):
+            profile["experience"] = parsed_data["experience"]
+            
+        if resume_path:
+            profile["uploaded_resume_path"] = resume_path
+            profile["use_uploaded_resume"] = True
+            
+        self.save_profile(profile)
+
     def get_profile_as_text(self):
         """
         Returns a string representation of the profile suitable for the LLM prompt.

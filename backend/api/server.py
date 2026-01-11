@@ -101,82 +101,13 @@ async def upload_resume(file: UploadFile = File(...)):
 
 @app.post("/parse-resume", tags=["Settings"])
 async def parse_resume(source: str = "resume"):
-    from src.profile_manager import ProfileManager
-    import pypdf
-    from browser_use.llm.openrouter.chat import ChatOpenRouter
-    from langchain_core.messages import SystemMessage, HumanMessage
-    import json
-    
-    pm = ProfileManager()
-    profile = pm.get_profile()
-    
-    pdf_path = None
-    if source == "template":
-        pdf_path = os.path.abspath("data/resume_base.tex")
-        if not os.path.exists(pdf_path):
-             raise HTTPException(status_code=404, detail="No custom template found")
-    else:
-        pdf_path = profile.get("uploaded_resume_path")
-        if not pdf_path or not os.path.exists(pdf_path):
-            raise HTTPException(status_code=404, detail="No resume uploaded")
-    
-
-
-    # Extract text
+    # Parse with ResumeParser
     try:
-        if pdf_path.endswith(".pdf"):
-            reader = pypdf.PdfReader(pdf_path)
-            text = ""
-            for page in reader.pages:
-                text += page.extract_text() + "\n"
-        elif pdf_path.endswith(".tex") or pdf_path.endswith(".txt"):
-            with open(pdf_path, 'r', encoding='utf-8', errors='ignore') as f:
-                text = f.read()
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported file format for parsing")
-            
+        from src.resume_parser import ResumeParser
+        parser = ResumeParser()
+        return await parser.parse_file(pdf_path)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read file: {str(e)}")
-
-    # Parse with LLM
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY not set")
-
-    try:
-        llm = ChatOpenRouter(model="meta-llama/llama-3.3-70b-instruct:free", api_key=api_key)
-        
-        system_prompt = """You are an expert resume parser. Extract structured data from the resume text into JSON format matching this schema:
-        {
-            "basics": {
-                "first_name": "", "last_name": "", "email": "", "phone": "", "location": ""
-            },
-            "urls": {
-                "linkedin": "", "github": "", "portfolio": ""
-            },
-             "education": [
-                {"degree": "BS Computer Science", "university": "University Name", "field_of_study": "CS", "graduation_year": "2020"}
-             ],
-            "experience": [
-                {"company": "Corp", "role": "Dev", "start_date": "01/2020", "end_date": "Present", "description": "built things"}
-            ]
-        }
-        Return ONLY valid JSON."""
-        
-        response = await llm.ainvoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=f"Resume Text:\n{text[:10000]}") # Truncate if too long
-        ])
-        
-        # Clean response
-        content = response.content.replace("```json", "").replace("```", "").strip()
-        parsed_data = json.loads(content)
-        
-        # Merge, but don't save automatically to let user review
-        return parsed_data
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"LLM parsing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/start", tags=["Control"])
 async def start_automation(continuous: bool = False):
