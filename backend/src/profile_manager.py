@@ -103,12 +103,23 @@ class ProfileManager:
     def save_profile(self, profile_data):
         """
         Saves the provided profile data to the JSON file.
+        Uses a merge strategy to preserve existing keys that might be missing
+        from the incoming data (e.g., internal paths).
 
         Args:
             profile_data (dict): The complete profile information to persist.
         """
+        existing = self.get_profile()
+        
+        # Deep merge for standard sections
+        for key, value in profile_data.items():
+            if key in existing and isinstance(existing[key], dict) and isinstance(value, dict):
+                existing[key].update(value)
+            else:
+                existing[key] = value
+        
         with open(PROFILE_FILE, 'w') as f:
-            json.dump(profile_data, f, indent=2)
+            json.dump(existing, f, indent=2)
 
     def update_from_resume_data(self, parsed_data: dict, resume_path: str = None):
         """

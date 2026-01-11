@@ -26,6 +26,7 @@ class ProfileURLs(BaseModel):
 
 class ProfileDemographics(BaseModel):
     gender: str
+    race: Optional[str] = "Prefer not to say"
     nationality: str
     veteran: str
     disability: str
@@ -58,3 +59,7 @@ class ProfileData(BaseModel):
     cover_letter_template: str = ""
     why_us: str = ""
     challenging_project: str = ""
+    uploaded_resume_path: Optional[str] = ""
+    uploaded_resume_filename: Optional[str] = ""
+    use_uploaded_resume: Optional[bool] = False
+    custom_template_filename: Optional[str] = ""

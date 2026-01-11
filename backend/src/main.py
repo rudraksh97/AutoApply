@@ -66,10 +66,10 @@ async def run_auto_apply(
         config_manager=config_manager
     )
 
-    # 4. Load user details once per cycle (or once for the run)
-    user_details_text = profile_manager.get_profile_as_text()
-
     while True:
+        # Refresh user details for each cycle to pick up UI changes
+        user_details_text = profile_manager.get_profile_as_text()
+        
         log_callback("Checking for new jobs...")
         
         # Pull new jobs from RSS into the database (via events)
