@@ -1,20 +1,20 @@
 {
   "basics": {
-    "first_name": "Rudraksh",
-    "last_name": "Agarwal",
-    "email": "rudraksh.agarwal97@gmail.com",
-    "phone": "716\u2013495\u20137549",
-    "location": "Buffalo, NY, USA"
+    "first_name": "John",
+    "last_name": "Doe",
+    "email": "john.doe@example.com",
+    "phone": "123-456-7890",
+    "location": "New York, NY, USA"
   },
   "urls": {
-    "linkedin": "linkedin.com/in/rudraksh97",
-    "github": "github.com/rudraksh97",
-    "portfolio": "techproductdev.com"
+    "linkedin": "linkedin.com/in/johndoe",
+    "github": "github.com/johndoe",
+    "portfolio": "google.com"
   },
   "demographics": {
     "gender": "Male",
-    "race": "Asian",
-    "nationality": "Indian",
+    "race": "White",
+    "nationality": "White",
     "veteran": "I am not a protected veteran",
     "disability": "I do not have a disability"
   },
@@ -24,39 +24,26 @@
   },
   "education": [
     {
-      "degree": "Master of Science, Computer Science (Systems Track)",
+      "degree": "Master of Science, Computer Science",
       "university": "State University Of New York at Buffalo",
       "field_of_study": "Computer Science",
       "graduation_year": "2025"
-    },
-    {
-      "degree": "Bachelor of Technology",
-      "university": "Indian Institute Of Technology Delhi",
-      "field_of_study": "Engineering Physics",
-      "graduation_year": "2020"
     }
   ],
   "experience": [
     {
-      "company": "Wipro Linecraft AI",
-      "role": "Senior Software Engineer",
+      "company": "Google",
+      "role": "Software Engineer",
       "start_date": "Oct 2020",
       "end_date": "Jul 2024",
-      "description": "Led a team of 4 engineers to deliver Backend systems, owning architecture and release timelines. Built a scalable real-time, event-driven loss detection system, re-architected a core ETL pipeline, developed and launched an automated email reporting service, owned the end-to-end development of 50+ RESTful APIs, implemented a new monitoring stack, decoupled and dockerised 5 microservices, and onboarded a cloud migration consultancy."
-    },
-    {
-      "company": "IBM",
-      "role": "Global Remote Mentorship Intern",
-      "start_date": "May 2020",
-      "end_date": "Sep 2020",
-      "description": "Improved the technical question-answer system for the TechQA dataset, finetuned BERT on a technical corpus, developed a language model in PyTorch, and achieved a state-of-the-art F1 score of 57.7 on the TechQA dev set."
+      "description": ""
     }
   ],
   "great_fit_pitch": "",
   "cover_letter_template": "Dear Hiring Manager,\n\nI am excited to apply for the position at {{company}}...",
   "why_us": "",
   "challenging_project": "",
-  "uploaded_resume_path": "/Applications/GitHub/AutoApply/backend/tests/my_resume/Rudraksh_Agarwal_Resume.pdf",
+  "uploaded_resume_path": "/Applications/GitHub/AutoApply/backend/tests/my_resume/John_Doe_Resume.pdf",
   "uploaded_resume_filename": "",
   "use_uploaded_resume": true,
   "custom_template_filename": ""
