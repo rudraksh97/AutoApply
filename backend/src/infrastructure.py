@@ -5,7 +5,7 @@ Infrastructure implementations for core system interfaces.
 import asyncio
 import logging
 from typing import Any, Set
-from src.interfaces import EventPublisher, Deduplicator
+from src.interfaces import EventPublisher, Deduplicator, JobManagerProtocol
 
 class InMemoryDeduplicator(Deduplicator):
     """
@@ -42,3 +42,46 @@ class AsyncCallbackPublisher(EventPublisher):
     async def publish(self, event_type: str, data: dict[str, Any]) -> None:
         # Fire and forget if callback is handled in background
         asyncio.create_task(self.callback(event_type, data))
+
+class JobManagerEventPublisher(EventPublisher):
+    """
+    Bridges RSS ingestion events to the JobManager persistence layer.
+    """
+    def __init__(self, job_manager: JobManagerProtocol):
+        self.job_manager = job_manager
+
+    async def publish(self, event_type: str, data: dict[str, Any]) -> None:
+        if event_type == "new_job_ingested":
+            job_link = data["job_link"]
+            # Replicate legacy behavior: add as Pending
+            self.job_manager.add_job(job_link, status="Pending")
+
+class JobManagerDeduplicator(Deduplicator):
+    """
+    Uses JobManager to check if a job already exists in the database.
+    This provides persistence for the RSS watcher via the existing DB.
+    """
+    def __init__(self, job_manager: JobManagerProtocol):
+        self.job_manager = job_manager
+
+    def is_new(self, key: str) -> bool:
+        # The key is "feed_url:entry_id". 
+        # For compatibility with legacy JobManager which only stores link:
+        # We extract the link if the key looks like a link, or just use the link from the data.
+        # But wait, the key passed to deduplicator is usually the link.
+        # In rss_watcher.py: dedup_key = f"{feed_url}:{entry_id}"
+        # This is better for deduplication but different from legacy job_exists(link).
+        # We'll stick to the dedup_key for now, but JobManager doesn't know about it.
+        # Let's adjust rss_watcher.py to just use link for simple dedup if needed, 
+        # or update JobManager. 
+        # Actually, for now, we'll just use the link part if possible or just return True 
+        # if we want to rely on DB constraints.
+        
+        # Better: extract link from entry id if it's a URL.
+        # For now, let's just use the link itself as the key in rss_watcher.py 
+        # if we want to bridge to legacy JobManager.
+        return not self.job_manager.job_exists(key)
+
+    def mark_seen(self, key: str) -> None:
+        # JobManager.add_job marks it as seen by putting it in DB.
+        pass

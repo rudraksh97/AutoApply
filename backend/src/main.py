@@ -54,9 +54,16 @@ async def run_auto_apply(
         resume_builder=resume_builder
     )
     
-    # 3. Initialize RSS Watcher
-    rss_watcher = RSSWatcher(job_manager)
-    rss_watcher.feeds = config_manager.get_feeds()
+    # 3. Initialize RSS Watcher Infrastructure
+    from src.infrastructure import JobManagerEventPublisher, JobManagerDeduplicator
+    event_publisher = JobManagerEventPublisher(job_manager)
+    deduplicator = JobManagerDeduplicator(job_manager)
+    
+    rss_watcher = RSSWatcher(
+        event_publisher=event_publisher,
+        deduplicator=deduplicator,
+        feeds=config_manager.get_feeds()
+    )
 
     # 4. Load user details once per cycle (or once for the run)
     user_details_text = profile_manager.get_profile_as_text()
@@ -64,10 +71,8 @@ async def run_auto_apply(
     while True:
         log_callback("Checking for new jobs...")
         
-        # Pull new jobs from RSS into the database
-        new_jobs_found = list(rss_watcher.get_new_jobs())
-        if new_jobs_found:
-             log_callback(f"Found {len(new_jobs_found)} new jobs from RSS feed.")
+        # Pull new jobs from RSS into the database (via events)
+        await rss_watcher.poll_once()
         
         # Process all pending jobs from the database
         all_jobs = job_manager.get_all_jobs()
