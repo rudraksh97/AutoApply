@@ -158,6 +158,11 @@ Return your result as a JSON object with this structure:
   "notes": "Any issues or observations about the form"
 }}
 
+IMPORTANT: Return the JSON directly in your final response text. 
+⚠️ DO NOT create a file, artifact, or attachment. 
+⚠️ DO NOT say "see attached file". 
+⚠️ The JSON must be in the text response itself.
+
 ===== IMPORTANT GUIDELINES =====
 - Fill ALL required fields - don't leave them empty
 - LOCATION is usually a dropdown that requires clicking to open and selecting a city

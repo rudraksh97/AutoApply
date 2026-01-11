@@ -47,6 +47,10 @@ Report the results as:
   "fields_failed": <number of fields that could not be restored>,
   "notes": "Any issues encountered"
 }}
+
+IMPORTANT: Return the JSON directly in your final response text. 
+⚠️ DO NOT create a file, artifact, or attachment. 
+⚠️ The JSON must be in the text response itself.
 """
 
 
