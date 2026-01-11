@@ -17,7 +17,7 @@ async def test_visual_apply():
     If these are not present, the test is skipped.
     """
     # Hardcoded values for manual testing
-    job_link = "https://job-boards.greenhouse.io/mixmode/jobs/5011774007"
+    job_link = "https://jobs.ashbyhq.com/Framenergy/d8b6bae9-cd1b-4dea-8d98-168dad8f2294/application"
     resume_path = os.path.abspath("tests/my_resume")
 
     if not os.path.exists(resume_path):
@@ -64,6 +64,8 @@ async def test_visual_apply():
     # 2. Get User Details
     pm = ProfileManager()
     user_details = pm.get_profile_as_text()
+    
+    print(f"\n[DEBUG] User Details sent to Agent:\n{user_details}\n")
     
     print(f"\n[VISUAL TEST] Starting Application...")
     print(f"Job: {job_link}")

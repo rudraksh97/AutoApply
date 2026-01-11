@@ -4,7 +4,7 @@ import json
 import logging
 import pypdf
 from langchain_core.messages import SystemMessage, HumanMessage
-from browser_use.llm.openrouter.chat import ChatOpenRouter
+from langchain_openai import ChatOpenAI
 
 class ResumeParser:
     """
@@ -26,7 +26,9 @@ class ResumeParser:
             dict: Structured JSON data matching the profile schema.
         """
         text = self._extract_text(file_path)
-        return await self._parse_text_with_llm(text)
+             
+        data = await self._parse_text_with_llm(text)
+        return data
 
     def _extract_text(self, file_path: str) -> str:
         """Extracts raw text from PDF or text-based files."""
@@ -53,7 +55,12 @@ class ResumeParser:
         if not self.api_key:
             raise RuntimeError("Missing API Key for LLM")
 
-        llm = ChatOpenRouter(model="meta-llama/llama-3.3-70b-instruct:free", api_key=self.api_key)
+        # Use standard ChatOpenAI with OpenRouter config
+        llm = ChatOpenAI(
+            model="meta-llama/llama-3.3-70b-instruct:free",
+            api_key=self.api_key,
+            base_url="https://openrouter.ai/api/v1"
+        )
         
         system_prompt = """You are an expert resume parser. Extract structured data from the resume text into JSON format matching this schema:
         {
@@ -74,7 +81,7 @@ class ResumeParser:
         
         response = await llm.ainvoke([
             SystemMessage(content=system_prompt),
-            HumanMessage(content=f"Resume Text:\n{text[:10000]}") # Truncate to avoid context limits
+            HumanMessage(content=f"Resume Text:\n{text[:10000]}") # Truncate if too long
         ])
         
         # Clean response
