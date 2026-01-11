@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Trash2, Upload, Plus } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function SettingsPage() {
     const [feeds, setFeeds] = useState<string[]>([]);
@@ -34,7 +35,7 @@ export default function SettingsPage() {
             setNewFeed("");
             fetchFeeds();
         } catch (e) {
-            alert("Failed to add feed");
+            toast.error("Failed to add feed");
         }
     };
 
@@ -43,7 +44,7 @@ export default function SettingsPage() {
             await axios.delete(`${API_URL}/feeds`, { data: { url } });
             fetchFeeds();
         } catch (e) {
-            alert("Failed to remove feed");
+            toast.error("Failed to remove feed");
         }
     };
 

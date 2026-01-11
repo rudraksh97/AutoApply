@@ -47,9 +47,9 @@ export default function ProfilePage() {
     const saveProfile = async () => {
         try {
             await axios.post(`${API_URL}/profile`, profile);
-            alert("Profile saved!");
+            toast.success("Profile saved!");
         } catch (e) {
-            alert("Failed to save profile");
+            toast.error("Failed to save profile");
         }
     };
 

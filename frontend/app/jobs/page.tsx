@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { RefreshCw, Download, FileText, AlertTriangle, ExternalLink, Play, Trash2, Plus } from 'lucide-react';
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 interface Job {
@@ -63,7 +64,7 @@ export default function JobsPage() {
             await axios.post(`${API_URL}/jobs/retry`, { url });
             fetchJobs();
         } catch (e) {
-            alert("Failed to retry job");
+            toast.error("Failed to retry job");
         }
     };
 
@@ -82,11 +83,11 @@ export default function JobsPage() {
             fetchJobs();
 
             if (res.data.status === 'exists') {
-                alert("Job already exists (workflow restarted)");
+                toast.info("Job already exists (workflow restarted)");
             }
         } catch (e) {
             console.error(e);
-            alert("Failed to add job");
+            toast.error("Failed to add job");
         } finally {
             setAddingJob(false);
         }
@@ -100,7 +101,7 @@ export default function JobsPage() {
             fetchJobs();
         } catch (e) {
             console.error(e);
-            alert("Failed to delete job");
+            toast.error("Failed to delete job");
         } finally {
             setDeletingJob(null);
         }
