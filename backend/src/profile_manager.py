@@ -96,6 +96,9 @@ class ProfileManager:
                     else:
                         merged[key] = value
                 
+                if not merged.get("uploaded_resume_filename") and merged.get("uploaded_resume_path"):
+                     merged["uploaded_resume_filename"] = os.path.basename(merged["uploaded_resume_path"])
+
                 return merged
         except (json.JSONDecodeError, FileNotFoundError):
             return DEFAULT_PROFILE.copy()
