@@ -43,8 +43,8 @@
   "cover_letter_template": "Dear Hiring Manager,\n\nI am excited to apply for the position at {{company}}...",
   "why_us": "",
   "challenging_project": "",
-  "uploaded_resume_path": "/app/data/uploaded_resume.pdf",
-  "uploaded_resume_filename": "uploaded_resume.pdf",
-  "use_uploaded_resume": true,
+  "uploaded_resume_path": "",
+  "uploaded_resume_filename": "",
+  "use_uploaded_resume": false,
   "custom_template_filename": ""
 }
