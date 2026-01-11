@@ -192,10 +192,20 @@ class BrowserAgent:
         result = await self._run_agent(task)
         
         # Parse the JSON result from the agent
+        import re
         try:
+            # Try direct parse first
             return json.loads(result)
         except json.JSONDecodeError:
-            # If agent didn't return valid JSON, wrap the result
+            # Try regex extraction
+            match = re.search(r"(\{.*\})", result, re.DOTALL)
+            if match:
+                try:
+                    return json.loads(match.group(1))
+                except json.JSONDecodeError:
+                    pass
+            
+            # If all parsing fails, return fallback
             return {
                 "status": "prefilled",
                 "fields": [],
@@ -230,9 +240,18 @@ class BrowserAgent:
         result = await self._run_agent(task)
         
         # Parse the JSON result from the agent
+        import re
         try:
             return json.loads(result)
         except json.JSONDecodeError:
+            # Try regex extraction
+            match = re.search(r"(\{.*\})", result, re.DOTALL)
+            if match:
+                try:
+                    return json.loads(match.group(1))
+                except json.JSONDecodeError:
+                    pass
+            
             return {
                 "status": "rehydrated",
                 "fields_restored": 0,
