@@ -75,9 +75,6 @@ export default function JobsPage() {
             // 1. Add job to DB
             const res = await axios.post(`${API_URL}/jobs/`, { url: newJobUrl });
 
-            // 2. Trigger workflow automatically
-            await axios.post(`${API_URL}/start`, {}, { headers: { 'Content-Type': 'application/json' } });
-
             setNewJobUrl("");
             setAddJobOpen(false);
             fetchJobs();

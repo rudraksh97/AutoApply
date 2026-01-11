@@ -10,55 +10,89 @@ import uvicorn
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Core logic for background polling
+import time
+
+# Core logic for background polling & processing
 from src.rss_watcher import RSSWatcher
 from src.infrastructure import JobManagerEventPublisher, JobManagerDeduplicator
 from src.job_manager import JobManager
 from src.config import ConfigManager
+from src.services import JobApplicationService, CURRENT_RESUME_INFO
+from src.agent import BrowserAgent
+from src.resume_builder import ResumeBuilder
 
 # Routers
 from api.routers import feeds, jobs, profile, drafts
 
 
 # --- Background Tasks ---
-async def rss_polling_task():
-    """Background task to poll RSS feeds hourly."""
-    logging.info("Starting background RSS polling task...")
+async def automation_loop():
+    """Background task to poll RSS feeds (hourly) and process pending jobs (minutely)."""
+    logging.info("Starting background automation task...")
+    
     job_manager = JobManager()
     config_manager = ConfigManager()
     
+    # Dependencies for processing
+    # BrowserAgent handles its own browser instance
+    agent = BrowserAgent(headless=True)
+    builder = ResumeBuilder()
+    service = JobApplicationService(job_manager, agent, builder)
+    
+    # Dependencies for polling
     event_publisher = JobManagerEventPublisher(job_manager)
     deduplicator = JobManagerDeduplicator(job_manager)
-    
     watcher = RSSWatcher(event_publisher, deduplicator, config_manager)
+    
+    last_rss_poll = 0
     
     while True:
         try:
-            logging.info("Triggering periodic RSS poll...")
-            await watcher.poll_once()
-            logging.info("Periodic RSS poll complete.")
+            now = time.time()
+            
+            # 1. Periodic RSS Poll (Hourly)
+            if now - last_rss_poll > 3600:
+                logging.info("Triggering periodic RSS poll...")
+                await watcher.poll_once()
+                last_rss_poll = now
+                logging.info("Periodic RSS poll complete.")
+            
+            # 2. Process Pending Jobs (Every minute)
+            all_jobs = job_manager.get_all_jobs()
+            pending_jobs = [j for j in all_jobs if j.get('status') == 'Pending']
+            
+            if pending_jobs:
+                logging.info(f"Processing {len(pending_jobs)} pending jobs...")
+                for job in pending_jobs:
+                    url = job.get('url')
+                    if url:
+                        logging.info(f"Automated processing start for: {url}")
+                        await service.process_job(url, CURRENT_RESUME_INFO, log_callback=logging.info)
+            else:
+                logging.debug("No pending jobs to process.")
+                
         except Exception as e:
-            logging.error(f"Error in RSS polling task: {e}")
+            logging.error(f"Error in automation loop: {e}")
         
-        await asyncio.sleep(3600) # Poll every hour
+        await asyncio.sleep(60) # Check every minute for pending jobs
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Start background task
-    polling_task = asyncio.create_task(rss_polling_task())
+    task = asyncio.create_task(automation_loop())
     yield
     # Cleanup
-    polling_task.cancel()
+    task.cancel()
     try:
-        await polling_task
+        await task
     except asyncio.CancelledError:
-        logging.info("Background RSS polling task stopped.")
+        logging.info("Background automation task stopped.")
 
 # --- Application ---
 app = FastAPI(
     title="AutoApply API", 
     version="2.0.0",
-    description="Draft-first job application preparation. This API never submits applications.",
+    description="Draft-first job application preparation (Background Automated).",
     lifespan=lifespan
 )
 

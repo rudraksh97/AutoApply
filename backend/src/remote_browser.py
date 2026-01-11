@@ -108,6 +108,7 @@ class RemoteBrowserController:
     
     async def fill_form_field(self, target: CDPTarget, selector: str, value: str) -> bool:
         """Fill a form field by selector."""
+        value_escaped = value.replace("'", "\\'")
         script = f"""
         (function() {{
             const el = document.querySelector('{selector}');
@@ -117,7 +118,7 @@ class RemoteBrowserController:
             el.focus();
             
             // Set the value
-            el.value = '{value.replace("'", "\\'")}';
+            el.value = '{value_escaped}';
             
             // Trigger input events
             el.dispatchEvent(new Event('input', {{ bubbles: true }}));
