@@ -138,6 +138,7 @@ export default function JobsPage() {
     };
 
     const getStatusColor = (status: string) => {
+        if (status.includes('Running')) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
         if (status === 'Completed' || status === 'Applied') return 'bg-green-50 text-green-700 border-green-200';
         if (status === 'Draft Saved' || status === 'draft_saved') return 'bg-blue-50 text-blue-700 border-blue-200';
         if (status === 'Failed' || status === 'Error' || status === 'Draft Failed') return 'bg-red-50 text-red-700 border-red-200';
@@ -237,9 +238,15 @@ export default function JobsPage() {
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <span className={cn(
-                                                        "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border shadow-sm",
+                                                        "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border shadow-sm gap-1.5",
                                                         getStatusColor(displayStatus)
                                                     )}>
+                                                        {displayStatus.includes('Running') && (
+                                                            <span className="relative flex h-2 w-2">
+                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                                            </span>
+                                                        )}
                                                         {displayStatus}
                                                     </span>
                                                     {draft?.status && draft.status !== job.status && (
