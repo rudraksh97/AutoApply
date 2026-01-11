@@ -2,46 +2,71 @@
 Job management and persistence for the AutoApply application.
 
 This module handles the storage and retrieval of job application statuses
-and metadata using a local JSON file as a lightweight database.
+and metadata using a SQLite database.
 """
 
 import json
 import os
+import sqlite3
 from datetime import datetime
-
-JOBS_FILE = "data/jobs.json"
+from src.database import init_db, get_connection
 
 class JobManager:
     """
-    Manages the job application database.
-
-    Handles adding new jobs, updating their status, and retrieving the 
-    history of all processed or pending jobs.
+    Manages the job application database using SQLite.
     """
     def __init__(self):
-        """Initializes the manager and ensures the data directory and file exist."""
-        self._ensure_file()
+        """Initializes the manager, ensures DB exists, and migrates old JSON data if needed."""
+        init_db()
+        self._migrate_json_if_needed()
 
-    def _ensure_file(self):
-        """Creates the data directory and jobs JSON file if they do not exist."""
-        if not os.path.exists("data"):
-            os.makedirs("data")
-        if not os.path.exists(JOBS_FILE):
-            with open(JOBS_FILE, 'w') as f:
-                json.dump([], f)
+    def _migrate_json_if_needed(self):
+        """Migrates data from legacy jobs.json if DB is empty and json exists."""
+        json_file = "data/jobs.json"
+        
+        # Check if JSON exists
+        if not os.path.exists(json_file):
+            return
 
-    def _load(self):
-        """Loads all jobs from the JSON file."""
-        try:
-            with open(JOBS_FILE, 'r') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, FileNotFoundError):
-            return []
-
-    def _save(self, data):
-        """Saves the provided job data list to the JSON file."""
-        with open(JOBS_FILE, 'w') as f:
-            json.dump(data, f, indent=2)
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check if DB is empty
+            cursor.execute("SELECT count(*) FROM jobs")
+            count = cursor.fetchone()[0]
+            
+            if count == 0:
+                print(f"[MIGRATION] Found empty DB and existing {json_file}. Migrating data...")
+                try:
+                    with open(json_file, 'r') as f:
+                        jobs = json.load(f)
+                        
+                    for job in jobs:
+                        # Handle potential missing keys from very old versions
+                        url = job.get('url')
+                        if not url: continue
+                        
+                        cursor.execute("""
+                            INSERT OR IGNORE INTO jobs (url, status, pdf_path, timestamp, details, error_message)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        """, (
+                            url,
+                            job.get('status', 'Pending'),
+                            job.get('pdf_path'),
+                            job.get('timestamp', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                            str(job.get('details')) if job.get('details') else None,
+                            str(job.get('error_message')) if job.get('error_message') else None
+                        ))
+                    
+                    conn.commit()
+                    print(f"[MIGRATION] Successfully migrated {len(jobs)} jobs.")
+                    
+                    # Rename JSON file to backup
+                    os.rename(json_file, json_file + ".bak")
+                    print(f"[MIGRATION] Renamed {json_file} to {json_file}.bak")
+                    
+                except Exception as e:
+                    print(f"[MIGRATION] Failed to migrate data: {e}")
 
     def get_all_jobs(self):
         """
@@ -50,12 +75,20 @@ class JobManager:
         Returns:
             list: A list of dictionaries representing individual jobs.
         """
-        return self._load()
+        with get_connection() as conn:
+            # Return dicts
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM jobs ORDER BY timestamp DESC")
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
 
     def job_exists(self, url):
         """Checks if a job with the given URL already exists in the database."""
-        jobs = self._load()
-        return any(job['url'] == url for job in jobs)
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM jobs WHERE url = ?", (url,))
+            return cursor.fetchone() is not None
 
     def add_job(self, url, status="Pending"):
         """
@@ -68,21 +101,18 @@ class JobManager:
         Returns:
             bool: True if added, False if it already existed.
         """
-        if self.job_exists(url):
+        try:
+            with get_connection() as conn:
+                cursor = conn.cursor()
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                cursor.execute("""
+                    INSERT INTO jobs (url, status, timestamp)
+                    VALUES (?, ?, ?)
+                """, (url, status, timestamp))
+                conn.commit()
+                return True
+        except sqlite3.IntegrityError:
             return False
-            
-        jobs = self._load()
-        new_job = {
-            "url": url,
-            "status": status,
-            "pdf_path": None,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "details": None,
-            "error_message": None
-        }
-        jobs.append(new_job)
-        self._save(jobs)
-        return True
 
     def update_job(self, url, status=None, pdf_path=None, details=None, error_message=None):
         """
@@ -98,23 +128,38 @@ class JobManager:
         Returns:
             bool: True if the job was found and updated, False otherwise.
         """
-        jobs = self._load()
-        updated = False
-        for job in jobs:
-            if job['url'] == url:
-                if status: job['status'] = status
-                if pdf_path: job['pdf_path'] = pdf_path
-                if details: job['details'] = str(details)
-                
-                # Update error message (allows clearing with empty string or None)
-                if error_message is not None:
-                     job['error_message'] = str(error_message) if error_message else None
-                
-                job['timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                updated = True
-                break
+        # build update query dynamically
+        fields = []
+        values = []
         
-        if updated:
-            self._save(jobs)
-        return updated
+        if status:
+            fields.append("status = ?")
+            values.append(status)
+        if pdf_path:
+            fields.append("pdf_path = ?")
+            values.append(pdf_path)
+        if details:
+            fields.append("details = ?")
+            values.append(str(details))
+        
+        # Always update error message if provided (even if None/empty to clear it)
+        if error_message is not None:
+             fields.append("error_message = ?")
+             values.append(str(error_message) if error_message else None)
 
+        # Always update timestamp on change
+        fields.append("timestamp = ?")
+        values.append(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+        if not fields:
+            return True # Nothing to update
+
+        values.append(url) # For WHERE clause
+        
+        query = f"UPDATE jobs SET {', '.join(fields)} WHERE url = ?"
+        
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, values)
+            conn.commit()
+            return cursor.rowcount > 0
