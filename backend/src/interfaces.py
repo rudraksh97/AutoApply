@@ -153,3 +153,13 @@ class Deduplicator(Protocol):
             key: Unique identifier for the item.
         """
         ...
+
+class ConfigManagerProtocol(Protocol):
+    """
+    Protocol defining the requirements for configuration and feed management.
+    """
+    def get_feeds(self) -> List[str]:
+        """
+        Retrieves the list of configured RSS feed URLs.
+        """
+        ...

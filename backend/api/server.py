@@ -1,33 +1,65 @@
 import os
 import asyncio
+import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
-from contextlib import asynccontextmanager
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Core logic for background polling
+from src.rss_watcher import RSSWatcher
+from src.infrastructure import JobManagerEventPublisher, JobManagerDeduplicator
+from src.job_manager import JobManager
+from src.config import ConfigManager
 
 # Routers
 from api.routers import feeds, jobs, profile, drafts
-from api.services.logs_service import manager, LogService # We need to create this service
 
-# Legacy imports being adapted
-from src.main import run_auto_apply
-from dotenv import load_dotenv
 
-load_dotenv()
+# --- Background Tasks ---
+async def rss_polling_task():
+    """Background task to poll RSS feeds hourly."""
+    logging.info("Starting background RSS polling task...")
+    job_manager = JobManager()
+    config_manager = ConfigManager()
+    
+    event_publisher = JobManagerEventPublisher(job_manager)
+    deduplicator = JobManagerDeduplicator(job_manager)
+    
+    watcher = RSSWatcher(event_publisher, deduplicator, config_manager)
+    
+    while True:
+        try:
+            logging.info("Triggering periodic RSS poll...")
+            await watcher.poll_once()
+            logging.info("Periodic RSS poll complete.")
+        except Exception as e:
+            logging.error(f"Error in RSS polling task: {e}")
+        
+        await asyncio.sleep(3600) # Poll every hour
 
-# --- Service State ---
-class ServiceState:
-    is_running = False
-    stop_event = None
-
-service_state = ServiceState()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Start background task
+    polling_task = asyncio.create_task(rss_polling_task())
+    yield
+    # Cleanup
+    polling_task.cancel()
+    try:
+        await polling_task
+    except asyncio.CancelledError:
+        logging.info("Background RSS polling task stopped.")
 
 # --- Application ---
 app = FastAPI(
     title="AutoApply API", 
     version="2.0.0",
-    description="Draft-first job application preparation. This API never submits applications."
+    description="Draft-first job application preparation. This API never submits applications.",
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -135,72 +167,7 @@ async def parse_resume(source: str = "resume"):
         print(f"Resume Parsing Error: {e}")
         raise HTTPException(status_code=500, detail=f"Parsing failed: {str(e)}")
 
-@app.post("/start", tags=["Control"])
-async def start_automation(continuous: bool = False):
 
-    if service_state.is_running:
-        return {"status": "already_running"}
-        
-    # Validation: If using generated resume, template must exist
-    from src.profile_manager import ProfileManager
-    pm = ProfileManager()
-    profile = pm.get_profile()
-    
-    use_uploaded = profile.get("use_uploaded_resume", False)
-    template_path = "data/resume_base.tex"
-    
-    if not use_uploaded and not os.path.exists(template_path):
-        raise HTTPException(status_code=400, detail="Cannot start: 'Use uploaded resume' is unchecked, but no custom LaTeX template found. Please upload a template or enable uploaded resume.")
-
-    service_state.is_running = True
-    service_state.stop_event = asyncio.Event()
-
-    def log_callback(msg):
-        print(f"[LOG] {msg}")
-        asyncio.create_task(manager.broadcast(msg))
-
-    asyncio.create_task(background_runner(log_callback, continuous))
-    return {
-        "status": "started", 
-        "continuous": continuous,
-        "note": "Draft-first mode: Applications will be prepared but NOT submitted. Check /drafts for results."
-    }
-
-@app.get("/status", tags=["Control"])
-def get_status():
-    return {"running": service_state.is_running}
-
-@app.post("/stop", tags=["Control"])
-def stop_automation():
-    if not service_state.is_running:
-        return {"status": "not_running"}
-    
-    service_state.is_running = False
-    if service_state.stop_event:
-        service_state.stop_event.set()
-    
-    return {"status": "stopping"}
-
-# Background Runner Wrapper
-async def background_runner(log_callback, continuous):
-    try:
-        await run_auto_apply(log_callback, continuous=continuous, stop_event=service_state.stop_event)
-    except Exception as e:
-        log_callback(f"CRITICAL ERROR: {e}")
-    finally:
-        service_state.is_running = False
-        log_callback("Automation Service Stopped.")
-
-# Websocket endpoint
-from fastapi import WebSocket, WebSocketDisconnect
-@app.websocket("/ws/logs")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

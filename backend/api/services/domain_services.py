@@ -2,9 +2,8 @@ from api.interfaces.repositories import JobRepository, ConfigRepository, Profile
 from api.schemas.models import FeedURL, ProfileData
 
 class JobService:
-    def __init__(self, repository: JobRepository, registry=None):
+    def __init__(self, repository: JobRepository):
         self.repository = repository
-        self.registry = registry
 
     def get_jobs(self):
         jobs = self.repository.get_all_jobs()
@@ -25,8 +24,6 @@ class JobService:
         return False
 
     def delete_job(self, url: str):
-        if self.registry:
-            self.registry.cancel(url)
         return self.repository.delete_job(url)
 
 class FeedService:

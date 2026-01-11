@@ -3,23 +3,13 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Rss, Briefcase, User, FileText, Settings } from 'lucide-react';
-
-interface SidebarNavProps extends React.HTMLAttributes<HTMLElement> {
-    items: {
-        href: string;
-        title: string;
-        icon: React.ComponentType<{ className?: string }>;
-    }[];
-}
+import { Briefcase, User, Settings } from 'lucide-react';
 
 export function Sidebar({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
     const pathname = usePathname();
     const items = [
-        { href: "/dashboard", title: "Dashboard", icon: LayoutDashboard },
         { href: "/jobs", title: "Job History", icon: Briefcase },
         { href: "/profile", title: "My Profile", icon: User },
-        // { href: "/feeds", title: "RSS Feeds", icon: Rss }, // Merged into Settings or Dashboard?
         { href: "/settings", title: "Settings", icon: Settings },
     ];
 
