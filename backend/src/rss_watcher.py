@@ -71,7 +71,7 @@ class RSSWatcher:
             for entry in feed.entries:
                 entry_id = getattr(entry, 'id', entry.link)
                 # Composite key for deduplication
-                dedup_key = f"{feed_url}:{entry_id}"
+                dedup_key = entry.link
                 
                 if self.deduplicator.is_new(dedup_key):
                     # 1. Mark as seen immediately (fire-and-forget logic)

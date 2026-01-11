@@ -56,7 +56,7 @@ async def run_auto_apply(
     
     # 3. Initialize RSS Watcher Infrastructure
     from src.infrastructure import JobManagerEventPublisher, JobManagerDeduplicator
-    event_publisher = JobManagerEventPublisher(job_manager)
+    event_publisher = JobManagerEventPublisher(job_manager, log_callback=log_callback)
     deduplicator = JobManagerDeduplicator(job_manager)
     
     rss_watcher = RSSWatcher(

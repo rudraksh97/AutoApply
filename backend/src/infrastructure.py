@@ -47,14 +47,17 @@ class JobManagerEventPublisher(EventPublisher):
     """
     Bridges RSS ingestion events to the JobManager persistence layer.
     """
-    def __init__(self, job_manager: JobManagerProtocol):
+    def __init__(self, job_manager: JobManagerProtocol, log_callback=None):
         self.job_manager = job_manager
+        self.log_callback = log_callback
 
     async def publish(self, event_type: str, data: dict[str, Any]) -> None:
         if event_type == "new_job_ingested":
             job_link = data["job_link"]
             # Replicate legacy behavior: add as Pending
             self.job_manager.add_job(job_link, status="Pending")
+            if self.log_callback:
+                self.log_callback(f"[RSS] Found new job: {job_link}")
 
 class JobManagerDeduplicator(Deduplicator):
     """

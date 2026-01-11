@@ -115,10 +115,14 @@ class TestRSSWatcher:
     @patch('httpx.AsyncClient.get')
     async def test_multiple_feeds_concurrency(self, mock_get, rss_watcher, mock_publisher):
         """Test that multiple feeds are polled."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.content = b"""<?xml version="1.0" encoding="UTF-8" ?><rss version="2.0"><channel><item><link>https://x.com/j</link></item></channel></rss>"""
-        mock_get.return_value = mock_response
+        # Return different content for each feed to ensure unique links
+        def side_effect(url):
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.content = f"""<?xml version="1.0" encoding="UTF-8" ?><rss version="2.0"><channel><item><link>https://x.com/{url}</link></item></channel></rss>""".encode('utf-8')
+            return resp
+        
+        mock_get.side_effect = side_effect
 
         rss_watcher.feeds = ["https://f1.com", "https://f2.com", "https://f3.com"]
         

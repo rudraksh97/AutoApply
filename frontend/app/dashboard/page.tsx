@@ -5,6 +5,7 @@ import axios from 'axios';
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card"
 import { Play, Square, RefreshCcw } from 'lucide-react';
+import { cn } from "@/lib/utils";
 
 export default function DashboardPage() {
     const [isRunning, setIsRunning] = useState(false);
@@ -69,63 +70,87 @@ export default function DashboardPage() {
     };
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-            </div>
+        <div className="space-y-8">
+            <header className="flex flex-col gap-2">
+                <h1 className="text-3xl font-bold tracking-tight font-serif text-foreground">Dashboard</h1>
+                <p className="text-muted-foreground">Monitor and control your automated job search agent.</p>
+            </header>
 
-            <div className="grid gap-4 grid-cols-1">
-                <Card className="w-full">
-                    <CardHeader>
-                        <CardTitle>Automation Controls</CardTitle>
+            <div className="grid gap-6">
+                <Card className="shadow-sm border-border/60">
+                    <CardHeader className="pb-4">
+                        <CardTitle className="text-xl font-semibold">Automation Controls</CardTitle>
                         <CardDescription>Start or stop the background application agent.</CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="flex flex-wrap gap-4">
+                    <CardContent className="space-y-6">
+                        <div className="flex flex-wrap gap-3">
                             <Button
                                 variant="default"
+                                size="lg"
                                 disabled={isRunning}
                                 onClick={() => startAutomation(false)}
+                                className="px-6"
                             >
                                 <Play className="mr-2 h-4 w-4" /> Run Once
                             </Button>
 
                             <Button
-                                variant="secondary"
+                                variant="outline"
+                                size="lg"
                                 disabled={isRunning}
                                 onClick={() => startAutomation(true)}
+                                className="px-6"
                             >
                                 <RefreshCcw className="mr-2 h-4 w-4" /> Loop (Every 60s)
                             </Button>
 
+                            <div className="flex-1" />
+
                             <Button
                                 variant="destructive"
+                                size="lg"
                                 disabled={!isRunning}
                                 onClick={stopAutomation}
+                                className="px-6"
                             >
                                 <Square className="mr-2 h-4 w-4" /> Stop
                             </Button>
                         </div>
-                        <div>
-                            Status: <span className={isRunning ? "text-green-600 font-bold" : "text-gray-500"}>{isRunning ? "Running" : "Idle"}</span>
+
+                        <div className="flex items-center gap-2 pt-2 border-t border-border/40">
+                            <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Status:</span>
+                            <div className="flex items-center gap-2">
+                                <div className={cn("h-2 w-2 rounded-full", isRunning ? "bg-green-500 animate-pulse" : "bg-gray-300")} />
+                                <span className={cn("text-sm font-bold", isRunning ? "text-green-600" : "text-gray-500 uppercase")}>
+                                    {isRunning ? "Running" : "Idle"}
+                                </span>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="shadow-sm border-border/60 flex flex-col h-[600px]">
+                    <CardHeader className="pb-4">
+                        <CardTitle className="text-xl font-semibold">Live Logs</CardTitle>
+                        <CardDescription>Real-time execution details from the assistant.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex-1 overflow-hidden pt-0">
+                        <div className="h-full overflow-y-auto bg-[#1a1a1a] text-[#e0e0e0] p-6 rounded-lg font-mono text-xs leading-relaxed border border-border/10 selection:bg-accent/20">
+                            {logs.length === 0 ? (
+                                <div className="text-muted-foreground/40 italic">Waiting for logs...</div>
+                            ) : (
+                                logs.map((log, i) => (
+                                    <div key={i} className="py-0.5 border-b border-white/[0.03] last:border-0 opacity-90 hover:opacity-100 transition-opacity">
+                                        <span className="text-accent/60 mr-2 opacity-50 select-none">[{i + 1}]</span>
+                                        {log}
+                                    </div>
+                                ))
+                            )}
+                            <div ref={logsEndRef} />
                         </div>
                     </CardContent>
                 </Card>
             </div>
-
-            <Card className="w-full h-[500px] flex flex-col">
-                <CardHeader>
-                    <CardTitle>Live Logs</CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 overflow-hidden">
-                    <div className="h-full overflow-y-auto bg-slate-950 text-slate-50 p-4 rounded-md font-mono text-sm space-y-1">
-                        {logs.map((log, i) => (
-                            <div key={i} className="break-words border-b border-slate-800/50 pb-0.5">{log}</div>
-                        ))}
-                        <div ref={logsEndRef} />
-                    </div>
-                </CardContent>
-            </Card>
         </div>
     )
 }
