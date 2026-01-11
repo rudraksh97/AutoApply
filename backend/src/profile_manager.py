@@ -132,7 +132,6 @@ class ProfileManager:
             
         if resume_path:
             profile["uploaded_resume_path"] = resume_path
-            profile["use_uploaded_resume"] = True
             
         self.save_profile(profile)
 
