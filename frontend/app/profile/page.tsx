@@ -126,6 +126,25 @@ export default function ProfilePage() {
                                     </select>
                                 </div>
                                 <div className="space-y-2.5">
+                                    <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Race / Ethnicity</Label>
+                                    <select
+                                        className="flex h-11 w-full rounded-md border border-input bg-muted/20 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        value={profile.demographics.race || "Prefer not to say"}
+                                        onChange={(e) => handleChange('demographics', 'race', e.target.value)}
+                                    >
+                                        <option value="Asian">Asian</option>
+                                        <option value="Black or African American">Black or African American</option>
+                                        <option value="Hispanic / Latino">Hispanic / Latino</option>
+                                        <option value="White">White</option>
+                                        <option value="Native Hawaiian or Other Pacific Islander">Native Hawaiian or Other Pacific Islander</option>
+                                        <option value="American Indian or Alaska Native">American Indian or Alaska Native</option>
+                                        <option value="Two or More Races">Two or More Races</option>
+                                        <option value="Prefer not to say">Prefer not to say</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="grid gap-8 sm:grid-cols-2">
+                                <div className="space-y-2.5">
                                     <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Nationality</Label>
                                     <Input className="h-11 bg-muted/20 border-transparent focus:border-accent/30 transition-all" value={profile.demographics.nationality} onChange={(e) => handleChange('demographics', 'nationality', e.target.value)} />
                                 </div>

@@ -26,6 +26,7 @@ DEFAULT_PROFILE = {
     },
     "demographics": {
         "gender": "Prefer not to say", 
+        "race": "Prefer not to say",
         "nationality": "", 
         "veteran": "I am not a protected veteran", 
         "disability": "I do not have a disability"
@@ -136,6 +137,7 @@ class ProfileManager:
         Portfolio: {p['urls']['portfolio']}
         
         Gender: {p['demographics']['gender']}
+        Race: {p['demographics'].get('race', 'Prefer not to say')}
         Nationality: {p['demographics']['nationality']}
         Veteran Status: {p['demographics']['veteran']}
         Disability Status: {p['demographics']['disability']}
