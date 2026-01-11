@@ -15,7 +15,7 @@ import uuid
 class DraftStatus(str, Enum):
     """Lifecycle states for an application draft."""
     JOB_FOUND = "job_found"
-    EXTRACTED = "extracted"
+    EXTRACTED = "extracted_jd"
     PREFILLED = "prefilled"
     DRAFT_SAVED = "draft_saved"
     USER_OPENED = "user_opened"
