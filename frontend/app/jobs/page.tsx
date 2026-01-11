@@ -3,7 +3,9 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Download, FileText, AlertTriangle, ExternalLink, Play } from 'lucide-react';
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { RefreshCw, Download, FileText, AlertTriangle, ExternalLink, Play, Trash2, Plus } from 'lucide-react';
 import { cn } from "@/lib/utils";
 
 interface Job {
@@ -28,6 +30,10 @@ export default function JobsPage() {
     const [drafts, setDrafts] = useState<Draft[]>([]);
     const [loading, setLoading] = useState(true);
     const [openingDraft, setOpeningDraft] = useState<string | null>(null);
+    const [newJobUrl, setNewJobUrl] = useState("");
+    const [addingJob, setAddingJob] = useState(false);
+    const [addJobOpen, setAddJobOpen] = useState(false);
+    const [deletingJob, setDeletingJob] = useState<string | null>(null);
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -61,13 +67,60 @@ export default function JobsPage() {
         }
     };
 
+    const addJob = async () => {
+        if (!newJobUrl) return;
+        setAddingJob(true);
+        try {
+            // 1. Add job to DB
+            const res = await axios.post(`${API_URL}/jobs/`, { url: newJobUrl });
+
+            // 2. Trigger workflow automatically
+            await axios.post(`${API_URL}/start`, {}, { headers: { 'Content-Type': 'application/json' } });
+
+            setNewJobUrl("");
+            setAddJobOpen(false);
+            fetchJobs();
+
+            if (res.data.status === 'exists') {
+                alert("Job already exists (workflow restarted)");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Failed to add job");
+        } finally {
+            setAddingJob(false);
+        }
+    };
+
+    const deleteJob = async (url: string) => {
+        if (!confirm("Are you sure you want to delete this job and its history?")) return;
+        setDeletingJob(url);
+        try {
+            await axios.delete(`${API_URL}/jobs/`, { params: { url } });
+            fetchJobs();
+        } catch (e) {
+            console.error(e);
+            alert("Failed to delete job");
+        } finally {
+            setDeletingJob(null);
+        }
+    };
+
     const openDraft = async (draftId: string, jobUrl: string) => {
         setOpeningDraft(draftId);
 
         // Use the browser extension trigger via URL hash
         // usage: URL#autoapply_id=UUID
-        const separator = jobUrl.includes('#') ? '&' : '#';
-        const triggerUrl = `${jobUrl}${separator}autoapply_id=${draftId}`;
+
+        // Special handling for Ashby: user should open on /application URL
+        let targetUrl = jobUrl;
+        if (targetUrl.includes("jobs.ashbyhq.com") && !targetUrl.includes("/application")) {
+            // Remove trailing slash if present then append /application
+            targetUrl = targetUrl.replace(/\/$/, "") + "/application";
+        }
+
+        const separator = targetUrl.includes('#') ? '&' : '#';
+        const triggerUrl = `${targetUrl}${separator}autoapply_id=${draftId}`;
 
         window.open(triggerUrl, '_blank');
 
@@ -98,15 +151,47 @@ export default function JobsPage() {
                     <h1 className="text-3xl font-bold tracking-tight font-serif text-foreground">Job History</h1>
                     <p className="text-muted-foreground">Track and manage your application drafts.</p>
                 </div>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={fetchJobs}
-                    className="h-10 px-4"
-                >
-                    <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
-                    Refresh
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Dialog open={addJobOpen} onOpenChange={setAddJobOpen}>
+                        <DialogTrigger asChild>
+                            <Button className="h-10 px-4">
+                                <Plus className="h-4 w-4 mr-2" />
+                                Add Job
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Add New Job</DialogTitle>
+                            </DialogHeader>
+                            <div className="py-4">
+                                <Input
+                                    placeholder="https://jobs.ashbyhq.com/..."
+                                    value={newJobUrl}
+                                    onChange={(e) => setNewJobUrl(e.target.value)}
+                                />
+                                <p className="text-sm text-muted-foreground mt-2">
+                                    Adding a job will automatically trigger the draft preparation workflow.
+                                </p>
+                            </div>
+                            <DialogFooter>
+                                <Button variant="outline" onClick={() => setAddJobOpen(false)}>Cancel</Button>
+                                <Button onClick={addJob} disabled={addingJob || !newJobUrl}>
+                                    {addingJob ? "Adding..." : "Add Job"}
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={fetchJobs}
+                        className="h-10 px-4"
+                    >
+                        <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
+                        Refresh
+                    </Button>
+                </div>
             </header>
 
             <Card className="shadow-sm border-border/60 overflow-hidden">
@@ -141,105 +226,83 @@ export default function JobsPage() {
                                 ) : (
                                     jobs.map((job, i) => {
                                         const draft = getDraftForJob(job.url);
+                                        const displayStatus = draft?.status || job.status;
+                                        const isDraftReady = displayStatus === 'draft_saved' || displayStatus === 'user_opened';
+
                                         return (
-                                            <tr key={i} className="hover:bg-muted/30 transition-colors group">
-                                                <td className="px-6 py-4 font-medium text-foreground/80">
-                                                    {new Date(job.timestamp).toLocaleDateString(undefined, {
-                                                        month: 'short',
-                                                        day: 'numeric',
-                                                        hour: '2-digit',
-                                                        minute: '2-digit'
-                                                    })}
+                                            <tr key={i} className="group hover:bg-muted/30 transition-colors">
+                                                <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">
+                                                    {new Date(job.timestamp).toLocaleDateString()}
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <span className={cn(
-                                                        "inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider border",
-                                                        getStatusColor(job.status)
+                                                        "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border shadow-sm",
+                                                        getStatusColor(displayStatus)
                                                     )}>
-                                                        {job.status}
+                                                        {displayStatus}
                                                     </span>
-                                                    {(job.status === 'Failed' || job.status === 'Draft Failed' || job.error_message) && (
-                                                        <div className="mt-1.5 text-[11px] text-red-500/80 max-w-[200px] leading-tight" title={job.error_message || ""}>
-                                                            <AlertTriangle className="h-3 w-3 inline mr-1 mb-0.5" />
-                                                            {job.error_message}
+                                                    {draft?.status && draft.status !== job.status && (
+                                                        <div className="text-[10px] text-muted-foreground mt-1">
+                                                            Draft: {draft.status}
                                                         </div>
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     {draft ? (
-                                                        <span className="text-sm">
-                                                            <span className="font-semibold text-green-600">{draft.filled_field_count}</span>
-                                                            <span className="text-muted-foreground">/{draft.field_count}</span>
+                                                        <span className="text-muted-foreground">
+                                                            {draft.filled_field_count} filled
                                                         </span>
                                                     ) : (
                                                         <span className="text-muted-foreground">-</span>
                                                     )}
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-2 max-w-[300px]">
-                                                        <a
-                                                            href={job.url}
-                                                            target="_blank"
-                                                            className="text-foreground/70 hover:text-accent font-medium truncate transition-colors decoration-accent/30 underline-offset-4 hover:underline"
-                                                        >
-                                                            {job.url}
+                                                <td className="px-6 py-4 max-w-[300px]">
+                                                    <div className="flex items-center gap-2">
+                                                        <a href={job.url} target="_blank" rel="noopener noreferrer"
+                                                            className="text-primary hover:underline font-medium truncate block"
+                                                            title={job.url}>
+                                                            {job.url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]}...
                                                         </a>
+                                                        <ExternalLink className="h-3 w-3 text-muted-foreground/60 opacity-0 group-hover:opacity-100 transition-opacity" />
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    <div className="flex items-center justify-end gap-1">
-                                                        {/* Open Draft Button - show for Draft Saved status */}
-                                                        {draft && (job.status === 'Draft Saved' || draft.status === 'draft_saved') && (
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        {isDraftReady && draft && (
                                                             <Button
-                                                                variant="default"
                                                                 size="sm"
                                                                 onClick={() => openDraft(draft.id, job.url)}
                                                                 disabled={openingDraft === draft.id}
-                                                                className="h-8 px-3 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white"
+                                                                className="h-8 bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
                                                             >
                                                                 {openingDraft === draft.id ? (
-                                                                    <>
-                                                                        <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                                                                        Opening...
-                                                                    </>
+                                                                    <RefreshCw className="h-3 w-3 animate-spin mr-1" />
                                                                 ) : (
-                                                                    <>
-                                                                        <Play className="h-3 w-3 mr-1" />
-                                                                        Open Draft
-                                                                    </>
+                                                                    <Play className="h-3 w-3 mr-1" />
                                                                 )}
+                                                                Open Draft
                                                             </Button>
                                                         )}
 
                                                         {job.pdf_path && (
-                                                            <a
-                                                                href={`${API_URL}/data/${job.pdf_path.split('/').pop()}`}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                            >
-                                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-white" title="View PDF">
-                                                                    <FileText className="h-4 w-4" />
-                                                                </Button>
-                                                            </a>
-                                                        )}
-
-                                                        {(job.status === 'Failed' || job.status === 'Draft Failed') && (
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                onClick={() => retryJob(job.url)}
-                                                                className="h-8 px-3 text-xs font-bold text-accent hover:bg-accent/10"
-                                                            >
-                                                                Retry
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                                                                <Download className="h-4 w-4" />
                                                             </Button>
                                                         )}
 
-                                                        {/* External link to job */}
-                                                        <a href={job.url} target="_blank" rel="noopener noreferrer">
-                                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" title="Open job page">
-                                                                <ExternalLink className="h-4 w-4" />
-                                                            </Button>
-                                                        </a>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 text-muted-foreground hover:text-red-600 hover:bg-red-50"
+                                                            onClick={() => deleteJob(job.url)}
+                                                            disabled={deletingJob === job.url}
+                                                        >
+                                                            {deletingJob === job.url ? (
+                                                                <RefreshCw className="h-4 w-4 animate-spin" />
+                                                            ) : (
+                                                                <Trash2 className="h-4 w-4" />
+                                                            )}
+                                                        </Button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -254,4 +317,3 @@ export default function JobsPage() {
         </div>
     );
 }
-

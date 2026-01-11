@@ -136,8 +136,15 @@ class DraftPreparationService:
             
             # Step 3: Prefill Form (NO SUBMISSION)
             log_callback("📝 Prefilling application form...")
+            
+            # Special handling for Ashby: prefill on /application URL
+            prefill_link = job_link
+            if "jobs.ashbyhq.com" in job_link and "/application" not in job_link:
+                 prefill_link = job_link.rstrip("/") + "/application"
+                 log_callback(f"ℹ️ Ashby link detected. Prefilling at: {prefill_link}")
+
             prefill_result = await self.browser_agent.prefill_form(
-                job_link, 
+                prefill_link, 
                 pdf_path, 
                 user_details_text
             )

@@ -163,3 +163,19 @@ class JobManager:
             cursor.execute(query, values)
             conn.commit()
             return cursor.rowcount > 0
+
+    def delete_job(self, url):
+        """
+        Deletes a job from the database.
+
+        Args:
+            url (str): The unique URL of the job to delete.
+
+        Returns:
+            bool: True if the job was found and deleted, False otherwise.
+        """
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM jobs WHERE url = ?", (url,))
+            conn.commit()
+            return cursor.rowcount > 0

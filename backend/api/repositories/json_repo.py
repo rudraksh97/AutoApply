@@ -22,6 +22,9 @@ class JsonJobRepository(JobRepository):
     def update_job(self, url: str, status: str = None, pdf_path: str = None, details: str = None, error_message: str = None) -> bool:
         return self._manager.update_job(url, status, pdf_path, details, error_message)
 
+    def delete_job(self, url: str) -> bool:
+        return self._manager.delete_job(url)
+
 class JsonConfigRepository(ConfigRepository):
     def __init__(self):
         self._manager = ConfigManager()

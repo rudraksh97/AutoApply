@@ -17,6 +17,15 @@ class JobService:
             return True
         return False
 
+    def add_job(self, url: str):
+        if not self.repository.job_exists(url):
+            self.repository.add_job(url, status="Pending")
+            return True
+        return False
+
+    def delete_job(self, url: str):
+        return self.repository.delete_job(url)
+
 class FeedService:
     def __init__(self, repository: ConfigRepository):
         self.repository = repository
