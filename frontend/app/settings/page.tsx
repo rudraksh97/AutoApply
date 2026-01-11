@@ -47,24 +47,7 @@ export default function SettingsPage() {
         }
     };
 
-    const handleTemplateUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files?.[0]) return;
-        setUploading(true);
-        const file = e.target.files[0];
-        const formData = new FormData();
-        formData.append("file", file);
 
-        try {
-            await axios.post(`${API_URL}/upload-template`, formData, {
-                headers: { "Content-Type": "multipart/form-data" }
-            });
-            alert("Template uploaded successfully!");
-        } catch (e: any) {
-            alert("Upload failed: " + (e.response?.data?.detail || e.message));
-        } finally {
-            setUploading(false);
-        }
-    };
 
     return (
         <div className="space-y-6">
@@ -99,19 +82,7 @@ export default function SettingsPage() {
                 </CardContent>
             </Card>
 
-            <Card className="w-full">
-                <CardHeader>
-                    <CardTitle>Resume Template</CardTitle>
-                    <CardDescription>Upload a custom LaTeX template (.tex).</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="grid w-full items-center gap-1.5">
-                        <Label htmlFor="template">Base Template</Label>
-                        <Input id="template" type="file" accept=".tex" className="w-full" onChange={handleTemplateUpload} disabled={uploading} />
-                        <p className="text-xs text-muted-foreground">Must contain <code>\VAR{"{skills_list}"}</code> placeholder.</p>
-                    </div>
-                </CardContent>
-            </Card>
+
         </div>
     )
 }

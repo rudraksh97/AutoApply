@@ -40,7 +40,11 @@ DEFAULT_PROFILE = {
     "great_fit_pitch": "",
     "cover_letter_template": "",
     "why_us": "",
-    "challenging_project": ""
+    "challenging_project": "",
+    "uploaded_resume_path": "",
+    "uploaded_resume_filename": "",
+    "use_uploaded_resume": False,
+    "custom_template_filename": ""
 }
 
 class ProfileManager:

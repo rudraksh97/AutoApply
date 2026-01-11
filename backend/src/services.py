@@ -8,6 +8,7 @@ workflow, coordinating between storage, browser automation, and resume generatio
 import logging
 from typing import Callable, Optional
 from src.interfaces import JobManagerProtocol, BrowserAgentProtocol, ResumeBuilderProtocol
+import os
 
 # Preserving the constant from main.py for behavior compatibility
 # In a future refactor, this should move to ProfileManager or Config
@@ -75,16 +76,40 @@ class JobApplicationService:
             # Store snippet
             self.job_manager.update_job(job_link, details=job_description[:500] + "...") 
             
-            # Step 2: Generate Resume
-            log_callback("Generating resume...")
-            self.job_manager.update_job(job_link, status="Running - Generating Resume")
+
+            # Step 2: Resume Preparation
+            # Check user preference for uploaded resume
+            from src.profile_manager import ProfileManager
+            profile_manager = ProfileManager()
+            profile = profile_manager.get_profile()
             
-            # Reproducing logic from legacy main.py
-            job_id = abs(hash(job_link)) 
-            pdf_path = self.resume_builder.build(job_description, CURRENT_RESUME_INFO, job_id=job_id)
+            use_uploaded = profile.get("use_uploaded_resume", False)
+            uploaded_path = profile.get("uploaded_resume_path", "")
             
-            # Update PDF path in DB
-            self.job_manager.update_job(job_link, pdf_path=pdf_path, status="Running - Resume Ready")
+            pdf_path = None
+            
+            if use_uploaded and uploaded_path:
+                if os.path.exists(uploaded_path):
+                    log_callback(f"✅ Using uploaded resume: {uploaded_path}")
+                    pdf_path = uploaded_path
+                    self.job_manager.update_job(job_link, pdf_path=pdf_path, status="Running - Resume Ready")
+                else:
+                    log_callback(f"⚠️ Uploaded resume not found at: {uploaded_path}. Falling back to generation.")
+                    # Generate a tailored resume
+                    log_callback("Generating resume...")
+                    self.job_manager.update_job(job_link, status="Running - Generating Resume")
+                    
+                    job_id = abs(hash(job_link)) 
+                    pdf_path = self.resume_builder.build(job_description, CURRENT_RESUME_INFO, job_id=job_id)
+                    self.job_manager.update_job(job_link, pdf_path=pdf_path, status="Running - Resume Ready")
+            else:
+                log_callback(f"Generating resume (Use Uploaded: {use_uploaded}, Path: {uploaded_path})")
+                self.job_manager.update_job(job_link, status="Running - Generating Resume")
+                
+                # Reproducing logic from legacy main.py
+                job_id = abs(hash(job_link)) 
+                pdf_path = self.resume_builder.build(job_description, CURRENT_RESUME_INFO, job_id=job_id)
+                self.job_manager.update_job(job_link, pdf_path=pdf_path, status="Running - Resume Ready")
             
             # Step 3: Apply (Local File)
             log_callback(f"Applying to job with resume: {pdf_path}")

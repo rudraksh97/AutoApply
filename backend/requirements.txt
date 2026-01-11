@@ -11,3 +11,4 @@ python-multipart
 websockets
 pytest
 pytest-asyncio
+pypdf

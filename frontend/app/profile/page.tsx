@@ -29,13 +29,18 @@ export default function ProfilePage() {
     }, []);
 
     const handleChange = (section: string, field: string, value: any) => {
-        setProfile((prev: any) => ({
-            ...prev,
-            [section]: {
-                ...prev[section],
-                [field]: value
+        setProfile((prev: any) => {
+            if (section === 'root') {
+                return { ...prev, [field]: value };
             }
-        }));
+            return {
+                ...prev,
+                [section]: {
+                    ...prev[section],
+                    [field]: value
+                }
+            };
+        });
     };
 
     const saveProfile = async () => {
@@ -67,6 +72,278 @@ export default function ProfilePage() {
             </header>
 
             <div className="flex flex-col gap-10">
+                {/* Resume Settings Section */}
+                <section className="space-y-6">
+                    <div className="flex flex-col gap-1">
+                        <h2 className="text-xl font-semibold text-foreground">Resume Settings</h2>
+                        <p className="text-sm text-muted-foreground">Upload your existing resume to auto-fill your profile or use it directly.</p>
+                    </div>
+                    <Card className="shadow-sm border-border/60">
+                        <CardContent className="p-8 space-y-6">
+                            <div className="flex flex-col gap-4">
+                                <Label className="text-sm font-medium">
+                                    {profile.uploaded_resume_path ? "Current Resume" : "Upload Resume (PDF or Tex)"}
+                                </Label>
+
+                                {profile.uploaded_resume_path ? (
+                                    <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-lg border">
+                                        <div className="flex flex-col">
+                                            <span className="text-sm font-medium text-foreground">
+                                                {profile.uploaded_resume_filename || "Uploaded Resume"}
+                                            </span>
+                                            <span className="text-xs text-muted-foreground">
+                                                Ready for auto-fill or application usage
+                                            </span>
+                                        </div>
+                                        <div className="flex-1" />
+                                        <div className="relative">
+                                            <Button variant="secondary" size="sm" className="relative">
+                                                Replace
+                                                <Input
+                                                    type="file"
+                                                    accept=".pdf, .tex"
+                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                    onChange={async (e) => {
+                                                        const file = e.target.files?.[0];
+                                                        if (!file) return;
+
+                                                        const formData = new FormData();
+                                                        formData.append('file', file);
+
+                                                        try {
+                                                            setLoading(true);
+                                                            const res = await axios.post(`${API_URL}/upload-resume`, formData, {
+                                                                headers: { 'Content-Type': 'multipart/form-data' }
+                                                            });
+                                                            alert("Resume replaced successfully!");
+                                                            setProfile((prev: any) => ({
+                                                                ...prev,
+                                                                uploaded_resume_path: res.data.path,
+                                                                uploaded_resume_filename: res.data.filename,
+                                                                use_uploaded_resume: true
+                                                            }));
+                                                        } catch (err) {
+                                                            console.error(err);
+                                                            alert("Failed to replace resume.");
+                                                        } finally {
+                                                            setLoading(false);
+                                                        }
+                                                    }}
+                                                />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-4">
+                                        <Input
+                                            type="file"
+                                            accept=".pdf, .tex"
+                                            className="max-w-md"
+                                            onChange={async (e) => {
+                                                const file = e.target.files?.[0];
+                                                if (!file) return;
+
+                                                const formData = new FormData();
+                                                formData.append('file', file);
+
+                                                try {
+                                                    setLoading(true);
+                                                    const res = await axios.post(`${API_URL}/upload-resume`, formData, {
+                                                        headers: { 'Content-Type': 'multipart/form-data' }
+                                                    });
+                                                    alert("Resume uploaded successfully!");
+                                                    setProfile((prev: any) => ({
+                                                        ...prev,
+                                                        uploaded_resume_path: res.data.path,
+                                                        uploaded_resume_filename: res.data.filename,
+                                                        use_uploaded_resume: true
+                                                    }));
+                                                } catch (err) {
+                                                    console.error(err);
+                                                    alert("Failed to upload resume.");
+                                                } finally {
+                                                    setLoading(false);
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex items-center space-x-3 p-4 border rounded-lg bg-slate-50/50">
+                                <input
+                                    type="checkbox"
+                                    id="use_uploaded"
+                                    className="h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary"
+                                    checked={profile.use_uploaded_resume || false}
+                                    onChange={(e) => handleChange('root', 'use_uploaded_resume', e.target.checked)}
+                                />
+                                <div className="flex flex-col">
+                                    <Label htmlFor="use_uploaded" className="text-sm font-medium cursor-pointer">Use uploaded resume for applications</Label>
+                                    <span className="text-xs text-muted-foreground">If checked, we will use your uploaded PDF instead of generating a new one.</span>
+                                </div>
+                            </div>
+
+                            <div className="pt-2">
+                                <Button
+                                    variant="outline"
+                                    onClick={async () => {
+                                        try {
+                                            setLoading(true);
+                                            const res = await axios.post(`${API_URL}/parse-resume`);
+                                            const parsed = res.data;
+
+                                            // Merge parsed data into profile
+                                            setProfile((prev: any) => ({
+                                                ...prev,
+                                                basics: { ...prev.basics, ...parsed.basics },
+                                                urls: { ...prev.urls, ...parsed.urls },
+                                                education: parsed.education || prev.education,
+                                                experience: parsed.experience || prev.experience
+                                            }));
+                                            alert("Profile auto-filled from resume! Please review changes.");
+                                        } catch (err) {
+                                            console.error(err);
+                                            alert("Failed to parse resume. Ensure one is uploaded.");
+                                        } finally {
+                                            setLoading(false);
+                                        }
+                                    }}
+                                >
+                                    Auto-fill Profile from Resume
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </section>
+                {/* Custom Resume Template Section */}
+                <section className="space-y-6">
+                    <div className="flex flex-col gap-1">
+                        <h2 className="text-xl font-semibold text-foreground">Custom Resume Template</h2>
+                        <p className="text-sm text-muted-foreground">Upload a custom LaTeX template for generated resumes.</p>
+                    </div>
+                    <Card className="shadow-sm border-border/60">
+                        <CardContent className="p-8 space-y-6">
+                            <div className="flex flex-col gap-4">
+                                <Label className="text-sm font-medium">
+                                    {profile.custom_template_filename ? "Current Template" : "Upload Template (.tex)"}
+                                </Label>
+
+                                {profile.custom_template_filename ? (
+                                    <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-lg border">
+                                        <div className="flex flex-col">
+                                            <span className="text-sm font-medium text-foreground">
+                                                {profile.custom_template_filename}
+                                            </span>
+                                            <span className="text-xs text-muted-foreground">
+                                                Used for generating tailored resumes
+                                            </span>
+                                        </div>
+                                        <div className="flex-1" />
+                                        <div className="relative">
+                                            <Button variant="secondary" size="sm" className="relative">
+                                                Replace
+                                                <Input
+                                                    type="file"
+                                                    accept=".tex"
+                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                    onChange={async (e) => {
+                                                        const file = e.target.files?.[0];
+                                                        if (!file) return;
+
+                                                        const formData = new FormData();
+                                                        formData.append('file', file);
+
+                                                        try {
+                                                            setLoading(true);
+                                                            const res = await axios.post(`${API_URL}/upload-template`, formData, {
+                                                                headers: { 'Content-Type': 'multipart/form-data' }
+                                                            });
+                                                            alert("Template replaced successfully!");
+                                                            setProfile((prev: any) => ({
+                                                                ...prev,
+                                                                custom_template_filename: res.data.filename
+                                                            }));
+                                                        } catch (err: any) {
+                                                            console.error(err);
+                                                            alert("Failed to replace template: " + (err.response?.data?.detail || err.message));
+                                                        } finally {
+                                                            setLoading(false);
+                                                        }
+                                                    }}
+                                                />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-4">
+                                        <Input
+                                            type="file"
+                                            accept=".tex"
+                                            className="max-w-md"
+                                            onChange={async (e) => {
+                                                const file = e.target.files?.[0];
+                                                if (!file) return;
+
+                                                const formData = new FormData();
+                                                formData.append('file', file);
+
+                                                try {
+                                                    setLoading(true);
+                                                    const res = await axios.post(`${API_URL}/upload-template`, formData, {
+                                                        headers: { 'Content-Type': 'multipart/form-data' }
+                                                    });
+                                                    alert("Template uploaded successfully!");
+                                                    setProfile((prev: any) => ({
+                                                        ...prev,
+                                                        custom_template_filename: res.data.filename
+                                                    }));
+                                                } catch (err: any) {
+                                                    console.error(err);
+                                                    alert("Failed to upload template: " + (err.response?.data?.detail || err.message));
+                                                } finally {
+                                                    setLoading(false);
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                )}
+                                <div className="flex justify-between items-center">
+                                    <p className="text-xs text-muted-foreground">Must contain <code>\VAR{"{skills_list}"}</code> placeholder.</p>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={async () => {
+                                            try {
+                                                setLoading(true);
+                                                const res = await axios.post(`${API_URL}/parse-resume?source=template`);
+                                                const parsed = res.data;
+
+                                                // Merge parsed data into profile
+                                                setProfile((prev: any) => ({
+                                                    ...prev,
+                                                    basics: { ...prev.basics, ...parsed.basics },
+                                                    urls: { ...prev.urls, ...parsed.urls },
+                                                    education: parsed.education || prev.education,
+                                                    experience: parsed.experience || prev.experience
+                                                }));
+                                                alert("Profile auto-filled from template! Please review changes.");
+                                            } catch (err) {
+                                                console.error(err);
+                                                alert("Failed to parse template. Ensure one is uploaded.");
+                                            } finally {
+                                                setLoading(false);
+                                            }
+                                        }}
+                                    >
+                                        Auto-fill from Template
+                                    </Button>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </section>
+
                 {/* Basics Section */}
                 <section className="space-y-6">
                     <div className="flex flex-col gap-1">
@@ -508,6 +785,6 @@ export default function ProfilePage() {
                     </Card>
                 </section>
             </div>
-        </div>
+        </div >
     );
 }
