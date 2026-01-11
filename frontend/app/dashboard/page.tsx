@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card"
 import { Play, Square, RefreshCcw } from 'lucide-react';
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 export default function DashboardPage() {
     const [isRunning, setIsRunning] = useState(false);
@@ -67,9 +68,10 @@ export default function DashboardPage() {
         try {
             await axios.post(`${API_URL}/start`, null, { params: { continuous } });
             setIsRunning(true);
-        } catch (e) {
+            toast.success("Automation started successfully");
+        } catch (e: any) {
             console.error(e);
-            alert("Failed to start automation");
+            toast.error("Failed to start automation: " + (e.response?.data?.detail || e.message));
         }
     };
 
@@ -77,8 +79,10 @@ export default function DashboardPage() {
         try {
             await axios.post(`${API_URL}/stop`);
             setIsRunning(false); // Optimization, wait for callback ideally
-        } catch (e) {
+            toast.success("Automation stopped");
+        } catch (e: any) {
             console.error(e);
+            toast.error("Failed to stop automation");
         }
     };
 

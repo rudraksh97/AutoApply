@@ -24,6 +24,7 @@ export const metadata: Metadata = {
 };
 
 import { Sidebar } from "@/components/layout/sidebar";
+import { Toaster } from "sonner";
 
 export default function RootLayout({
   children,
@@ -41,6 +42,7 @@ export default function RootLayout({
             {children}
           </div>
         </main>
+        <Toaster />
       </body>
     </html>
   );
