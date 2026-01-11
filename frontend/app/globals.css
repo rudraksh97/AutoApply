@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+:root {
+  /* Claude-inspired Palette */
+  --background: #FFFFFF;
+  --sidebar-bg: #F7F7F5; /* Warm light grey/stone */
+  --foreground: #2D2D2D; /* Soft black */
+  --muted: #6B6B6B;
+  --border: #E5E5E5;
+  --accent: #D97757; /* Burnt orange/terracotta for subtle highlights */
+  --input-bg: #FFFFFF;
+  
+  --font-serif: "Merriweather", "Georgia", serif;
+  
+  /* Overrides for specific components */
+  --sidebar-foreground: #525252;
+  --sidebar-hover: #EBEBE9;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-sidebar: var(--sidebar-bg);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-serif);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbar to be minimal */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #E5E5E5;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #D4D4D4;
+}

@@ -1,0 +1,13 @@
+browser-use
+playwright
+langchain-openai
+pandas
+python-dotenv
+jinja2
+feedparser
+fastapi
+uvicorn
+python-multipart
+websockets
+pytest
+pytest-asyncio

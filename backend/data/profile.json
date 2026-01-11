@@ -1,0 +1,30 @@
+{
+  "basics": {
+    "first_name": "",
+    "last_name": "",
+    "email": "",
+    "phone": "",
+    "location": ""
+  },
+  "urls": {
+    "linkedin": "",
+    "github": "",
+    "portfolio": ""
+  },
+  "demographics": {
+    "gender": "Prefer not to say",
+    "nationality": "",
+    "veteran": "I am not a protected veteran",
+    "disability": "I do not have a disability"
+  },
+  "work_auth": {
+    "authorized_in_us": true,
+    "requires_sponsorship": false
+  },
+  "education": {
+    "degree": "",
+    "university": "",
+    "field_of_study": "",
+    "graduation_year": ""
+  }
+}
