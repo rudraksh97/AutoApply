@@ -9,7 +9,7 @@ import asyncio
 import logging
 import httpx
 import feedparser
-from typing import List, Optional
+from typing import List, Optional, Any
 from src.interfaces import EventPublisher, Deduplicator
 
 class RSSWatcher:
@@ -28,7 +28,7 @@ class RSSWatcher:
         self, 
         event_publisher: EventPublisher,
         deduplicator: Deduplicator,
-        feeds: Optional[List[str]] = None
+        config_manager
     ):
         """
         Initializes the RSS watcher.
@@ -36,23 +36,24 @@ class RSSWatcher:
         Args:
             event_publisher: Backend-agnostic interface to emit events.
             deduplicator: Persistent or in-memory store to check for duplicates.
-            feeds: Initial list of RSS feed URLs to monitor.
+            config_manager: Manager to retrieve the current list of RSS feeds.
         """
         self.event_publisher = event_publisher
         self.deduplicator = deduplicator
-        self.feeds = feeds or []
+        self.config_manager = config_manager
 
     async def poll_once(self):
         """
         Performs a single polling cycle across all configured feeds.
         Fetches feeds concurrently to ensure the cycle is fast.
         """
-        if not self.feeds:
+        feeds = self.config_manager.get_feeds()
+        if not feeds:
             logging.warning("No RSS feeds configured for polling.")
             return
 
         async with httpx.AsyncClient(timeout=10.0) as client:
-            tasks = [self._process_feed(client, url) for url in self.feeds]
+            tasks = [self._process_feed(client, url) for url in feeds]
             await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _process_feed(self, client: httpx.AsyncClient, feed_url: str):

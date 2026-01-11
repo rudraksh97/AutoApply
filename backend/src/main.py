@@ -62,7 +62,7 @@ async def run_auto_apply(
     rss_watcher = RSSWatcher(
         event_publisher=event_publisher,
         deduplicator=deduplicator,
-        feeds=config_manager.get_feeds()
+        config_manager=config_manager
     )
 
     # 4. Load user details once per cycle (or once for the run)
