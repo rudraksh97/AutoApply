@@ -138,19 +138,19 @@ class ResumeBuilder:
             raise RuntimeError("pdflatex is not available. Please install a TeX distribution.") from e
         
         # Run pdflatex
-        tex_dir = os.path.dirname(tex_path)
+        tex_dir = os.path.abspath(os.path.dirname(tex_path))
         tex_filename = os.path.basename(tex_path)
         
         result = subprocess.run(
-            ["pdflatex", "-interaction=nonstopmode", "-output-directory", tex_dir, tex_path],
+            ["pdflatex", "-interaction=nonstopmode", "-output-directory", tex_dir, tex_filename],
             cwd=tex_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
         
         # Check for compilation errors
-        pdf_path = tex_path.replace('.tex', '.pdf')
-        log_path = tex_path.replace('.tex', '.log')
+        pdf_path = os.path.join(tex_dir, tex_filename.replace('.tex', '.pdf'))
+        log_path = os.path.join(tex_dir, tex_filename.replace('.tex', '.log'))
         
         if not os.path.exists(pdf_path):
             log_content = "No log file found."
@@ -161,11 +161,9 @@ class ResumeBuilder:
             
         # Clean up auxiliary files ONLY if it succeeded
         for ext in ['.aux', '.log', '.out']:
-            aux_file = tex_path.replace('.tex', ext)
+            aux_file = os.path.join(tex_dir, tex_filename.replace('.tex', ext))
             if os.path.exists(aux_file):
                 os.remove(aux_file)
-        
-        return pdf_path
         
         return pdf_path
 
