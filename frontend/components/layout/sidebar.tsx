@@ -3,11 +3,12 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Briefcase, User, Settings } from 'lucide-react';
+import { Briefcase, User, Settings, Rss } from 'lucide-react';
 
 export function Sidebar({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
     const pathname = usePathname();
     const items = [
+        { href: "/feeds", title: "RSS Feeds", icon: Rss },
         { href: "/jobs", title: "Job History", icon: Briefcase },
         { href: "/profile", title: "My Profile", icon: User },
         { href: "/settings", title: "Settings", icon: Settings },

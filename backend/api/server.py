@@ -22,7 +22,7 @@ from src.agent import BrowserAgent
 from src.resume_builder import ResumeBuilder
 
 # Routers
-from api.routers import feeds, jobs, profile, drafts
+from api.routers import feeds, jobs, profile, drafts, settings
 
 
 # --- Background Tasks ---
@@ -109,6 +109,7 @@ app.include_router(feeds.router)
 app.include_router(jobs.router)
 app.include_router(profile.router)
 app.include_router(drafts.router)
+app.include_router(settings.router)
 
 # Static Files
 if not os.path.exists("data"):
