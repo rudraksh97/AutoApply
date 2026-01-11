@@ -92,3 +92,42 @@ class ResumeBuilderProtocol(Protocol):
         """
         ...
 
+
+class EventPublisher(Protocol):
+    """
+    Interface for fire-and-forget event publishing.
+    """
+    async def publish(self, event_type: str, data: dict[str, Any]) -> None:
+        """
+        Publishes an event to potential consumers.
+
+        Args:
+            event_type: String identifier for the event (e.g., 'new_job_found').
+            data: Payload containing event details.
+        """
+        ...
+
+class Deduplicator(Protocol):
+    """
+    Interface for idempotent deduplication of incoming items.
+    """
+    def is_new(self, key: str) -> bool:
+        """
+        Checks if the given key has been seen before.
+
+        Args:
+            key: Unique identifier for the item.
+
+        Returns:
+            True if the item is new, False otherwise.
+        """
+        ...
+
+    def mark_seen(self, key: str) -> None:
+        """
+        Marks the key as seen to prevent future duplicates.
+
+        Args:
+            key: Unique identifier for the item.
+        """
+        ...
