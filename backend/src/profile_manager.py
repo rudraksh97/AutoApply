@@ -1,3 +1,11 @@
+"""
+User profile management for the AutoApply application.
+
+This module handles the storage of personal details, work authorization, 
+and education history. It also provides utilities to convert the structured
+profile into a textual format for LLM consumption.
+"""
+
 import json
 import os
 
@@ -35,10 +43,18 @@ DEFAULT_PROFILE = {
 }
 
 class ProfileManager:
+    """
+    Manages the user's personal and professional profile data.
+
+    Provides methods to load, save, and export the profile as a descriptive
+    string used by the browser agent during the application process.
+    """
     def __init__(self):
+        """Initializes the manager and ensures the profile data file exists."""
         self._ensure_file()
 
     def _ensure_file(self):
+        """Creates the data directory and profile JSON file if they do not exist."""
         if not os.path.exists("data"):
             os.makedirs("data")
         if not os.path.exists(PROFILE_FILE):
@@ -46,6 +62,12 @@ class ProfileManager:
                 json.dump(DEFAULT_PROFILE, f, indent=2)
 
     def get_profile(self):
+        """
+        Retrieves the user's profile data.
+
+        Returns:
+            dict: The complete profile dictionary, merged with defaults for safety.
+        """
         try:
             with open(PROFILE_FILE, 'r') as f:
                 data = json.load(f)
@@ -60,11 +82,25 @@ class ProfileManager:
             return DEFAULT_PROFILE.copy()
 
     def save_profile(self, profile_data):
+        """
+        Saves the provided profile data to the JSON file.
+
+        Args:
+            profile_data (dict): The complete profile information to persist.
+        """
         with open(PROFILE_FILE, 'w') as f:
             json.dump(profile_data, f, indent=2)
 
     def get_profile_as_text(self):
-        """Returns a string representation suitable for the LLM prompt."""
+        """
+        Returns a string representation of the profile suitable for the LLM prompt.
+
+        The generated text includes contact info, URLs, demographics, work
+        authorization status, and education history.
+
+        Returns:
+            str: A formatted block of text.
+        """
         p = self.get_profile()
         text = f"""
         Name: {p['basics']['first_name']} {p['basics']['last_name']}
@@ -89,3 +125,4 @@ class ProfileManager:
         {p['education']['degree']} in {p['education']['field_of_study']} from {p['education']['university']} (Graduated: {p['education']['graduation_year']})
         """
         return text.strip()
+

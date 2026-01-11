@@ -1,15 +1,43 @@
+"""
+RSS feed monitoring for the AutoApply application.
+
+This module provides the capability to poll multiple RSS feeds for new job
+postings and import them into the application's local database.
+"""
+
 from src.job_manager import JobManager
 import feedparser
 
 class RSSWatcher:
+    """
+    Watches RSS feeds and identifies new job postings.
+
+    It interacts with the JobManager to ensure duplicate postings are not 
+    imported and manages the list of target feed URLs.
+    """
     def __init__(self, job_manager: JobManager):
+        """
+        Initializes the RSS watcher.
+
+        Args:
+            job_manager: An instance of JobManager to check for existence
+                         and save new jobs.
+        """
         self.job_manager = job_manager
         self.feeds = [] # Injected by config
 
     def get_new_jobs(self):
-        """Yields new job links from RSS feeds that haven't been seen."""
+        """
+        Polls configured feeds and yields new job links that haven't been seen.
+
+        It parses each feed, extracts URLs from entries, and checks if they
+        already exist in the JobManager. New jobs are added to the database
+        with a 'Pending' status.
+
+        Yields:
+            str: The URL of a newly discovered job.
+        """
         if not self.feeds:
-            # We print here but in the UI loop it might be noisy; handled by UI logic mostly
             return
 
         for feed_url in self.feeds:
@@ -19,11 +47,13 @@ class RSSWatcher:
                     job_link = entry.link
                     # Check if exists in JobManager
                     if not self.job_manager.job_exists(job_link):
-                        # Add immediately as Pending to prevent double processing if loop is fast
+                        # Add immediately as Pending to prevent double processing
                         self.job_manager.add_job(job_link, status="Pending")
                         yield job_link
             except Exception as e:
-                print(f"Error parsing feed {feed_url}: {e}")
+                import logging
+                logging.error(f"Error parsing feed {feed_url}: {e}")
+
 
 
 if __name__ == "__main__":

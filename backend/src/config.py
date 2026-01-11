@@ -1,3 +1,10 @@
+"""
+Configuration management for the AutoApply application.
+
+This module provides handles for persistent configuration settings, such as 
+RSS feed URLs and API keys, stored in local JSON and .env files.
+"""
+
 import os
 import json
 from dotenv import set_key
@@ -6,10 +13,18 @@ CONFIG_FILE = "data/config.json"
 ENV_FILE = ".env"
 
 class ConfigManager:
+    """
+    Manages application configuration and API keys.
+
+    Handles discovery, addition, and removal of RSS feeds, as well as
+    securely persisting environment variables like API keys.
+    """
     def __init__(self):
+        """Initializes the manager and ensures the config data file exists."""
         self._ensure_config()
 
     def _ensure_config(self):
+        """Creates the data directory and config JSON file if they do not exist."""
         if not os.path.exists("data"):
             os.makedirs("data")
         if not os.path.exists(CONFIG_FILE):
@@ -17,11 +32,26 @@ class ConfigManager:
                 json.dump({"rss_feeds": []}, f)
 
     def get_feeds(self):
+        """
+        Retrieves the list of configured RSS feed URLs.
+
+        Returns:
+            list: A list of strings, each a feed URL.
+        """
         with open(CONFIG_FILE, 'r') as f:
             data = json.load(f)
         return data.get("rss_feeds", [])
 
     def add_feed(self, url):
+        """
+        Adds a new RSS feed URL to the configuration.
+
+        Args:
+            url (str): The URL of the RSS feed to add.
+
+        Returns:
+            bool: True if the feed was added, False if it was already present.
+        """
         feeds = self.get_feeds()
         if url not in feeds:
             feeds.append(url)
@@ -30,6 +60,15 @@ class ConfigManager:
         return False
 
     def remove_feed(self, url):
+        """
+        Removes an RSS feed URL from the configuration.
+
+        Args:
+            url (str): The URL of the RSS feed to remove.
+
+        Returns:
+            bool: True if the feed was removed, False if it was not found.
+        """
         feeds = self.get_feeds()
         if url in feeds:
             feeds.remove(url)
@@ -38,10 +77,18 @@ class ConfigManager:
         return False
 
     def _save_feeds(self, feeds):
+        """Saves the feed list to the config JSON file."""
         with open(CONFIG_FILE, 'w') as f:
             json.dump({"rss_feeds": feeds}, f, indent=2)
 
     def set_api_key(self, key_name, key_value):
+        """
+        Updates an API key in the local .env file.
+
+        Args:
+            key_name (str): The name of the environment variable.
+            key_value (str): The secret value to store.
+        """
         # Create .env if not exists
         if not os.path.exists(ENV_FILE):
              with open(ENV_FILE, 'w') as f:
@@ -49,4 +96,14 @@ class ConfigManager:
         set_key(ENV_FILE, key_name, key_value)
 
     def get_api_key(self, key_name):
+        """
+        Retrieves an API key from environmental variables.
+
+        Args:
+            key_name (str): The name of the key to fetch.
+
+        Returns:
+            str: The value of the key, or None if not found.
+        """
         return os.getenv(key_name)
+

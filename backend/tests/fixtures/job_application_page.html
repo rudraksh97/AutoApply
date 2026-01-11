@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apply - Senior Software Engineer | Test Company</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        body {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .job-header {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+
+        .company {
+            color: #666;
+            font-size: 18px;
+        }
+
+        .location {
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .application-form {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            color: #333;
+            margin-top: 0;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .required::after {
+            content: " *";
+            color: #e53e3e;
+        }
+
+        input[type="text"],
+        input[type="email"],
+        input[type="tel"],
+        input[type="url"],
+        textarea,
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+
+        input:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: #4299e1;
+            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
+        }
+
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .file-upload {
+            border: 2px dashed #ddd;
+            padding: 30px;
+            text-align: center;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .file-upload:hover {
+            border-color: #4299e1;
+        }
+
+        .file-upload input[type="file"] {
+            display: none;
+        }
+
+        .file-upload-label {
+            color: #666;
+        }
+
+        .file-name {
+            margin-top: 10px;
+            color: #4299e1;
+            font-weight: 600;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-top: 2px;
+        }
+
+        .checkbox-group label {
+            font-weight: normal;
+        }
+
+        .submit-btn {
+            background: #4299e1;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .submit-btn:hover {
+            background: #3182ce;
+        }
+
+        .submit-btn:disabled {
+            background: #a0aec0;
+            cursor: not-allowed;
+        }
+
+        .success-message {
+            display: none;
+            background: #48bb78;
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .success-message.show {
+            display: block;
+        }
+
+        .error-message {
+            color: #e53e3e;
+            font-size: 14px;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="job-header">
+        <h1>Senior Software Engineer</h1>
+        <div class="company">Test Company Inc.</div>
+        <div class="location">San Francisco, CA (Remote)</div>
+    </div>
+
+    <div class="application-form">
+        <h2>Apply for this position</h2>
+
+        <form id="application-form" action="#" method="POST">
+            <div class="form-group">
+                <label for="full-name" class="required">Full Name</label>
+                <input type="text" id="full-name" name="full_name" required placeholder="Enter your full name">
+            </div>
+
+            <div class="form-group">
+                <label for="email" class="required">Email Address</label>
+                <input type="email" id="email" name="email" required placeholder="you@example.com">
+            </div>
+
+            <div class="form-group">
+                <label for="phone">Phone Number</label>
+                <input type="tel" id="phone" name="phone" placeholder="(555) 123-4567">
+            </div>
+
+            <div class="form-group">
+                <label for="linkedin">LinkedIn Profile</label>
+                <input type="url" id="linkedin" name="linkedin" placeholder="https://linkedin.com/in/yourprofile">
+            </div>
+
+            <div class="form-group">
+                <label for="portfolio">Portfolio/Website</label>
+                <input type="url" id="portfolio" name="portfolio" placeholder="https://yourwebsite.com">
+            </div>
+
+            <div class="form-group">
+                <label for="resume" class="required">Resume/CV</label>
+                <div class="file-upload" id="resume-upload">
+                    <input type="file" id="resume" name="resume" accept=".pdf,.doc,.docx" required>
+                    <div class="file-upload-label">
+                        📄 Click to upload or drag and drop<br>
+                        <small>PDF, DOC, or DOCX (max 5MB)</small>
+                    </div>
+                    <div class="file-name" id="resume-file-name"></div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="experience" class="required">Years of Experience</label>
+                <select id="experience" name="experience" required>
+                    <option value="">Select...</option>
+                    <option value="0-2">0-2 years</option>
+                    <option value="3-5">3-5 years</option>
+                    <option value="5-10">5-10 years</option>
+                    <option value="10+">10+ years</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="cover-letter">Why do you want to work here?</label>
+                <textarea id="cover-letter" name="cover_letter"
+                    placeholder="Tell us about yourself and why you're interested in this role..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="salary">Expected Salary (USD)</label>
+                <input type="text" id="salary" name="salary" placeholder="e.g., $150,000 - $180,000">
+            </div>
+
+            <div class="form-group">
+                <label for="start-date">Earliest Start Date</label>
+                <input type="text" id="start-date" name="start_date"
+                    placeholder="e.g., Immediately, 2 weeks notice, specific date">
+            </div>
+
+            <div class="form-group checkbox-group">
+                <input type="checkbox" id="work-authorization" name="work_authorization" required>
+                <label for="work-authorization">
+                    I am authorized to work in the United States
+                </label>
+            </div>
+
+            <div class="form-group checkbox-group">
+                <input type="checkbox" id="agree-terms" name="agree_terms" required>
+                <label for="agree-terms">
+                    I agree to the terms and conditions and privacy policy
+                </label>
+            </div>
+
+            <button type="submit" class="submit-btn" id="submit-btn">
+                Submit Application
+            </button>
+
+            <div class="error-message" id="form-error">
+                Please fill in all required fields.
+            </div>
+        </form>
+
+        <div class="success-message" id="success-message">
+            <h3>🎉 Application Submitted Successfully!</h3>
+            <p>Thank you for applying. We will review your application and get back to you soon.</p>
+            <p><strong>Confirmation ID:</strong> <span id="confirmation-id"></span></p>
+        </div>
+    </div>
+
+    <script>
+        // File upload display
+        const resumeInput = document.getElementById('resume');
+        const resumeFileName = document.getElementById('resume-file-name');
+        const resumeUpload = document.getElementById('resume-upload');
+
+        resumeInput.addEventListener('change', function () {
+            if (this.files.length > 0) {
+                resumeFileName.textContent = '✓ ' + this.files[0].name;
+            } else {
+                resumeFileName.textContent = '';
+            }
+        });
+
+        // Make the whole upload area clickable
+        resumeUpload.addEventListener('click', function () {
+            resumeInput.click();
+        });
+
+        // Form submission
+        const form = document.getElementById('application-form');
+        const successMessage = document.getElementById('success-message');
+        const formError = document.getElementById('form-error');
+        const confirmationId = document.getElementById('confirmation-id');
+
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            // Basic validation
+            const requiredFields = form.querySelectorAll('[required]');
+            let isValid = true;
+
+            requiredFields.forEach(field => {
+                if (field.type === 'checkbox' && !field.checked) {
+                    isValid = false;
+                } else if (field.type !== 'checkbox' && !field.value.trim()) {
+                    isValid = false;
+                }
+            });
+
+            if (!isValid) {
+                formError.classList.add('show');
+                return;
+            }
+
+            formError.classList.remove('show');
+
+            // Generate confirmation ID
+            const confId = 'APP-' + Date.now().toString(36).toUpperCase() + '-' +
+                Math.random().toString(36).substr(2, 5).toUpperCase();
+            confirmationId.textContent = confId;
+
+            // Hide form, show success
+            form.style.display = 'none';
+            successMessage.classList.add('show');
+
+            // Store submission data for testing verification
+            window.applicationSubmitted = {
+                confirmation_id: confId,
+                full_name: document.getElementById('full-name').value,
+                email: document.getElementById('email').value,
+                phone: document.getElementById('phone').value,
+                experience: document.getElementById('experience').value,
+                timestamp: new Date().toISOString()
+            };
+
+            console.log('Application submitted:', window.applicationSubmitted);
+        });
+    </script>
+</body>
+
+</html>
