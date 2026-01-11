@@ -11,7 +11,7 @@ from browser_use.llm.openrouter.chat import ChatOpenRouter
 import os
 
 from dotenv import load_dotenv
-from src.prompts import SCRAPE_JOB_TASK_TEMPLATE, APPLY_JOB_TASK_TEMPLATE
+from src.prompts import SCRAPE_JOB_TASK_TEMPLATE, APPLY_JOB_TASK_TEMPLATE, FORM_FILLING_CONTEXT
 
 load_dotenv()
 
@@ -23,7 +23,7 @@ class BrowserAgent:
     This class maintains a reusable browser instance and provides high-level
     asynchronous methods for job-related tasks.
     """
-    DEFAULT_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+    DEFAULT_MODEL = "google/gemini-2.0-flash-001"  # Fast and reliable
 
     def __init__(self, headless: bool = True):
         """
@@ -45,6 +45,8 @@ class BrowserAgent:
         )
         # Initialize reusable browser instance
         self.browser = Browser(headless=self.headless)
+        # File paths available for upload (set per-task)
+        self.available_file_paths = []
 
     def _create_scrape_task(self, job_link: str) -> str:
         """Generates the LLM task string for job scraping."""
@@ -74,12 +76,17 @@ class BrowserAgent:
             Exception: If the browser-use internal logic or LLM call fails.
         """
         try:
-            # Pass browser instance
+            # Pass browser instance with enhanced configuration
             agent = Agent(
                 task=task,
                 llm=self.llm,
                 browser=self.browser,
-                use_vision=False,
+                use_vision=False,  # DOM-only mode more reliable for form filling
+                max_actions_per_step=5,  # Allow more actions per reasoning step
+                max_failures=10,  # Keep trying on errors - don't give up easily
+                max_steps=50,  # Allow more steps to complete complex forms
+                extend_system_message=FORM_FILLING_CONTEXT,  # Inject form-filling guidance
+                available_file_paths=self.available_file_paths,  # Allow file uploads
             )
             result = await agent.run()
             return result.final_result()
@@ -112,6 +119,10 @@ class BrowserAgent:
         Returns:
             The outcome message from the agent.
         """
+        # Make resume available for upload
+        abs_resume_path = os.path.abspath(resume_path)
+        self.available_file_paths = [abs_resume_path]
+        
         task = self._create_apply_task(job_link, resume_path, user_details)
         return await self._run_agent(task)
 

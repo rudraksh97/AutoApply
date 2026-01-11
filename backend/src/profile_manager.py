@@ -141,7 +141,8 @@ class ProfileManager:
         Returns a string representation of the profile suitable for the LLM prompt.
 
         The generated text includes contact info, URLs, demographics, work
-        authorization status, experience, and education history.
+        authorization status, experience, and education history. Field labels
+        are structured to match common job application form fields.
 
         Returns:
             str: A formatted block of text.
@@ -150,45 +151,51 @@ class ProfileManager:
         
         edu_text = ""
         for edu in p.get('education', []):
-            edu_text += f"- {edu.get('degree')} in {edu.get('field_of_study')} from {edu.get('university')} ({edu.get('graduation_year')})\n"
+            edu_text += f"  - {edu.get('degree')} in {edu.get('field_of_study')} from {edu.get('university')} ({edu.get('graduation_year')})\n"
+        if not edu_text:
+            edu_text = "  (No education entries)\n"
             
         exp_text = ""
         for exp in p.get('experience', []):
-            exp_text += f"- {exp.get('role')} at {exp.get('company')} ({exp.get('start_date')} - {exp.get('end_date')})\n  {exp.get('description')}\n"
+            exp_text += f"  - {exp.get('role')} at {exp.get('company')} ({exp.get('start_date')} - {exp.get('end_date')})\n    {exp.get('description')}\n"
+        if not exp_text:
+            exp_text = "  (No experience entries)\n"
 
+        # Structure with explicit field labels matching common form fields
         text = f"""
-        Name: {p['basics']['first_name']} {p['basics']['last_name']}
-        Email: {p['basics']['email']}
-        Phone: {p['basics']['phone']}
-        Location: {p['basics']['location']}
-        
-        LinkedIn: {p['urls']['linkedin']}
-        GitHub: {p['urls']['github']}
-        Portfolio: {p['urls']['portfolio']}
-        
-        Gender: {p['demographics']['gender']}
-        Race: {p['demographics'].get('race', 'Prefer not to say')}
-        Nationality: {p['demographics']['nationality']}
-        Veteran Status: {p['demographics']['veteran']}
-        Disability Status: {p['demographics']['disability']}
-        
-        Work Authorization:
-        - Authorized to work in target country: {p['work_auth']['authorized_in_us']}
-        - Requires Sponsorship: {p['work_auth']['requires_sponsorship']}
+=== PERSONAL INFORMATION ===
+first_name: {p['basics']['first_name']}
+last_name: {p['basics']['last_name']}
+full_name: {p['basics']['first_name']} {p['basics']['last_name']}
+email: {p['basics']['email']}
+phone: {p['basics']['phone']}
+location: {p['basics']['location']}
 
-        Experience:
-        {exp_text}
+=== ONLINE PROFILES ===
+linkedin: {p['urls']['linkedin']}
+github: {p['urls']['github']}
+portfolio: {p['urls']['portfolio']}
 
-        Education:
-        {edu_text}
-        
-        Pitch:
-        {p.get('great_fit_pitch', '')}
+=== DEMOGRAPHICS (EEO/Voluntary Disclosure) ===
+gender: {p['demographics']['gender']}
+race: {p['demographics'].get('race', 'Prefer not to say')}
+nationality: {p['demographics']['nationality']}
+veteran_status: {p['demographics']['veteran']}
+disability_status: {p['demographics']['disability']}
 
-        Why Us Template:
-        {p.get('why_us', '')}
+=== WORK AUTHORIZATION ===
+authorized_to_work: {'Yes' if p['work_auth']['authorized_in_us'] else 'No'}
+requires_sponsorship: {'Yes' if p['work_auth']['requires_sponsorship'] else 'No'}
 
-        Challenging Project:
-        {p.get('challenging_project', '')}
-        """
+=== EXPERIENCE ===
+{exp_text}
+=== EDUCATION ===
+{edu_text}
+=== APPLICATION RESPONSES ===
+great_fit_pitch: {p.get('great_fit_pitch', '(Not provided)')}
+
+why_us: {p.get('why_us', '(Not provided)')}
+
+challenging_project: {p.get('challenging_project', '(Not provided)')}
+"""
         return text.strip()

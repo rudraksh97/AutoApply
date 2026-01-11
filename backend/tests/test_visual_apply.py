@@ -39,24 +39,6 @@ async def test_visual_apply():
             pytest.fail(f"No .pdf or .tex file found in directory: {resume_path}")
     
     print(f"Using Resume: {resume_path}")
-    
-    # 0. Auto-Populate Profile from Resume
-    print(f"[VISUAL TEST] Parsing resume to populate profile...")
-    try:
-        from src.resume_parser import ResumeParser
-        from src.profile_manager import ProfileManager
-        
-        parser = ResumeParser()
-        parsed_data = await parser.parse_file(resume_path)
-        
-        # Update Profile
-        pm = ProfileManager()
-        pm.update_from_resume_data(parsed_data, resume_path)
-        print(f"[VISUAL TEST] Profile updated successfully from resume!")
-        
-    except Exception as e:
-        print(f"[VISUAL TEST] FAILED to parse resume: {e}")
-        print(f"[VISUAL TEST] Proceeding with existing profile data...")
 
     # 1. Initialize Agent in HEADED mode (headless=False)
     agent = BrowserAgent(headless=False)
