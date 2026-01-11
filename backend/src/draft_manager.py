@@ -255,7 +255,7 @@ class DraftManager:
     
     def delete_draft(self, draft_id: str) -> bool:
         """
-        Delete a draft.
+        Delete a draft by ID.
         
         Args:
             draft_id: The UUID of the draft to delete
@@ -266,6 +266,22 @@ class DraftManager:
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM drafts WHERE id = ?", (draft_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def delete_draft_by_url(self, job_url: str) -> bool:
+        """
+        Delete a draft by job URL.
+        
+        Args:
+            job_url: The URL of the job
+            
+        Returns:
+            True if deleted, False if not found
+        """
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM drafts WHERE job_url = ?", (job_url,))
             conn.commit()
             return cursor.rowcount > 0
     

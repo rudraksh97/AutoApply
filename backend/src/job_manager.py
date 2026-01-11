@@ -166,7 +166,7 @@ class JobManager:
 
     def delete_job(self, url):
         """
-        Deletes a job from the database.
+        Deletes a job and its associated draft from the database.
 
         Args:
             url (str): The unique URL of the job to delete.
@@ -174,6 +174,9 @@ class JobManager:
         Returns:
             bool: True if the job was found and deleted, False otherwise.
         """
+        from src.draft_manager import DraftManager
+        DraftManager().delete_draft_by_url(url)
+        
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM jobs WHERE url = ?", (url,))

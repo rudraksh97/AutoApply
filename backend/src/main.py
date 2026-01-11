@@ -16,6 +16,7 @@ from src.config import ConfigManager
 from src.job_manager import JobManager
 from src.profile_manager import ProfileManager
 from src.services import JobApplicationService
+from api.services.task_registry import WorkflowRegistry
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -82,12 +83,34 @@ async def run_auto_apply(
             log_callback("No pending jobs to process.")
         else:
             log_callback(f"Processing {len(pending_jobs)} pending jobs...")
+            task_registry = WorkflowRegistry()
+            
             for job in pending_jobs:
-                await job_service.process_job(
-                    job_link=job['url'], 
+                job_url = job['url']
+                
+                # Check if job was deleted before we even started this cycle's iteration
+                if not job_manager.job_exists(job_url):
+                    log_callback(f"Job {job_url} no longer exists. Skipping.")
+                    continue
+
+                # Prepare the task
+                task = asyncio.create_task(job_service.process_job(
+                    job_link=job_url, 
                     user_details_text=user_details_text, 
                     log_callback=log_callback
-                )
+                ))
+                
+                # Register the task so it can be cancelled by the API
+                task_registry.register(job_url, task)
+                
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    log_callback(f"⏹️ Job processing cancelled for: {job_url}")
+                except Exception as e:
+                    log_callback(f"❌ Unexpected error in job loop for {job_url}: {e}")
+                finally:
+                    task_registry.unregister(job_url)
 
         log_callback("Job check cycle complete.")
         
