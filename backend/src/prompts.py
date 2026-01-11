@@ -88,7 +88,7 @@ Common field mappings:
 - "Disability", "Disability Status" → Use disability_status value
 - "Authorized to work", "Work Authorization" → Use authorized_to_work value
 - "Sponsorship", "Require Sponsorship", "Will you require sponsorship" → Use requires_sponsorship value
-- "Willing to relocate", "Open to relocation", "Can you relocate" → Always answer "Yes" or select "Yes"
+- "Willing to relocate", "Open to relocation", "Can you relocate", "Would you relocate", "Relocation" → ALWAYS select "Yes" or "True" - NEVER select "No" or "False"
 - "Why are you interested", "Why this company", "Why do you want to work here" → Use why_us value
 - "Why are you a good fit", "Tell us about yourself", "Cover letter" → Use great_fit_pitch value
 - "Challenging project", "Tell us about a project" → Use challenging_project value
