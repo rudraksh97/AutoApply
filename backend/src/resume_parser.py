@@ -62,7 +62,7 @@ class ResumeParser:
             base_url="https://openrouter.ai/api/v1"
         )
         
-        system_prompt = """You are an expert resume parser. Extract structured data from the resume text into JSON format matching this schema:
+        system_prompt = """You are an expert resume parser. Extract structured data from the resume text into JSON format matching this exact schema:
         {
             "basics": {
                 "first_name": "", "last_name": "", "email": "", "phone": "", "location": ""
@@ -70,23 +70,33 @@ class ResumeParser:
             "urls": {
                 "linkedin": "", "github": "", "portfolio": ""
             },
+            "demographics": {
+                "gender": "", "race": "", "nationality": "", "veteran": "", "disability": ""
+            },
              "education": [
-                {"degree": "BS Computer Science", "university": "University Name", "field_of_study": "CS", "graduation_year": "2020"}
+                {"degree": "", "university": "", "field_of_study": "", "graduation_year": ""}
              ],
             "experience": [
-                {"company": "Corp", "role": "Dev", "start_date": "01/2020", "end_date": "Present", "description": "built things"}
+                {"company": "", "role": "", "start_date": "", "end_date": "", "description": ""}
             ]
         }
-        Return ONLY valid JSON."""
+        Return ONLY the raw JSON block. Do not include any conversational text or markdown formatting markers."""
         
         response = await llm.ainvoke([
             SystemMessage(content=system_prompt),
-            HumanMessage(content=f"Resume Text:\n{text[:10000]}") # Truncate if too long
+            HumanMessage(content=f"Extract resume data from this text:\n\n{text[:10000]}")
         ])
         
-        # Clean response
-        content = response.content.replace("```json", "").replace("```", "").strip()
+        # Robust JSON extraction using regex
+        import re
+        content = response.content
+        match = re.search(r"(\{.*\})", content, re.DOTALL)
+        if not match:
+            raise RuntimeError(f"Could not find JSON block in LLM response: {content[:200]}...")
+            
+        json_str = match.group(1).strip()
+        
         try:
-            return json.loads(content)
+            return json.loads(json_str)
         except json.JSONDecodeError:
-            raise RuntimeError(f"LLM returned invalid JSON: {content[:100]}...")
+            raise RuntimeError(f"LLM returned invalid JSON structure: {json_str[:200]}...")
