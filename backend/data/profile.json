@@ -21,10 +21,15 @@
     "authorized_in_us": true,
     "requires_sponsorship": false
   },
-  "education": {
-    "degree": "",
-    "university": "",
-    "field_of_study": "",
-    "graduation_year": ""
-  }
+  "education": [
+    {
+      "degree": "",
+      "university": "",
+      "field_of_study": "",
+      "graduation_year": ""
+    }
+  ],
+  "experience": [],
+  "great_fit_pitch": "",
+  "cover_letter_template": "Dear Hiring Manager,\n\nI am excited to apply for the position at {{company}}..."
 }

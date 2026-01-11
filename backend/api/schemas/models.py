@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 class Job(BaseModel):
     url: str
@@ -40,9 +40,19 @@ class ProfileEducation(BaseModel):
     field_of_study: str
     graduation_year: str
 
+class ProfileExperience(BaseModel):
+    company: str
+    role: str
+    start_date: str
+    end_date: str
+    description: str
+
 class ProfileData(BaseModel):
     basics: ProfileBasics
     urls: ProfileURLs
     demographics: ProfileDemographics
     work_auth: ProfileWorkAuth
-    education: ProfileEducation
+    education: List[ProfileEducation]
+    experience: List[ProfileExperience]
+    great_fit_pitch: str = ""
+    cover_letter_template: str = ""

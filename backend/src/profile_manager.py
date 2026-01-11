@@ -34,12 +34,10 @@ DEFAULT_PROFILE = {
         "authorized_in_us": True, 
         "requires_sponsorship": False
     },
-    "education": {
-        "degree": "",
-        "university": "",
-        "field_of_study": "",
-        "graduation_year": ""
-    }
+    "education": [],
+    "experience": [],
+    "great_fit_pitch": "",
+    "cover_letter_template": ""
 }
 
 class ProfileManager:
@@ -71,12 +69,26 @@ class ProfileManager:
         try:
             with open(PROFILE_FILE, 'r') as f:
                 data = json.load(f)
-                # Merge with default to ensure all keys exist (simple migration)
+                # Merge with default to ensure all keys exist
                 merged = DEFAULT_PROFILE.copy()
-                # Deep update simplified
-                for section in DEFAULT_PROFILE:
-                    if section in data:
-                        merged[section].update(data[section])
+                
+                for key, value in data.items():
+                    # Migration: If education is a dict (old format), convert to list
+                    if key == "education" and isinstance(value, dict):
+                         # If it's a dict with empty strings (default old state), make it an empty list or single item
+                         if not value.get("university"): # Heuristic for empty
+                             merged[key] = []
+                         else:
+                             merged[key] = [value]
+                         continue
+                         
+                    # If the key is in default profile and types match (both dicts), update. 
+                    # Otherwise (lists or primitives), overwrite.
+                    if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+                        merged[key].update(value)
+                    else:
+                        merged[key] = value
+                
                 return merged
         except (json.JSONDecodeError, FileNotFoundError):
             return DEFAULT_PROFILE.copy()
@@ -96,12 +108,21 @@ class ProfileManager:
         Returns a string representation of the profile suitable for the LLM prompt.
 
         The generated text includes contact info, URLs, demographics, work
-        authorization status, and education history.
+        authorization status, experience, and education history.
 
         Returns:
             str: A formatted block of text.
         """
         p = self.get_profile()
+        
+        edu_text = ""
+        for edu in p.get('education', []):
+            edu_text += f"- {edu.get('degree')} in {edu.get('field_of_study')} from {edu.get('university')} ({edu.get('graduation_year')})\n"
+            
+        exp_text = ""
+        for exp in p.get('experience', []):
+            exp_text += f"- {exp.get('role')} at {exp.get('company')} ({exp.get('start_date')} - {exp.get('end_date')})\n  {exp.get('description')}\n"
+
         text = f"""
         Name: {p['basics']['first_name']} {p['basics']['last_name']}
         Email: {p['basics']['email']}
@@ -121,8 +142,13 @@ class ProfileManager:
         - Authorized to work in target country: {p['work_auth']['authorized_in_us']}
         - Requires Sponsorship: {p['work_auth']['requires_sponsorship']}
 
+        Experience:
+        {exp_text}
+
         Education:
-        {p['education']['degree']} in {p['education']['field_of_study']} from {p['education']['university']} (Graduated: {p['education']['graduation_year']})
+        {edu_text}
+        
+        Pitch:
+        {p.get('great_fit_pitch', '')}
         """
         return text.strip()
-
