@@ -174,12 +174,18 @@ export default function ProfilePage() {
                                 <input
                                     type="checkbox"
                                     id="use_uploaded"
-                                    className="h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary"
+                                    className="h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
                                     checked={profile.use_uploaded_resume || false}
+                                    disabled={!profile.uploaded_resume_path}
                                     onChange={(e) => handleChange('root', 'use_uploaded_resume', e.target.checked)}
                                 />
                                 <div className="flex flex-col">
-                                    <Label htmlFor="use_uploaded" className="text-sm font-medium cursor-pointer">Use uploaded resume for applications</Label>
+                                    <Label
+                                        htmlFor="use_uploaded"
+                                        className={`text-sm font-medium cursor-pointer ${!profile.uploaded_resume_path ? 'text-muted-foreground cursor-not-allowed' : ''}`}
+                                    >
+                                        Use uploaded resume for applications
+                                    </Label>
                                     <span className="text-xs text-muted-foreground">If checked, we will use your uploaded PDF instead of generating a new one.</span>
                                 </div>
                             </div>

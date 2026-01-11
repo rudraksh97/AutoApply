@@ -20,6 +20,19 @@ export default function DashboardPage() {
         logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [logs]);
 
+    // Check running status on mount
+    useEffect(() => {
+        const checkStatus = async () => {
+            try {
+                const res = await axios.get(`${API_URL}/status`);
+                setIsRunning(res.data.running);
+            } catch (e) {
+                console.error("Failed to fetch status", e);
+            }
+        };
+        checkStatus();
+    }, [API_URL]);
+
     // Connect WebSocket
     useEffect(() => {
         // In Docker, browser connects to localhost:8000 exposed port

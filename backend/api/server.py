@@ -180,9 +180,21 @@ async def parse_resume(source: str = "resume"):
 
 @app.post("/start", tags=["Control"])
 async def start_automation(continuous: bool = False):
+
     if service_state.is_running:
         return {"status": "already_running"}
+        
+    # Validation: If using generated resume, template must exist
+    from src.profile_manager import ProfileManager
+    pm = ProfileManager()
+    profile = pm.get_profile()
     
+    use_uploaded = profile.get("use_uploaded_resume", False)
+    template_path = "data/resume_base.tex"
+    
+    if not use_uploaded and not os.path.exists(template_path):
+        raise HTTPException(status_code=400, detail="Cannot start: 'Use uploaded resume' is unchecked, but no custom LaTeX template found. Please upload a template or enable uploaded resume.")
+
     service_state.is_running = True
     service_state.stop_event = asyncio.Event()
 
@@ -192,6 +204,10 @@ async def start_automation(continuous: bool = False):
 
     asyncio.create_task(background_runner(log_callback, continuous))
     return {"status": "started", "continuous": continuous}
+
+@app.get("/status", tags=["Control"])
+def get_status():
+    return {"running": service_state.is_running}
 
 @app.post("/stop", tags=["Control"])
 def stop_automation():
