@@ -2,6 +2,18 @@
 
 const API_BASE = "http://localhost:8000";
 
+// Expose extension presence for detection by frontend
+window.__AUTOAPPLY_EXTENSION__ = true;
+document.dispatchEvent(new CustomEvent('autoapply-extension-ready'));
+
+// Listen for ping requests from the page
+window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    if (event.data && event.data.type === 'AUTOAPPLY_PING') {
+        window.postMessage({ type: 'AUTOAPPLY_PONG', version: '1.0' }, '*');
+    }
+});
+
 // Check if this page was opened with an AutoApply draft ID
 function checkAndFill() {
     const hash = window.location.hash;

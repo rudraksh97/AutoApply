@@ -78,8 +78,40 @@ class ConfigManager:
 
     def _save_feeds(self, feeds):
         """Saves the feed list to the config JSON file."""
+        data = self._load_config()
+        data["rss_feeds"] = feeds
+        self._save_config(data)
+
+    def _load_config(self):
+        """Loads the full config from the JSON file."""
+        with open(CONFIG_FILE, 'r') as f:
+            return json.load(f)
+
+    def _save_config(self, data):
+        """Saves the full config to the JSON file."""
         with open(CONFIG_FILE, 'w') as f:
-            json.dump({"rss_feeds": feeds}, f, indent=2)
+            json.dump(data, f, indent=2)
+
+    def get_selected_model(self):
+        """
+        Retrieves the currently selected LLM model.
+
+        Returns:
+            str: The model identifier, or default if not set.
+        """
+        data = self._load_config()
+        return data.get("selected_model", "anthropic/claude-sonnet-4")
+
+    def set_selected_model(self, model_id):
+        """
+        Sets the selected LLM model.
+
+        Args:
+            model_id (str): The OpenRouter model identifier.
+        """
+        data = self._load_config()
+        data["selected_model"] = model_id
+        self._save_config(data)
 
     def set_api_key(self, key_name, key_value):
         """
