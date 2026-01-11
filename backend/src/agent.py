@@ -2,26 +2,63 @@
 Browser automation agent for the AutoApply application.
 
 This module leverages the `browser-use` library and OpenRouter LLMs to 
-perform intelligent web scraping and form filling. It can handle complex
-interative elements by describing the intent to the LLM.
+perform intelligent web scraping and form filling. 
+
+IMPORTANT: This agent NEVER submits applications. It only prepares drafts
+for later manual submission by the user.
 """
 
+import json
 from browser_use import Agent, Browser
 from browser_use.llm.openrouter.chat import ChatOpenRouter
 import os
+from typing import Optional
 
 from dotenv import load_dotenv
-from src.prompts import SCRAPE_JOB_TASK_TEMPLATE, APPLY_JOB_TASK_TEMPLATE, FORM_FILLING_CONTEXT
+from src.prompts import SCRAPE_JOB_TASK_TEMPLATE, PREFILL_JOB_TASK_TEMPLATE, FORM_FILLING_CONTEXT
 
 load_dotenv()
 
 
+# Template for reopening a draft and rehydrating the form
+REHYDRATE_DRAFT_TEMPLATE = """
+You are a job application assistant. Your task is to open a saved application draft and restore the form state.
+
+TASK: Open {job_link} and fill the form with the previously saved values.
+
+===== SAVED FORM STATE =====
+{form_state_json}
+
+===== INSTRUCTIONS =====
+1. Navigate to {job_link}
+2. Wait for the form to fully load
+3. For each field in the saved form state, fill it with the saved value
+4. If a field cannot be found, note it but continue with other fields
+5. DO NOT click any submit button
+
+===== CRITICAL =====
+⚠️ DO NOT SUBMIT THE APPLICATION ⚠️
+The user will review and submit manually.
+
+Report the results as:
+{{
+  "status": "rehydrated",
+  "fields_restored": <number of fields successfully restored>,
+  "fields_failed": <number of fields that could not be restored>,
+  "notes": "Any issues encountered"
+}}
+"""
+
+
 class BrowserAgent:
     """
-    An LLM-driven browser agent for scraping and applying to jobs.
+    An LLM-driven browser agent for scraping and prefilling job applications.
 
     This class maintains a reusable browser instance and provides high-level
     asynchronous methods for job-related tasks.
+    
+    IMPORTANT: This agent NEVER submits applications. All automation ends
+    with a filled form that the user can review and submit manually.
     """
     DEFAULT_MODEL = "google/gemini-2.0-flash-001"  # Fast and reliable
 
@@ -52,14 +89,27 @@ class BrowserAgent:
         """Generates the LLM task string for job scraping."""
         return SCRAPE_JOB_TASK_TEMPLATE.format(job_link=job_link)
 
-    def _create_apply_task(self, job_link: str, resume_path: str, user_details: str) -> str:
-        """Generates the LLM task string for job application submission."""
+    def _create_prefill_task(self, job_link: str, resume_path: str, user_details: str) -> str:
+        """Generates the LLM task string for form prefilling (no submission)."""
         # Ensure resume path is absolute
         abs_resume_path = os.path.abspath(resume_path)
-        return APPLY_JOB_TASK_TEMPLATE.format(
+        return PREFILL_JOB_TASK_TEMPLATE.format(
             job_link=job_link,
             user_details=user_details,
             abs_resume_path=abs_resume_path
+        )
+
+    def _create_rehydrate_task(self, job_link: str, form_state: dict) -> str:
+        """Generates the LLM task string for reopening a saved draft."""
+        # Handle datetime serialization
+        def json_serializer(obj):
+            if hasattr(obj, 'isoformat'):
+                return obj.isoformat()
+            raise TypeError(f'Object of type {type(obj)} is not JSON serializable')
+        
+        return REHYDRATE_DRAFT_TEMPLATE.format(
+            job_link=job_link,
+            form_state_json=json.dumps(form_state, indent=2, default=json_serializer)
         )
 
     async def _run_agent(self, task: str) -> str:
@@ -75,12 +125,16 @@ class BrowserAgent:
         Raises:
             Exception: If the browser-use internal logic or LLM call fails.
         """
+        # Create a fresh browser instance for each task to avoid CDP issues
+        # The browser-use library doesn't handle browser reuse well after session cleanup
+        browser = Browser(headless=self.headless)
+        
         try:
             # Pass browser instance with enhanced configuration
             agent = Agent(
                 task=task,
                 llm=self.llm,
-                browser=self.browser,
+                browser=browser,
                 use_vision=False,  # DOM-only mode more reliable for form filling
                 max_actions_per_step=5,  # Allow more actions per reasoning step
                 max_failures=10,  # Keep trying on errors - don't give up easily
@@ -107,9 +161,12 @@ class BrowserAgent:
         task = self._create_scrape_task(job_link)
         return await self._run_agent(task)
 
-    async def apply_to_job(self, job_link: str, resume_path: str, user_details: str) -> str:
+    async def prefill_form(self, job_link: str, resume_path: str, user_details: str) -> dict:
         """
-        Submits an application to the specified job URL.
+        Opens a job application form and prefills it WITHOUT submitting.
+        
+        This is the primary method for the draft-first workflow. It fills out
+        all form fields based on user profile data but never clicks submit.
 
         Args:
             job_link: The URL of the job posting.
@@ -117,14 +174,84 @@ class BrowserAgent:
             user_details: Text info used to fill form fields.
 
         Returns:
-            The outcome message from the agent.
+            A dict containing:
+            - status: "prefilled" on success
+            - fields: List of field states with IDs, types, values, confidence
+            - validation_passed: Whether all required fields were filled
+            - notes: Any observations about the form
+            
+        Raises:
+            Exception: If form filling fails
+            json.JSONDecodeError: If agent returns malformed JSON
         """
         # Make resume available for upload
         abs_resume_path = os.path.abspath(resume_path)
         self.available_file_paths = [abs_resume_path]
         
-        task = self._create_apply_task(job_link, resume_path, user_details)
-        return await self._run_agent(task)
+        task = self._create_prefill_task(job_link, resume_path, user_details)
+        result = await self._run_agent(task)
+        
+        # Parse the JSON result from the agent
+        try:
+            return json.loads(result)
+        except json.JSONDecodeError:
+            # If agent didn't return valid JSON, wrap the result
+            return {
+                "status": "prefilled",
+                "fields": [],
+                "validation_passed": False,
+                "notes": result,
+                "raw_response": True
+            }
+
+    async def open_draft(self, job_link: str, form_state: dict) -> dict:
+        """
+        Opens a saved draft in the browser and rehydrates the form.
+        
+        This is a deferred action that can happen hours, days, or weeks after
+        the original draft was created. It opens the job URL and attempts to
+        restore all saved field values.
+        
+        After rehydration, browser automation ENDS. The user takes manual
+        control to review and submit.
+
+        Args:
+            job_link: The URL of the job posting.
+            form_state: Previously saved form state with field values.
+
+        Returns:
+            A dict containing:
+            - status: "rehydrated" on success
+            - fields_restored: Number of fields successfully restored
+            - fields_failed: Number of fields that couldn't be restored
+            - notes: Any issues encountered
+        """
+        task = self._create_rehydrate_task(job_link, form_state)
+        result = await self._run_agent(task)
+        
+        # Parse the JSON result from the agent
+        try:
+            return json.loads(result)
+        except json.JSONDecodeError:
+            return {
+                "status": "rehydrated",
+                "fields_restored": 0,
+                "fields_failed": 0,
+                "notes": result,
+                "raw_response": True
+            }
+
+    # Legacy method alias for backwards compatibility during migration
+    async def apply_to_job(self, job_link: str, resume_path: str, user_details: str) -> str:
+        """
+        DEPRECATED: Use prefill_form instead.
+        
+        This method now calls prefill_form and returns a string result
+        for backwards compatibility with existing callers.
+        """
+        result = await self.prefill_form(job_link, resume_path, user_details)
+        return json.dumps(result)
+
 
 if __name__ == "__main__":
     # Test stub

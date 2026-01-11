@@ -43,17 +43,20 @@ class TestAPIEndpoints:
     def client(self, temp_data_dir):
         """Create test client with patched paths."""
         # Patch all file paths before importing
-        import src.job_manager as jm
         import src.config as cfg
         import src.profile_manager as pm
+        import src.database as db
         
-        orig_jobs = jm.JOBS_FILE
         orig_config = cfg.CONFIG_FILE
         orig_profile = pm.PROFILE_FILE
+        orig_db = db.DB_FILE
         
-        jm.JOBS_FILE = os.path.join(temp_data_dir, "data", "jobs.json")
         cfg.CONFIG_FILE = os.path.join(temp_data_dir, "data", "config.json")
         pm.PROFILE_FILE = os.path.join(temp_data_dir, "data", "profile.json")
+        db.DB_FILE = os.path.join(temp_data_dir, "data", "test.db")
+        
+        # Initialize database with test path
+        db.init_db()
         
         # Patch the static files directory
         with patch.dict(os.environ, {"DATA_DIR": os.path.join(temp_data_dir, "data")}):
@@ -61,9 +64,9 @@ class TestAPIEndpoints:
             client = TestClient(app)
             yield client
         
-        jm.JOBS_FILE = orig_jobs
         cfg.CONFIG_FILE = orig_config
         pm.PROFILE_FILE = orig_profile
+        db.DB_FILE = orig_db
 
 
 class TestJobsEndpoints(TestAPIEndpoints):

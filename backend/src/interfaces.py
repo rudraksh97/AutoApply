@@ -47,6 +47,9 @@ class JobManagerProtocol(Protocol):
 class BrowserAgentProtocol(Protocol):
     """
     Protocol defining the requirements for browser automation and scraping.
+    
+    IMPORTANT: Implementations of this protocol MUST NOT submit applications.
+    All form automation must stop before any submit action.
     """
     async def scrape_job_details(self, job_link: str) -> str:
         """
@@ -60,17 +63,36 @@ class BrowserAgentProtocol(Protocol):
         """
         ...
 
-    async def apply_to_job(self, job_link: str, resume_path: str, user_details: str) -> str:
+    async def prefill_form(self, job_link: str, resume_path: str, user_details: str) -> dict:
         """
-        Navigates to a job link and submits an application using the provided details.
+        Opens a job application form and prefills it WITHOUT submitting.
+        
+        This method fills form fields but NEVER clicks submit. It returns
+        the extracted FormState for persistence.
 
         Args:
             job_link: The URL of the job posting.
             resume_path: The local path to the resume PDF to upload.
-            user_details: Textual representation of the user's profile and answers.
+            user_details: Textual representation of the user's profile.
 
         Returns:
-            A string describing the result of the application attempt.
+            A dict containing form state with fields, values, and confidence.
+        """
+        ...
+    
+    async def open_draft(self, job_link: str, form_state: dict) -> dict:
+        """
+        Opens a saved draft and rehydrates the form from saved state.
+        
+        This is a deferred action for manual completion. After rehydration,
+        browser automation ENDS and the user takes control.
+
+        Args:
+            job_link: The URL of the job posting.
+            form_state: Previously saved form state with field values.
+
+        Returns:
+            A dict with rehydration status and field restoration counts.
         """
         ...
 

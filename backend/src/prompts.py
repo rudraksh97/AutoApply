@@ -36,16 +36,21 @@ Extract the full job description, responsibilities, and requirements.
 Return the result as a structured string.
 """
 
-APPLY_JOB_TASK_TEMPLATE = """
-You are a job application assistant. Your task is to fill out a job application form accurately and completely.
+PREFILL_JOB_TASK_TEMPLATE = """
+You are a job application assistant. Your task is to PREPARE a job application form but NEVER submit it.
 
-TASK: Apply to the job posting at {job_link}
+TASK: Prefill the job application at {job_link}
 
 ===== APPLICANT INFORMATION =====
 {user_details}
 
 ===== RESUME FILE =====
 Upload this file when asked for resume: {abs_resume_path}
+
+===== CRITICAL CONSTRAINT =====
+⚠️ DO NOT SUBMIT THE APPLICATION ⚠️
+⚠️ DO NOT CLICK ANY SUBMIT, APPLY, OR SEND BUTTON ⚠️
+Your job is ONLY to fill the form. The user will review and submit manually later.
 
 ===== STRATEGY: USE RESUME AUTOFILL FIRST =====
 Many job sites can auto-fill fields from your resume. Use this to save time!
@@ -107,9 +112,7 @@ STEP 5 - HANDLE SPECIAL FIELD TYPES:
   6. Verify the field now shows the selected location
   If no dropdown appears, try typing more characters or a different city format
 
-STEP 6 - PRE-SUBMIT VALIDATION (MANDATORY):
-⚠️ STOP! DO NOT CLICK SUBMIT UNTIL YOU COMPLETE THIS CHECKLIST ⚠️
-
+STEP 6 - FORM VALIDATION (MANDATORY):
 Scroll through the ENTIRE form from top to bottom and validate EACH of these:
 
 VALIDATION CHECKLIST:
@@ -128,57 +131,32 @@ HOW TO CHECK:
 - Empty fields will appear blank or show placeholder text like "Enter..."
 
 IF ANY REQUIRED FIELD IS EMPTY:
-→ DO NOT submit yet
 → Go back to that field and fill it
 → For Location: follow the autocomplete steps (type city, wait, click suggestion)
 → Re-run this validation checklist
 
-ONLY PROCEED TO SUBMIT WHEN ALL REQUIRED FIELDS ARE FILLED.
+STEP 7 - EXTRACT FORM STATE (FINAL STEP):
+⚠️ DO NOT SUBMIT - INSTEAD, extract and report the form state ⚠️
 
-STEP 7 - SUBMIT:
-Click the "Submit", "Submit Application", or similar button.
+For each field you filled, extract:
+- field_id: A **UNIQUE** identifier for the field. Prioritize `id` attribute, then `name` attribute, then a unique CSS selector (e.g., `input[type='text']:nth-of-type(1)`). **CRITICAL: No two fields can have the same field_id.**
+- field_type: text, email, select, checkbox, radio, file, textarea
+- label: The field's visible label
+- value: The value you entered
+- required: Whether the field was required
 
-STEP 8 - ERROR RECOVERY (CRITICAL):
-After clicking submit, WAIT 2 seconds and check the page:
-
-IF YOU SEE A SUCCESS/CONFIRMATION MESSAGE:
-→ Report success and you're done!
-
-IF YOU SEE ERROR MESSAGES (red text, highlighted fields, "required", etc.):
-→ DO NOT report success yet. Follow this error recovery process:
-
-1. IDENTIFY THE ERROR:
-   - Read the error message carefully
-   - Identify which field(s) are failing
-   
-2. TRY DIFFERENT STRATEGIES TO FIX:
-
-   For LOCATION/CITY errors:
-   - Strategy A: Click the field, type "New York", wait 3 seconds, click first suggestion
-   - Strategy B: Click the field, type just "New", wait 3 seconds, look for dropdown
-   - Strategy C: Try "San Francisco" or "Los Angeles" instead
-   
-   For TEXT FIELD errors:
-   - Strategy A: Click the field, select all (Ctrl+A), delete, retype the value
-   - Strategy B: Scroll the field into view first, then click and type
-   - Strategy C: Tab to the field instead of clicking
-   
-   For DROPDOWN errors:
-   - Strategy A: Click to open, wait 1 second, click first available option
-   - Strategy B: Type to filter, then click matching option
-   
-   For CHECKBOX/RADIO errors:
-   - Strategy A: Scroll to make it visible, then click
-   - Strategy B: Click the label text instead of the checkbox itself
-
-3. AFTER FIXING:
-   - Verify the field now shows a value
-   - Click Submit again
-   - Repeat this process up to 3 times
-   
-4. FINAL REPORT:
-   - If successful after retries → Report success
-   - If still failing after 3 attempts → Report failure with the specific error
+Return your result as a JSON object with this structure:
+{{
+  "status": "prefilled",
+  "page_url": "{job_link}",
+  "fields": [
+    {{"field_id": "first_name", "field_type": "text", "label": "First Name", "value": "John", "confidence": 0.95, "required": true}},
+    {{"field_id": "email", "field_type": "email", "label": "Email", "value": "john@example.com", "confidence": 0.95, "required": true}},
+    ...
+  ],
+  "validation_passed": true,
+  "notes": "Any issues or observations about the form"
+}}
 
 ===== IMPORTANT GUIDELINES =====
 - Fill ALL required fields - don't leave them empty
@@ -187,9 +165,20 @@ IF YOU SEE ERROR MESSAGES (red text, highlighted fields, "required", etc.):
 - For "How did you hear about us?" type questions, select "Job Board", "Other", or similar
 - If a field seems unresponsive, try clicking it again before typing
 - Take your time - accuracy is more important than speed
-- If you see an error after submit, FIX IT and try again
-- Only report success if you see a confirmation message with no errors
+- NEVER click Submit, Apply, Send Application, or any similar button
+- The user will review the form and submit it manually
+
+===== REMEMBER =====
+Your task is complete when:
+1. All fields are filled correctly
+2. You have extracted the form state
+3. You have NOT clicked submit
+
+DO NOT SUBMIT THE APPLICATION.
 """
+
+# Legacy alias for backwards compatibility - will be removed in future version
+APPLY_JOB_TASK_TEMPLATE = PREFILL_JOB_TASK_TEMPLATE
 
 RESUME_OPTIMIZER_PROMPT_TEMPLATE = """
 You are an expert ATS optimizer.

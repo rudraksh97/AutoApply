@@ -7,7 +7,7 @@ import uvicorn
 from contextlib import asynccontextmanager
 
 # Routers
-from api.routers import feeds, jobs, profile
+from api.routers import feeds, jobs, profile, drafts
 from api.services.logs_service import manager, LogService # We need to create this service
 
 # Legacy imports being adapted
@@ -24,7 +24,11 @@ class ServiceState:
 service_state = ServiceState()
 
 # --- Application ---
-app = FastAPI(title="AutoApply API", version="1.0.0")
+app = FastAPI(
+    title="AutoApply API", 
+    version="2.0.0",
+    description="Draft-first job application preparation. This API never submits applications."
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,6 +42,7 @@ app.add_middleware(
 app.include_router(feeds.router)
 app.include_router(jobs.router)
 app.include_router(profile.router)
+app.include_router(drafts.router)
 
 # Static Files
 if not os.path.exists("data"):
@@ -134,7 +139,11 @@ async def start_automation(continuous: bool = False):
         asyncio.create_task(manager.broadcast(msg))
 
     asyncio.create_task(background_runner(log_callback, continuous))
-    return {"status": "started", "continuous": continuous}
+    return {
+        "status": "started", 
+        "continuous": continuous,
+        "note": "Draft-first mode: Applications will be prepared but NOT submitted. Check /drafts for results."
+    }
 
 @app.get("/status", tags=["Control"])
 def get_status():

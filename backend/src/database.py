@@ -28,6 +28,20 @@ def init_db():
         )
     """)
     
+    # Create drafts table for draft-first workflow
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS drafts (
+            id TEXT PRIMARY KEY,
+            job_url TEXT UNIQUE,
+            status TEXT NOT NULL,
+            form_state_json TEXT,
+            resume_path TEXT,
+            job_details TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+    
     conn.commit()
     conn.close()
 
