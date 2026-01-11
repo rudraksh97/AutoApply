@@ -1,144 +1,241 @@
 # AutoApply
 
-AutoApply is an orchestration engine for the automated job application lifecycle. It bridges the gap between raw job discovery (via RSS) and high-fidelity submission (via LLM-driven browser automation).
+Automated job application preparation system. Ingests job postings from RSS feeds, extracts keywords, generates tailored resumes, and prefills application forms for manual review.
 
-## Overview
+**Use this when:**
+- You're processing 10+ job applications weekly
+- Job boards you target expose RSS feeds
+- You maintain a LaTeX resume you want to customize per job
+- You want form data captured but control final submission
 
-The system is designed to automate the repetitive, low-leverage phases of job hunting—keyword extraction, resume tailoring, and form submission—while maintaining the user's role as the authoritative source of experience data (LaTeX templates) and opportunity filters (RSS feeds).
+---
 
-### High-Level Intent
-Reliability and maintainability over feature density. The system treats each application as a stateful transaction moving through a clear lifecycle, designed to be operated in a headless, long-running production environment.
+## Features
 
-## Non-Goals
+- **RSS ingestion** – Polls configured feeds hourly, deduplicates by URL
+- **LLM-driven scraping** – Extracts job descriptions using browser automation (Gemini Flash)
+- **Keyword extraction** – Identifies skills/requirements, injects into LaTeX template
+- **PDF compilation** – Renders tailored resume via `pdflatex`
+- **Form prefilling** – Navigates application pages, fills fields from profile data
+- **Draft persistence** – Saves form state to SQLite; resume later from any device
+- **Chrome extension** – Rehydrates saved drafts on actual job board pages
+- **No auto-submit** – Automation stops before submission; user reviews and submits
 
-- **Universal Web Scraping**: We do not attempt to parse every job board's unique DOM. We delegate page interpretation to an LLM-driven agent.
-- **Content Generation**: The system does not "write" resumes. It performs targeted keyword injection into pre-existing LaTeX structures.
-- **Enterprise Scheduling**: No internal cron or job queue (e.g., Celery). Use OS-level orchestration (systemd, Kubernetes) for scheduling.
-- **Multi-Tenant Security**: The current API is unauthenticated and assumes deployment within a trusted network or behind a generic auth proxy.
+---
 
-## Core Concepts
+## Tech Stack
 
-### Abstractions
-- **Job**: The primary entity, uniquely identified by its URL.
-- **Watcher**: A stateless polling component for data ingestion.
-- **Agent**: An LLM-wrapped browser instance capable of reasoning about DOM elements.
-- **Registry**: A persistence layer (SQLite) managing the state machine.
+| Component | Technology | Rationale |
+|-----------|------------|-----------|
+| Backend | Python 3.11 / FastAPI | Async-first, simple dependency injection |
+| Frontend | Next.js 16 / React 19 | Server components, fast iteration |
+| Database | SQLite | Zero-config, ACID, sufficient for single-user workloads |
+| Browser automation | browser-use + Playwright | LLM-driven DOM interaction; adapts to unknown job boards |
+| LLM provider | OpenRouter (Gemini/Llama) | Model-agnostic routing, cost control |
+| Resume engine | Jinja2 + pdflatex | Deterministic PDF output from LaTeX source |
+| Container | Docker Compose | Single-command deployment |
 
-### Invariants
-- **URL Singularity**: A job URL can exist in exactly one state across the entire system.
-- **Immutable History**: Once a job reaches a terminal state (`Completed` or `Failed`), its metadata is preserved for audit.
-- **Consistency**: PDF compilation requires a valid LaTeX toolchain; the system fails fast if the environment is incomplete.
+---
 
 ## Architecture
 
-The system follows a modular architecture with clear boundaries between ingestion, processing, and execution.
+| Component | Responsibility |
+|-----------|----------------|
+| `RSSWatcher` | Polls feeds, publishes new job events |
+| `JobManager` | Tracks job state machine in SQLite (`Pending → Running → Draft Saved / Failed`) |
+| `DraftManager` | Stores form field snapshots with timestamps and status |
+| `BrowserAgent` | LLM-controlled browser for scraping and prefilling |
+| `ResumeBuilder` | Extracts keywords via LLM, renders LaTeX, compiles PDF |
+| `FastAPI server` | REST endpoints for jobs, drafts, profile, feeds, settings |
+| `Next.js frontend` | Dashboard for job queue, draft review, profile editing |
+| `Chrome extension` | Injects saved drafts into live job board forms |
 
-```mermaid
-graph TD
-    subgraph Ingestion
-        RSS["RSS Feeds"] --> Watcher["RSSWatcher"]
-    end
+---
 
-    subgraph Persistence
-        Watcher --> DB[("SQLite (jobs.db)")]
-    end
+## Architecture Diagram
 
-    subgraph Processing
-        DB --> Loop["Automation Loop"]
-        Loop --> Scraper["BrowserAgent (Scrape)"]
-        Scraper --> Builder["ResumeBuilder (LaTeX)"]
-        Builder --> Applier["BrowserAgent (Apply)"]
-    end
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                USER LAYER                                   │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────────────┐   │
+│  │   Browser    │    │   Next.js    │    │     Chrome Extension         │   │
+│  │  (Manual)    │    │   Frontend   │    │  (Draft Rehydration)         │   │
+│  └──────────────┘    └──────┬───────┘    └──────────────┬───────────────┘   │
+└─────────────────────────────┼───────────────────────────┼───────────────────┘
+                              │ HTTP                      │ HTTP
+┌─────────────────────────────┼───────────────────────────┼───────────────────┐
+│                             ▼                           ▼                   │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │                         FastAPI Server (:8000)                       │   │
+│  │   /jobs  /drafts  /feeds  /profile  /settings  /upload-*            │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                              │                                              │
+│         ┌────────────────────┼────────────────────┐                         │
+│         ▼                    ▼                    ▼                         │
+│  ┌─────────────┐     ┌─────────────┐      ┌─────────────┐                   │
+│  │ JobManager  │     │DraftManager │      │ ConfigMgr   │                   │
+│  └──────┬──────┘     └──────┬──────┘      └──────┬──────┘                   │
+│         │                   │                    │                          │
+│         └───────────────────┼────────────────────┘                          │
+│                             ▼                                               │
+│                    ┌────────────────┐                                       │
+│                    │  SQLite (jobs.db)                                      │
+│                    │  jobs | drafts │                                       │
+│                    └────────────────┘                                       │
+│                                                                   BACKEND   │
+└─────────────────────────────────────────────────────────────────────────────┘
 
-    subgraph Observability
-        Loop --> WS["WebSocket Logs"]
-    end
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          BACKGROUND AUTOMATION LOOP                         │
+│                                                                             │
+│   ┌───────────┐      ┌──────────────┐      ┌──────────────┐                 │
+│   │  RSS      │─────▶│  RSSWatcher  │─────▶│ JobManager   │                 │
+│   │  Feeds    │      │  (hourly)    │      │ (add pending)│                 │
+│   └───────────┘      └──────────────┘      └──────────────┘                 │
+│                                                   │                         │
+│                                                   ▼                         │
+│                                          ┌──────────────┐                   │
+│                                          │ Pending Jobs │                   │
+│                                          └───────┬──────┘                   │
+│                                                  │                          │
+│   ┌──────────────────────────────────────────────┼──────────────────────┐   │
+│   │              DraftPreparationService         ▼                      │   │
+│   │  ┌─────────────┐   ┌───────────────┐   ┌─────────────┐              │   │
+│   │  │ BrowserAgent│──▶│ ResumeBuilder │──▶│ BrowserAgent│              │   │
+│   │  │  (scrape)   │   │   (LaTeX)     │   │  (prefill)  │              │   │
+│   │  └─────────────┘   └───────────────┘   └──────┬──────┘              │   │
+│   └───────────────────────────────────────────────┼─────────────────────┘   │
+│                                                   ▼                         │
+│                                          ┌──────────────┐                   │
+│                                          │ Draft Saved  │                   │
+│                                          └──────────────┘                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Data Flow: RSS → JobManager → BrowserAgent → ResumeBuilder → BrowserAgent → DraftManager
 ```
 
-### Data Flow
-1. **Ingestion**: `RSSWatcher` pulls entries and persists new URLs to SQLite with `Pending` status.
-2. **Scraping**: The loop picks up `Pending` jobs. `BrowserAgent` extracts the job description using `google/gemini-2.0-flash-001`.
-3. **Tailoring**: `ResumeBuilder` identifies keywords, injects them into `\VAR{skills_list}` in the LaTeX template, and compiles to PDF.
-4. **Submission**: `BrowserAgent` navigates to the application URL and fills forms using structured `profile.json` data.
+---
 
-## Design Decisions
+## Workflow
 
-### LLM-Driven Browser Automation
-**Decision**: Use `browser-use` with Gemini/Llama models instead of static Playwright selectors.
-**Trade-off**: High flexibility across different job boards at the cost of non-deterministic behavior and LLM latency. We mitigate this with high `max_failures` limits and DOM-only mode.
+1. **User configures RSS feeds** via frontend (`/feeds`)
+2. **RSSWatcher polls** feeds hourly, inserts new job URLs as `Pending`
+3. **Automation loop picks up** `Pending` job (every 60s)
+4. **BrowserAgent scrapes** job page, extracts description via LLM
+5. **ResumeBuilder extracts** keywords, injects into LaTeX, compiles PDF
+6. **BrowserAgent navigates** to application form, prefills fields from `profile.json`
+7. **DraftManager saves** FormState (field IDs, values, confidence scores)
+8. **Job status transitions** to `Draft Saved`
+9. **User opens draft** in frontend or Chrome extension
+10. **Browser rehydrates** fields; user reviews, edits, submits manually
 
-### SQLite Persistence
-**Decision**: Recently migrated from JSON files to SQLite.
-**Trade-off**: Adds a dependency on `sqlite3` but provides ACID compliance and prevents data corruption during concurrent API/Loop operations.
+**On failure:**
+- Steps 4–7: Job marked `Draft Failed`, error stored in `error_message` column
+- LaTeX errors: Compilation halts, job fails, user corrects template
+- LLM timeout: Job stays failed; reset to `Pending` via API to retry
+- Partial scrape: Draft saved with `EXTRACTED` status; form fields empty
 
-### Serial Execution
-**Decision**: Single async processing loop.
-**Trade-off**: Limits throughput to ~1 application per 2-5 minutes. This is intentional to avoid rate-limiting/IP blocking and to keep the resource footprint minimal.
+---
 
-## Operational Model
+## Code Structure
 
-### Startup Sequence
-1. **Environment Load**: Validate `OPENROUTER_API_KEY` and LaTeX presence.
-2. **Database Init**: Automically migrates legacy `jobs.json` to SQLite on first run.
-3. **Static Mounting**: Exposes `data/` for resume downloads.
-4. **Service Launch**: FastAPI server starts on port 8000; the automation loop remains dormant until a `/start` signal.
+```
+.
+├── backend/
+│   ├── api/
+│   │   ├── routers/          # FastAPI route handlers (jobs, drafts, feeds, profile, settings)
+│   │   ├── schemas/          # Pydantic models for request/response validation
+│   │   ├── server.py         # App entrypoint, lifespan, middleware
+│   │   └── dependencies.py   # DI factories
+│   ├── src/
+│   │   ├── agent.py          # BrowserAgent – LLM-driven browser automation
+│   │   ├── rss_watcher.py    # RSS polling and event publishing
+│   │   ├── job_manager.py    # SQLite persistence for job state
+│   │   ├── draft_manager.py  # SQLite persistence for form drafts
+│   │   ├── resume_builder.py # Keyword extraction + LaTeX compilation
+│   │   ├── services.py       # DraftPreparationService orchestration
+│   │   ├── database.py       # SQLite connection and schema init
+│   │   └── config.py         # ConfigManager for feeds/settings
+│   ├── data/                 # Runtime data (jobs.db, profile.json, generated PDFs) ⚠️
+│   ├── tests/                # pytest suite (safe to modify)
+│   └── requirements.txt
+├── frontend/
+│   ├── app/                  # Next.js App Router pages
+│   ├── components/           # Reusable UI (shadcn/ui-based)
+│   └── lib/                  # Utilities
+├── chrome-extension/
+│   ├── background.js         # Fetches draft data from API
+│   ├── content.js            # Injects saved values into job board forms
+│   └── manifest.json
+├── data/                     # Mounted volume for persistent state ⚠️
+└── docker-compose.yml
+```
 
-### Failure Modes
-| Scenario | Impact | Recovery |
-|----------|--------|----------|
-| LLM Rate Limit | Job Failure | Automatic retry not implemented; manual reset to `Pending` required. |
-| DOM Mutation | Agent Confusion | Agent retries up to 10 times internally before reporting terminal failure. |
-| LaTeX Syntax Error | Compilation Halt | Job marked `Failed`. Correct `resume_base.tex` and retry. |
+**Safe to modify:** `tests/`, `frontend/components/`, `frontend/app/`, routers  
+**Risky:** `database.py` (schema changes), `agent.py` (LLM prompts), `resume_builder.py` (LaTeX logic)  
+**Do not delete:** `data/jobs.db`, `data/profile.json`
 
-### Observability
-Real-time operations are exposed via `ws://localhost:8000/ws/logs`. Production environments should pipe these to a structured logging aggregator.
+---
 
-## Extensibility
-
-- **Sources**: New ingestion sources can be added by implementing the `EventPublisher` interface and pushing to `new_job_ingested`.
-- **Templates**: Users can upload custom `.tex` files. The system only requires the `\VAR{skills_list}` Jinja2 placeholder.
-- **Models**: The system is LLM-agnostic via OpenRouter. Change `DEFAULT_MODEL` in `BrowserAgent` to swap providers.
-
-## Local Development
+## Setup
 
 ### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- `pdflatex` (TeX Live or MiKTeX)
-- Chromium (`playwright install chromium`)
 
-### Backend Setup
+| Requirement | Version | Check |
+|-------------|---------|-------|
+| Python | 3.11+ | `python3 --version` |
+| Node.js | 18+ | `node --version` |
+| pdflatex | Any | `pdflatex --version` |
+| Chromium | Latest | Installed via Playwright |
+
+### Environment
+
 ```bash
-cd backend
-pip install -r requirements.txt
-python -m playwright install chromium
-uvicorn api.server:app --host 0.0.0.0 --port 8000
+# Required
+echo "OPENROUTER_API_KEY=sk-or-..." > .env
 ```
 
-### Frontend Setup
+### Local Setup
+
 ```bash
+# Backend
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python -m playwright install chromium
+
+# Start backend (terminal 1)
+uvicorn api.server:app --host 0.0.0.0 --port 8000
+
+# Frontend (terminal 2)
 cd frontend
 npm install
 npm run dev
 ```
 
-## Testing & Validation
+### Docker Setup
 
-- **E2E Workflow**: The primary validation is the integration test suite (`backend/tests/test_e2e_workflow.py`), which simulates a full run from discovery to submission.
-- **Mocking**: LLM calls are mocked in unit tests, but real LLM runs are used for verification before release.
-- **Excluded**: Visual regression for the frontend is currently out of scope.
+```bash
+docker compose up --build
+```
 
-## Known Limitations
+### Verify
 
-1. **Auth**: No per-user authentication. Secure your deployment via VPC or Reverse Proxy.
-2. **Concurrency**: The `JobManager` is thread-safe via SQLite, but the `BrowserAgent` is designed for a single instance.
-3. **Captcha**: Complex bot-detection (hCaptcha/Cloudflare) may bypass the LLM agent. Use headed mode for manual intervention if needed.
-
-## Future Work
-
-- **Exponential Backoff**: Implementation of a retry strategy for LLM/Network transients.
-- **Job Deduplication**: Content-based hashing to avoid processing the same job across different RSS aggregators.
-- **Health Check API**: `/health` endpoint for container orchestration readiness/liveness probes.
+| Check | Expected |
+|-------|----------|
+| `curl http://localhost:8000/jobs` | `[]` or list of jobs |
+| `http://localhost:3000` | Dashboard loads |
+| Add RSS feed in `/feeds` | Feed appears in list |
+| Wait 1 minute | Jobs appear in `/jobs` with `Pending` status |
 
 ---
-*Maintained by the Engineering Team. If you encounter an undocumented failure mode, please open a PR with the update.*
+
+## Constraints
+
+- **Single-user only** – No authentication; deploy behind VPN or auth proxy
+- **Single browser instance** – Concurrent automation not supported
+- **No auto-retry** – Failed jobs stay failed; reset manually via `PATCH /jobs/{url}`
+- **LLM-dependent** – Form filling quality varies by job board DOM structure
+- **Captcha-blocked** – Sites with hCaptcha/Cloudflare may require headed mode and manual intervention
+- **No scheduling** – Use external cron/systemd to start/stop the server if needed
