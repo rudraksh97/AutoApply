@@ -142,7 +142,7 @@ class ResumeBuilder:
         tex_filename = os.path.basename(tex_path)
         
         result = subprocess.run(
-            ["pdflatex", "-interaction=nonstopmode", "-output-directory", tex_dir, tex_filename],
+            ["pdflatex", "-interaction=nonstopmode", "-output-directory", tex_dir, tex_path],
             cwd=tex_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
@@ -150,19 +150,22 @@ class ResumeBuilder:
         
         # Check for compilation errors
         pdf_path = tex_path.replace('.tex', '.pdf')
+        log_path = tex_path.replace('.tex', '.log')
+        
         if not os.path.exists(pdf_path):
-            log_path = tex_path.replace('.tex', '.log')
-            log_content = ""
+            log_content = "No log file found."
             if os.path.exists(log_path):
                 with open(log_path, 'r') as f:
-                    log_content = f.read()[-2000:]  # Last 2000 chars of log
-            raise RuntimeError(f"LaTeX compilation failed. Log excerpt:\n{log_content}")
-        
-        # Clean up auxiliary files
+                    log_content = f.read()[-2000:]
+            raise RuntimeError(f"LaTeX compilation failed (no PDF). Log excerpt:\n{log_content}")
+            
+        # Clean up auxiliary files ONLY if it succeeded
         for ext in ['.aux', '.log', '.out']:
             aux_file = tex_path.replace('.tex', ext)
             if os.path.exists(aux_file):
                 os.remove(aux_file)
+        
+        return pdf_path
         
         return pdf_path
 
