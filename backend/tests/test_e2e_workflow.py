@@ -1,45 +1,30 @@
-"""
-End-to-End Integration Tests for AutoApply Workflow
+"""End-to-End Integration Tests for AutoApply Workflow.
 
-=============================================================================
-WHAT THIS FILE TESTS (Real Components - NOT Mocked):
-=============================================================================
-- Real LLM API calls via OpenRouter for keyword extraction
-- Real LaTeX compilation using pdflatex to produce actual PDF files
-- Real JobManager JSON persistence (reads and writes to jobs.json)
-- Real job lifecycle state transitions (Pending → Running → Completed/Failed)
-- Real ResumeBuilder template rendering with Jinja2
+This module contains integration tests that verify the full "pending to completed"
+workflow using real system components where possible.
 
-=============================================================================
-WHY MOCKING WAS INTENTIONALLY AVOIDED:
-=============================================================================
-These tests exist to catch integration failures that unit tests miss:
-- LLM response format changes that break JSON parsing
-- LaTeX template syntax issues that cause compilation failures  
-- File system permission issues with PDF generation
-- State persistence race conditions
-- End-to-end data flow correctness
+Key Features Tested:
+    * Real LLM API calls via OpenRouter for keyword extraction.
+    * Real LaTeX compilation using pdflatex to produce actual PDF files.
+    * Real JobManager JSON persistence (reads and writes to jobs.json).
+    * Real job lifecycle state transitions.
+    * Real ResumeBuilder template rendering with Jinja2.
 
-Only BrowserAgent.apply_to_job() is stubbed because:
-1. Actually submitting applications to job boards would be destructive
-2. External job boards may change their forms unpredictably
-3. It requires human-in-the-loop verification anyway
+Design Decisions:
+    Mocking is intentionally minimized to catch integration failures such as:
+    * LLM response format changes.
+    * LaTeX template syntax errors.
+    * File system permission issues.
+    * State persistence race conditions.
 
-=============================================================================
-RUNNING THESE TESTS:
-=============================================================================
-These tests are opt-in and require:
+    Only `BrowserAgent.apply_to_job` is stubbed to prevent destructive actions
+    on external websites.
 
-1. Environment variable: RUN_E2E_LLM_TESTS=1
-2. OPENROUTER_API_KEY set in environment
-3. pdflatex installed and in PATH
-
-Run with:
-    cd backend
-    RUN_E2E_LLM_TESTS=1 pytest tests/test_e2e_workflow.py -v -s --timeout=120
-
-Without RUN_E2E_LLM_TESTS=1, all tests will be skipped.
-=============================================================================
+Usage:
+    These tests are opt-in and require:
+    1. Environment variable: RUN_E2E_LLM_TESTS=1
+    2. OPENROUTER_API_KEY set in environment
+    3. pdflatex installed and in PATH
 """
 import pytest
 import asyncio
@@ -69,8 +54,22 @@ skip_unless_e2e = pytest.mark.skipif(
 # ============================================================================
 
 async def run_with_retry(coro_func, *args, max_retries=2, timeout=90, retry_delay=5, **kwargs):
-    """
-    Helper to run an async function with timeout and retries for transient failures.
+    """Executes an async function with timeout and retry logic.
+
+    Args:
+        coro_func: The async function to execute.
+        *args: Positional arguments for the function.
+        max_retries: Maximum number of retry attempts (default: 2).
+        timeout: Timeout in seconds for each attempt (default: 90).
+        retry_delay: Delay in seconds between retries (default: 5).
+        **kwargs: Keyword arguments for the function.
+
+    Returns:
+        The result of the coroutine function.
+
+    Raises:
+        asyncio.TimeoutError: If the operation times out after all retries.
+        Exception: If the operation fails with a non-retryable error or after retries.
     """
     last_exception = None
     for attempt in range(max_retries + 1):
@@ -111,16 +110,16 @@ Key Skills: Python, Django, React, Docker, Kubernetes.
 
 @skip_unless_e2e
 class TestHappyPathFullWorkflow:
-    """
-    Test the complete AutoApply workflow end-to-end.
-    
-    This test exercises:
-    - Real LLM API calls for keyword extraction
-    - Real LaTeX compilation to PDF
-    - Real JobManager state persistence
-    - All job status transitions
-    
-    Only BrowserAgent is stubbed to avoid touching external job boards.
+    """Tests the complete AutoApply workflow end-to-end.
+
+    This test suite exercises:
+        * Real LLM API calls for keyword extraction
+        * Real LaTeX compilation to PDF
+        * Real JobManager state persistence
+        * All job status transitions
+
+    Note:
+        Only BrowserAgent is stubbed to avoid touching external job boards.
     """
     
     @pytest.fixture(autouse=True)
@@ -137,15 +136,14 @@ class TestHappyPathFullWorkflow:
         temp_resume_builder,
         stub_browser_agent
     ):
-        """
-        Test the complete job application workflow from Pending to Completed.
-        
-        Verifies:
-        1. Job starts in Pending state
-        2. Transitions through all Running states
-        3. LLM returns valid skills_list
-        4. Real PDF is generated
-        5. Final status is Completed
+        """Verifies the complete job application workflow from Pending to Completed.
+
+        Steps Verified:
+            1. Job starts in Pending state.
+            2. Transitions through all Running states (Scraping, Generating, Applying).
+            3. LLM returns valid skills_list.
+            4. Real PDF is generated.
+            5. Final status is Completed.
         """
         from src.services import JobApplicationService
         
@@ -225,7 +223,7 @@ class TestHappyPathFullWorkflow:
     
     @pytest.mark.asyncio
     async def test_llm_extracts_valid_skills(self, temp_resume_builder):
-        """Test that the LLM returns a valid skills_list."""
+        """Verifies that the LLM returns a valid skills_list from a job description."""
         job_description = "Senior Software Engineer. Requirements: Python, AWS, Docker, Kubernetes, PostgreSQL."
         
         result = await run_with_retry(
@@ -253,7 +251,7 @@ class TestHappyPathFullWorkflow:
 
 @skip_unless_e2e
 class TestWorkflowRobustness:
-    """Tests failure propagation, edge cases, and cleanup."""
+    """Tests failure propagation, edge cases, and cleanup logic."""
 
     @pytest.fixture(autouse=True)
     def setup(self, e2e_prerequisites):
@@ -262,7 +260,7 @@ class TestWorkflowRobustness:
 
     @pytest.mark.asyncio
     async def test_malformed_llm_response_causes_failure(self, temp_data_dir, temp_job_manager, stub_browser_agent):
-        """Test graceful failure on malformed LLM response."""
+        """Verifies graceful failure when the LLM returns a malformed response."""
         from src.services import JobApplicationService
         from src.resume_builder import ResumeBuilder
 
@@ -284,7 +282,7 @@ class TestWorkflowRobustness:
 
     @pytest.mark.asyncio
     async def test_invalid_latex_template_causes_failure(self, temp_data_dir, temp_job_manager, stub_browser_agent):
-        """Test failure on invalid LaTeX template."""
+        """Verifies failure handling when the LaTeX template is invalid."""
         from src.services import JobApplicationService
         from src.resume_builder import ResumeBuilder
 
@@ -304,7 +302,7 @@ class TestWorkflowRobustness:
 
     @pytest.mark.asyncio
     async def test_job_persistence(self, temp_data_dir, monkeypatch):
-        """Test state persistence across JobManager instances."""
+        """Verifies that job state is correctly persisted across JobManager instances."""
         from src.job_manager import JobManager
         jobs_file = os.path.join(temp_data_dir, "data", "jobs.json")
         os.makedirs(os.path.dirname(jobs_file), exist_ok=True)
@@ -318,7 +316,7 @@ class TestWorkflowRobustness:
 
     @pytest.mark.asyncio
     async def test_aux_files_cleaned(self, temp_resume_builder):
-        """Test LaTeX auxiliary file cleanup."""
+        """Verifies that LaTeX auxiliary files (.aux, .log, .out) are cleaned up."""
         ctx = {"summary":"s", "experience":"e", "education":"d", "skills_list":["p"]}
         tex = temp_resume_builder.render_tex(ctx, "test")
         pdf = temp_resume_builder.compile_pdf(tex)
@@ -335,7 +333,7 @@ class TestWorkflowRobustness:
 
 @skip_unless_e2e
 class TestRealBrowserAgent:
-    """Tests browser automation (scrapes & fills) using real LLMs."""
+    """Tests browser automation (scrapes & fills) using real LLMs/Parsers."""
 
     @pytest.fixture(autouse=True)
     def setup(self, check_openrouter_api_key):
@@ -344,7 +342,7 @@ class TestRealBrowserAgent:
 
     @pytest.mark.asyncio
     async def test_browser_agent_fills_form(self, local_test_server, real_browser_agent, test_user_profile_text, temp_data_dir):
-        """Fills locally-served job application form."""
+        """Verifies that the browser agent can correctly fill a locally-served job application form."""
         resume_path = os.path.join(temp_data_dir, "test.pdf")
         with open(resume_path, 'wb') as f: f.write(b'%PDF-1.4\n%Fake\n')
         
@@ -361,7 +359,7 @@ class TestRealBrowserAgent:
 
     @pytest.mark.asyncio
     async def test_browser_agent_scrapes_page(self, local_test_server, real_browser_agent):
-        """Scrapes locally-served job posting."""
+        """Verifies that the browser agent can scrape content from a locally-served job posting."""
         url = f"{local_test_server}/job_posting.html"
         await asyncio.sleep(5)
 

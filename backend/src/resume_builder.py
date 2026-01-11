@@ -23,6 +23,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from dotenv import load_dotenv
+from src.prompts import RESUME_OPTIMIZER_PROMPT_TEMPLATE
 
 load_dotenv()
 
@@ -80,18 +81,7 @@ class ResumeBuilder:
         Returns:
             dict: A dictionary containing 'skills_list' extracted by the LLM.
         """
-        prompt = ChatPromptTemplate.from_template("""
-            You are an expert ATS optimizer.
-            Analyze the Job Description and extract the most important technical keywords, skills, and tools mentioned.
-            
-            Job Description:
-            {job_description}
-            
-            Return a JSON object with a single key:
-            - skills_list: A list of the top 10-15 most relevant keywords/skills found in the description.
-            
-            Do not manufacture skills that are completely unrelated to software engineering, but prioritize matching the JD hard skills.
-        """)
+        prompt = ChatPromptTemplate.from_template(RESUME_OPTIMIZER_PROMPT_TEMPLATE)
         
         chain = prompt | self.llm | JsonOutputParser()
         

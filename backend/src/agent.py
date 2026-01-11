@@ -11,6 +11,7 @@ from browser_use.llm.openrouter.chat import ChatOpenRouter
 import os
 
 from dotenv import load_dotenv
+from src.prompts import SCRAPE_JOB_TASK_TEMPLATE, APPLY_JOB_TASK_TEMPLATE
 
 load_dotenv()
 
@@ -47,27 +48,17 @@ class BrowserAgent:
 
     def _create_scrape_task(self, job_link: str) -> str:
         """Generates the LLM task string for job scraping."""
-        return f"""
-        Go to {job_link}.
-        Extract the full job description, responsibilities, and requirements.
-        Return the result as a structured string.
-        """
+        return SCRAPE_JOB_TASK_TEMPLATE.format(job_link=job_link)
 
     def _create_apply_task(self, job_link: str, resume_path: str, user_details: str) -> str:
         """Generates the LLM task string for job application submission."""
         # Ensure resume path is absolute
         abs_resume_path = os.path.abspath(resume_path)
-        return f"""
-        Go to {job_link}.
-        Find the 'Apply' button and click it to open the application form.
-        Fill out the application form with the following details:
-        {user_details}
-        
-        When asked for a resume, upload the local file found at: {abs_resume_path}
-        
-        If there is a submit button, click it. 
-        Confirm if the application was submitted successfully.
-        """
+        return APPLY_JOB_TASK_TEMPLATE.format(
+            job_link=job_link,
+            user_details=user_details,
+            abs_resume_path=abs_resume_path
+        )
 
     async def _run_agent(self, task: str) -> str:
         """
