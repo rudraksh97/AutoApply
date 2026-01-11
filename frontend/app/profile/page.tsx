@@ -457,6 +457,36 @@ export default function ProfilePage() {
                             />
                         </CardContent>
                     </Card>
+
+                    <Card className="shadow-sm border-border/60">
+                        <CardHeader className="pb-4">
+                            <CardTitle className="text-base font-medium">"Why do you want to join us?" Template</CardTitle>
+                            <CardDescription>Generic template for "Why Us?". Use {"{{company}}"} placeholder.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="p-8 pt-0">
+                            <textarea
+                                className="flex min-h-[150px] w-full rounded-md border border-input bg-muted/20 px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                placeholder="I've always admired {{company}}'s commitment to..."
+                                value={profile.why_us || ""}
+                                onChange={(e) => setProfile((prev: any) => ({ ...prev, why_us: e.target.value }))}
+                            />
+                        </CardContent>
+                    </Card>
+
+                    <Card className="shadow-sm border-border/60">
+                        <CardHeader className="pb-4">
+                            <CardTitle className="text-base font-medium">Challenging Project</CardTitle>
+                            <CardDescription>Tell me about a challenging project loop.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="p-8 pt-0">
+                            <textarea
+                                className="flex min-h-[200px] w-full rounded-md border border-input bg-muted/20 px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                placeholder="One of the most challenging projects I worked on was..."
+                                value={profile.challenging_project || ""}
+                                onChange={(e) => setProfile((prev: any) => ({ ...prev, challenging_project: e.target.value }))}
+                            />
+                        </CardContent>
+                    </Card>
                 </section>
             </div>
         </div>

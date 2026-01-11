@@ -37,7 +37,9 @@ DEFAULT_PROFILE = {
     "education": [],
     "experience": [],
     "great_fit_pitch": "",
-    "cover_letter_template": ""
+    "cover_letter_template": "",
+    "why_us": "",
+    "challenging_project": ""
 }
 
 class ProfileManager:
@@ -150,5 +152,11 @@ class ProfileManager:
         
         Pitch:
         {p.get('great_fit_pitch', '')}
+
+        Why Us Template:
+        {p.get('why_us', '')}
+
+        Challenging Project:
+        {p.get('challenging_project', '')}
         """
         return text.strip()

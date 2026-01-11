@@ -56,3 +56,5 @@ class ProfileData(BaseModel):
     experience: List[ProfileExperience]
     great_fit_pitch: str = ""
     cover_letter_template: str = ""
+    why_us: str = ""
+    challenging_project: str = ""
