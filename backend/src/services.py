@@ -122,7 +122,9 @@ class JobApplicationService:
             return True
 
         except Exception as e:
-            log_callback(f"Error processing job {job_link}: {e}")
+            import traceback
+            log_callback(traceback.format_exc())
+            log_callback(f"Error processing job {job_link}: {str(e)}")
             self.job_manager.update_job(job_link, status="Failed", error_message=str(e))
             return False
 

@@ -5,7 +5,12 @@ This module initializes the application and runs the main orchestration loop
 which polls for new jobs from RSS feeds and processes them using the service layer.
 """
 
+import sys
 import asyncio
+if sys.platform == 'win32':
+    print(f"DEBUG: Setting WindowsProactorEventLoopPolicy in {__file__}")
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 import logging
 from typing import Optional
 
@@ -42,6 +47,7 @@ async def run_auto_apply(
     # 1. Initialize core components
     config_manager = ConfigManager()
     job_manager = JobManager()
+    print(f"DEBUG: run_auto_apply started. Current loop: {type(asyncio.get_running_loop())}")
     profile_manager = ProfileManager()
     
     resume_builder = ResumeBuilder()
@@ -77,7 +83,6 @@ async def run_auto_apply(
         # Process all pending jobs from the database
         all_jobs = job_manager.get_all_jobs()
         pending_jobs = [job for job in all_jobs if job.get('status') == 'Pending']
-        
         if not pending_jobs:
             log_callback("No pending jobs to process.")
         else:

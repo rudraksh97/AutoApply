@@ -69,17 +69,28 @@ class RSSWatcher:
             # but usually it's fast enough for I/O bound pollers.
             feed = feedparser.parse(response.content)
             
+            # ADDED FOR TESTING: Inject a fake entry
+            from types import SimpleNamespace
+            fake_entry = SimpleNamespace(
+                link="https://jobs.ashbyhq.com/fieldguide/47a2afc4-1075-4378-83bb-714543b6c272",
+                title="Fake Test Job",
+                id="https://jobs.ashbyhq.com/fieldguide/47a2afc4-1075-4378-83bb-714543b6c272"
+            )
+            if hasattr(feed, 'entries'):
+                feed.entries.insert(0, fake_entry)
+            
             for entry in feed.entries:
                 entry_id = getattr(entry, 'id', entry.link)
                 # Composite key for deduplication
                 dedup_key = entry.link
                 
-                if self.deduplicator.is_new(dedup_key):
+                if True or self.deduplicator.is_new(dedup_key):
                     # 1. Mark as seen immediately (fire-and-forget logic)
                     self.deduplicator.mark_seen(dedup_key)
                     
                     # 2. Emit lightweight event
                     # Flow ends here for the watcher.
+                    #  or entry.link
                     event_data = {
                         "job_link": entry.link,
                         "title": getattr(entry, 'title', 'Untitled'),

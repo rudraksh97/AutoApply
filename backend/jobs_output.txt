@@ -1,0 +1,24 @@
+* Host localhost:8000 was resolved.
+* IPv6: ::1
+* IPv4: 127.0.0.1
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0   0     0   0     0     0     0  --:--:-- --:--:-- --:--:--     0*   Trying [::1]:8000...
+*   Trying 127.0.0.1:8000...
+* Established connection to localhost (127.0.0.1 port 8000) from 127.0.0.1 port 50162 
+* using HTTP/1.x
+> GET /jobs/ HTTP/1.1
+> Host: localhost:8000
+> User-Agent: curl/8.17.0
+> Accept: */*
+> 
+* Request completely sent off
+< HTTP/1.1 200 OK
+< date: Sun, 11 Jan 2026 18:58:22 GMT
+< server: uvicorn
+< content-length: 2
+< content-type: application/json
+< 
+{ [2 bytes data]
+100     2 100     2   0     0     9     0  --:--:-- --:--:-- --:--:--     9[]
+* Connection #0 to host localhost:8000 left intact

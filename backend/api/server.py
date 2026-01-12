@@ -1,5 +1,12 @@
 import os
+import sys
 import asyncio
+if sys.platform == 'win32':
+    print(f"DEBUG: Setting WindowsProactorEventLoopPolicy in {__file__}")
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+else:
+    print(f"DEBUG: Platform is {sys.platform}, not setting event loop policy in {__file__}")
+
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -133,6 +140,7 @@ async def start_automation(continuous: bool = False):
         print(f"[LOG] {msg}")
         asyncio.create_task(manager.broadcast(msg))
 
+    print(f"DEBUG: Starting automation. Current loop: {type(asyncio.get_running_loop())}")
     asyncio.create_task(background_runner(log_callback, continuous))
     return {"status": "started", "continuous": continuous}
 
