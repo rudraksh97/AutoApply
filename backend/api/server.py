@@ -22,8 +22,11 @@ from src.agent import BrowserAgent
 from src.resume_builder import ResumeBuilder
 
 # Routers
-from api.routers import feeds, jobs, profile, drafts, settings
+from api.routers import feeds, jobs, profile, drafts, settings, test_feed
 
+
+# Test feed pattern to skip during automatic polling
+TEST_FEED_PATTERN = "/test/feed.xml"
 
 # --- Background Tasks ---
 async def automation_loop():
@@ -42,7 +45,6 @@ async def automation_loop():
     # Dependencies for polling
     event_publisher = JobManagerEventPublisher(job_manager)
     deduplicator = JobManagerDeduplicator(job_manager)
-    watcher = RSSWatcher(event_publisher, deduplicator, config_manager)
     
     last_rss_poll = 0
     
@@ -50,12 +52,34 @@ async def automation_loop():
         try:
             now = time.time()
             
-            # 1. Periodic RSS Poll (Hourly)
+            # 1. Periodic RSS Poll (Hourly) - skip test feeds
             if now - last_rss_poll > 3600:
                 logging.info("Triggering periodic RSS poll...")
-                await watcher.poll_once()
+                all_feeds = config_manager.get_feeds()
+                feeds_to_poll = [f for f in all_feeds if TEST_FEED_PATTERN not in f]
+                
+                if feeds_to_poll:
+                    import feedparser
+                    for feed_url in feeds_to_poll:
+                        try:
+                            loop = asyncio.get_event_loop()
+                            parsed_feed = await loop.run_in_executor(None, feedparser.parse, feed_url)
+                            for entry in parsed_feed.entries:
+                                job_link = entry.get("link")
+                                if not job_link:
+                                    continue
+                                if deduplicator.is_new(job_link):
+                                    await event_publisher.publish("new_job_ingested", {
+                                        "job_link": job_link,
+                                        "title": entry.get("title", "Unknown Title"),
+                                        "feed_url": feed_url
+                                    })
+                                    deduplicator.mark_seen(job_link)
+                        except Exception as e:
+                            logging.error(f"Error polling feed {feed_url}: {e}")
+                
                 last_rss_poll = now
-                logging.info("Periodic RSS poll complete.")
+                logging.info(f"Periodic RSS poll complete. Polled {len(feeds_to_poll)} feed(s).")
             
             # 2. Process Pending Jobs (Every minute)
             all_jobs = job_manager.get_all_jobs()
@@ -110,6 +134,7 @@ app.include_router(jobs.router)
 app.include_router(profile.router)
 app.include_router(drafts.router)
 app.include_router(settings.router)
+app.include_router(test_feed.router)
 
 # Static Files
 if not os.path.exists("data"):
