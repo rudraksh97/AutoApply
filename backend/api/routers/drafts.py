@@ -5,6 +5,7 @@ This router provides endpoints for managing application drafts in the
 draft-first workflow. Users can list, view, and open drafts for manual completion.
 """
 
+import json
 from fastapi import APIRouter, HTTPException
 from typing import List, Optional
 from pydantic import BaseModel
@@ -320,43 +321,108 @@ async def get_fill_script(draft_id: str):
     # Generate JavaScript fill script
     fields_js = []
     for field in draft.form_state.fields:
-        if field.value:
+        if field.value and not field.skipped:
             escaped_value = field.value.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
+            escaped_xpath = field.xpath.replace("\\", "\\\\").replace("'", "\\'")
+            field_label = field.label or field.xpath
             fields_js.append(f"""
-    // {field.label or field.field_id}
-    fillField("{field.field_id}", '{escaped_value}');""")
+    // {field_label}
+    fillFieldByXPath({json.dumps(field.xpath)}, {json.dumps(field.value)}, {json.dumps(field.field_type.value)});""")
     
     script = f"""
 // AutoApply Form Filler - Draft: {draft_id}
 // Paste this in your browser console (F12) on the job application page
 
 (function() {{
-    function fillField(fieldId, value) {{
-        const selectors = [
-            '#' + fieldId,
-            '[name="' + fieldId + '"]',
-            '[id="' + fieldId + '"]',
-            '[data-field="' + fieldId + '"]'
-        ];
+    function getElementByXPath(xpath) {{
+        try {{
+            const result = document.evaluate(
+                xpath,
+                document,
+                null,
+                XPathResult.FIRST_ORDERED_NODE_TYPE,
+                null
+            );
+            return result.singleNodeValue;
+        }} catch (e) {{
+            console.error('XPath error:', e);
+            return null;
+        }}
+    }}
+    
+    function fillFieldByXPath(xpath, value, fieldType) {{
+        const el = getElementByXPath(xpath);
+        if (!el) {{
+            console.log('❌ Not found by XPath: ' + xpath);
+            return false;
+        }}
         
-        for (const selector of selectors) {{
-            try {{
-                const el = document.querySelector(selector);
-                if (el) {{
+        const elType = el.type || el.tagName.toLowerCase();
+        
+        try {{
+            switch (elType) {{
+                case 'checkbox':
+                    const shouldCheck = ['true', '1', 'yes'].includes(String(value).toLowerCase());
+                    if (el.checked !== shouldCheck) {{
+                        el.checked = shouldCheck;
+                        el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                    }}
+                    console.log('✅ Filled checkbox: ' + xpath);
+                    return true;
+                    
+                case 'radio':
+                    const radiogroup = document.querySelectorAll(`[name="${{el.name}}"]`);
+                    let radioFound = false;
+                    radiogroup.forEach(radio => {{
+                        if (radio.value === value || 
+                            radio.nextSibling?.textContent?.trim().toLowerCase().includes(String(value).toLowerCase())) {{
+                            radio.checked = true;
+                            radio.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                            radioFound = true;
+                        }}
+                    }});
+                    if (radioFound) {{
+                        console.log('✅ Filled radio: ' + xpath);
+                    }}
+                    return radioFound;
+                    
+                case 'select':
+                case 'select-one':
+                case 'select-multiple':
+                    const options = Array.from(el.options);
+                    const match = options.find(opt => 
+                        opt.value === value || 
+                        opt.text.toLowerCase().includes(String(value).toLowerCase())
+                    );
+                    if (match) {{
+                        el.value = match.value;
+                        el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                        console.log('✅ Filled select: ' + xpath);
+                        return true;
+                    }}
+                    console.log('❌ Option not found in select: ' + xpath);
+                    return false;
+                    
+                case 'file':
+                    console.log('⚠️ File input skipped: ' + xpath);
+                    return false;
+                    
+                default:
                     el.focus();
                     el.value = value;
                     el.dispatchEvent(new Event('input', {{ bubbles: true }}));
                     el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                    console.log('✅ Filled: ' + fieldId);
+                    el.blur();
+                    console.log('✅ Filled: ' + xpath);
                     return true;
-                }}
-            }} catch (e) {{}}
+            }}
+        }} catch (e) {{
+            console.error('Error filling field:', e);
+            return false;
         }}
-        console.log('❌ Not found: ' + fieldId);
-        return false;
     }}
     
-    console.log('🚀 AutoApply filling {len(draft.form_state.fields)} fields...');
+    console.log('🚀 AutoApply filling {len([f for f in draft.form_state.fields if f.value and not f.skipped])} fields...');
     {"".join(fields_js)}
     console.log('✅ Done! Review the form and submit when ready.');
 }})();

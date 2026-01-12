@@ -38,10 +38,24 @@ TASK: Open {job_link} and fill the form with the previously saved values.
 
 ===== INSTRUCTIONS =====
 1. Navigate to {job_link}
-2. Wait for the form to fully load
-3. For each field in the saved form state, fill it with the saved value
+2. Wait for the form to fully load (wait for dynamic content)
+3. For each field in the saved form state:
+   a. Use the "xpath" field to locate the element (document.evaluate with XPathResult.FIRST_ORDERED_NODE_TYPE)
+   b. If xpath fails, try CSS selectors based on field label or field_id
+   c. Fill the field with the "value" from the saved state
+   d. Handle different field types:
+      - text/email/phone/textarea: Set el.value and trigger input/change events
+      - select: Find matching option and set el.value
+      - checkbox: Set el.checked based on value
+      - radio: Find matching radio button in group and set checked
+      - file: Skip (cannot be filled programmatically)
 4. If a field cannot be found, note it but continue with other fields
 5. DO NOT click any submit button
+
+===== FIELD LOCATION PRIORITY =====
+1. PRIMARY: Use the "xpath" field to locate elements (most reliable)
+2. FALLBACK: Try CSS selectors (#id, [name="..."], [id="..."])
+3. LAST RESORT: Fuzzy match by label text
 
 ===== CRITICAL =====
 ⚠️ DO NOT SUBMIT THE APPLICATION ⚠️
