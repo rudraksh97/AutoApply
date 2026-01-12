@@ -4,9 +4,12 @@ import axios from 'axios';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Trash2, Plus, RefreshCw, Rss, Play, Loader2 } from 'lucide-react';
+import { Trash2, Plus, RefreshCw, Rss, Play, Loader2, FlaskConical } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from "@/lib/utils";
+
+// Test feed URL - always available, not stored in user feeds
+const TEST_FEED_URL = "http://localhost:8000/test/feed.xml";
 
 export default function FeedsPage() {
     const [feeds, setFeeds] = useState<string[]>([]);
@@ -16,6 +19,9 @@ export default function FeedsPage() {
     const [pollingFeed, setPollingFeed] = useState<string | null>(null);
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    
+    // Filter out test feed from user feeds (in case it was added before)
+    const userFeeds = feeds.filter(f => !f.includes('/test/feed.xml'));
 
     const fetchFeeds = async () => {
         setLoading(true);
@@ -99,7 +105,7 @@ export default function FeedsPage() {
                         variant="default"
                         size="sm"
                         onClick={pollAllFeeds}
-                        disabled={pollingAll || feeds.length === 0}
+                        disabled={pollingAll || userFeeds.length === 0}
                         className="h-10 px-4"
                     >
                         {pollingAll ? (
@@ -139,10 +145,46 @@ export default function FeedsPage() {
                         </Button>
                     </div>
 
+                    {/* Test Feed Section */}
+                    <div className="space-y-3">
+                        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                            <FlaskConical className="h-4 w-4" />
+                            Test Feed
+                        </h3>
+                        <div className="flex items-center justify-between p-4 border-2 border-dashed border-violet-200 rounded-lg bg-violet-50/50 group hover:shadow-sm transition-shadow">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                                <div className="p-2 rounded bg-violet-100">
+                                    <FlaskConical className="h-4 w-4 text-violet-600" />
+                                </div>
+                                <div className="overflow-hidden">
+                                    <span className="text-sm font-medium text-violet-900 truncate block">{TEST_FEED_URL}</span>
+                                    <span className="text-xs text-violet-600">Sample jobs for testing the system</span>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 px-3 text-xs border-violet-300 hover:bg-violet-100"
+                                    onClick={() => pollSingleFeed(TEST_FEED_URL)}
+                                    disabled={pollingFeed === TEST_FEED_URL}
+                                >
+                                    {pollingFeed === TEST_FEED_URL ? (
+                                        <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                                    ) : (
+                                        <Play className="h-3 w-3 mr-1.5" />
+                                    )}
+                                    Poll
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Active Feeds Section */}
                     <div className="space-y-3">
                         <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Active Feeds</h3>
                         <div className="grid gap-3">
-                            {feeds.map((feed) => (
+                            {userFeeds.map((feed) => (
                                 <div key={feed} className="flex items-center justify-between p-4 border rounded-lg bg-card group hover:shadow-sm transition-shadow">
                                     <div className="flex items-center gap-3 overflow-hidden">
                                         <div className="p-2 rounded bg-primary/10">
@@ -176,7 +218,7 @@ export default function FeedsPage() {
                                     </div>
                                 </div>
                             ))}
-                            {feeds.length === 0 && !loading && (
+                            {userFeeds.length === 0 && !loading && (
                                 <div className="text-center py-12 border-2 border-dashed rounded-lg bg-muted/20">
                                     <Rss className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
                                     <p className="text-muted-foreground">No RSS feeds configured yet.</p>
