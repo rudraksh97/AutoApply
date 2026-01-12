@@ -37,14 +37,29 @@ function checkAndFill() {
                 console.log('✅ AutoApply: Data received', draft);
 
                 if (draft.form_state && draft.form_state.fields) {
-                    showNotification(`Filling ${draft.form_state.fields.length} fields...`, "info");
+                    // Separate fillable fields from skipped fields
+                    const fillableFields = draft.form_state.fields.filter(f => !f.skipped && f.value);
+                    const skippedFields = draft.form_state.fields.filter(f => f.skipped);
+                    
+                    showNotification(`Filling ${fillableFields.length} fields...`, "info");
 
                     // Wait a moment for dynamic forms to render
                     setTimeout(() => {
-                        const filledCount = fillForm(draft.form_state.fields);
+                        const filledCount = fillForm(fillableFields);
 
                         if (filledCount > 0) {
-                            showNotification(`✅ Success! Filled ${filledCount} fields.`, "success");
+                            let msg = `✅ Filled ${filledCount} fields.`;
+                            if (skippedFields.length > 0) {
+                                msg += ` ${skippedFields.length} need your input.`;
+                            }
+                            showNotification(msg, "success");
+                            
+                            // Log skipped fields for debugging
+                            if (skippedFields.length > 0) {
+                                console.log('⚠️ AutoApply: Fields needing user input:', 
+                                    skippedFields.map(f => ({ label: f.label, reason: f.skip_reason }))
+                                );
+                            }
                         } else {
                             showNotification(`⚠️ Loaded data but found no matching fields.`, "warning");
                         }
@@ -111,65 +126,156 @@ function showNotification(message, type) {
     }
 }
 
-// Core form filling logic (ported from backend)
+// Core form filling logic (aligned with backend deterministic engine)
 function fillForm(fields) {
     let filledCount = 0;
 
     fields.forEach(field => {
+        // Skip fields without values (should already be filtered, but defensive)
         if (!field.value) return;
 
-        const selectors = [
-            `#${CSS.escape(field.field_id)}`,
-            `[name="${CSS.escape(field.field_id)}"]`,
-            `[id="${CSS.escape(field.field_id)}"]`,
-            `[data-field="${CSS.escape(field.field_id)}"]`,
-            // Fuzzy match for common labels if exact ID fails
-            `[aria-label*="${CSS.escape(field.label || '')}"]`
-        ];
-
-        let found = false;
-        for (const selector of selectors) {
-            try {
-                if (!selector || selector.includes('""')) continue; // Skip invalid
-
-                const el = document.querySelector(selector);
-                if (el) {
-                    // Handle different input types
-                    if (el.type === 'checkbox') {
-                        el.checked = field.value.toLowerCase() === 'true' || field.value === '1';
-                    } else if (el.type === 'radio') {
-                        // Radio needs special handling - we likely found one of the options
-                        // We need to find the specific radio button with this value
-                        const radiogroup = document.querySelectorAll(`[name="${el.name}"]`);
-                        radiogroup.forEach(radio => {
-                            if (radio.value === field.value || radio.nextSibling?.textContent?.includes(field.value)) {
-                                radio.checked = true;
-                                found = true;
-                            }
-                        });
-                        if (found) el.dispatchEvent(new Event('change', { bubbles: true }));
-                    } else {
-                        // Text, email, textarea, select
-                        el.focus();
-                        el.value = field.value;
-                        el.dispatchEvent(new Event('input', { bubbles: true }));
-                        el.dispatchEvent(new Event('change', { bubbles: true }));
-                        el.blur();
+        let el = null;
+        
+        // Primary: Use XPath selector (new approach)
+        if (field.xpath) {
+            el = getElementByXPath(field.xpath);
+            if (el) {
+                console.log(`🎯 Found via XPath: ${field.xpath}`);
+            }
+        }
+        
+        // Fallback: Try CSS selectors if xpath fails (backwards compatibility)
+        if (!el && field.field_id) {
+            const selectors = [
+                `#${CSS.escape(field.field_id)}`,
+                `[name="${CSS.escape(field.field_id)}"]`,
+                `[id="${CSS.escape(field.field_id)}"]`
+            ];
+            
+            for (const selector of selectors) {
+                try {
+                    el = document.querySelector(selector);
+                    if (el) {
+                        console.log(`🎯 Found via CSS fallback: ${selector}`);
+                        break;
                     }
-
-                    found = true;
-                    console.log(`✅ Filled ${field.field_id}`);
-                    break;
-                }
-            } catch (e) {
-                // Ignore querySelector errors
+                } catch (e) {}
+            }
+        }
+        
+        // Last resort: Fuzzy match using label
+        if (!el && field.label) {
+            const fuzzySelectors = [
+                `[aria-label*="${CSS.escape(field.label)}"]`,
+                `[placeholder*="${CSS.escape(field.label)}"]`
+            ];
+            
+            for (const selector of fuzzySelectors) {
+                try {
+                    el = document.querySelector(selector);
+                    if (el) {
+                        console.log(`🎯 Found via label fuzzy: ${selector}`);
+                        break;
+                    }
+                } catch (e) {}
             }
         }
 
-        if (found) filledCount++;
+        if (el) {
+            const filled = fillElement(el, field);
+            if (filled) {
+                console.log(`✅ Filled: ${field.label || field.xpath} (${field.field_type})`);
+                filledCount++;
+            }
+        } else {
+            console.warn(`⚠️ Element not found: ${field.xpath || field.label}`);
+        }
     });
 
     return filledCount;
+}
+
+// Helper: Get element by XPath
+function getElementByXPath(xpath) {
+    try {
+        const result = document.evaluate(
+            xpath,
+            document,
+            null,
+            XPathResult.FIRST_ORDERED_NODE_TYPE,
+            null
+        );
+        return result.singleNodeValue;
+    } catch (e) {
+        console.error(`XPath error for "${xpath}":`, e);
+        return null;
+    }
+}
+
+// Fill a single element based on its type
+function fillElement(el, field) {
+    const elType = el.type || el.tagName.toLowerCase();
+    
+    try {
+        switch (elType) {
+            case 'checkbox':
+                const shouldCheck = ['true', '1', 'yes'].includes(String(field.value).toLowerCase());
+                if (el.checked !== shouldCheck) {
+                    el.checked = shouldCheck;
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                return true;
+                
+            case 'radio':
+                // Find the specific radio button in the group
+                const radiogroup = document.querySelectorAll(`[name="${el.name}"]`);
+                let radioFound = false;
+                radiogroup.forEach(radio => {
+                    const radioLabel = radio.nextSibling?.textContent?.trim() || 
+                                       radio.parentElement?.textContent?.trim() || '';
+                    if (radio.value === field.value || 
+                        radioLabel.toLowerCase().includes(field.value.toLowerCase())) {
+                        radio.checked = true;
+                        radio.dispatchEvent(new Event('change', { bubbles: true }));
+                        radioFound = true;
+                    }
+                });
+                return radioFound;
+                
+            case 'select':
+            case 'select-one':
+            case 'select-multiple':
+                // Find matching option
+                const options = Array.from(el.options);
+                const match = options.find(opt => 
+                    opt.value === field.value || 
+                    opt.text.toLowerCase().includes(field.value.toLowerCase())
+                );
+                if (match) {
+                    el.value = match.value;
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    return true;
+                }
+                return false;
+                
+            case 'file':
+                // Cannot programmatically set file inputs for security
+                console.log(`⚠️ File input skipped: ${field.label || field.field_id}`);
+                return false;
+                
+            default:
+                // text, email, phone, tel, textarea, etc.
+                el.focus();
+                el.value = field.value;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                el.blur();
+                return true;
+        }
+    } catch (e) {
+        console.error(`Error filling ${field.field_id}:`, e);
+        return false;
+    }
 }
 
 // Run verification on load

@@ -39,21 +39,27 @@ class FieldState(BaseModel):
     Represents the state of a single form field.
     
     Attributes:
-        field_id: Unique identifier (CSS selector, name, or stable identifier)
+        xpath: XPath selector to uniquely identify the input element
         field_type: The type of form input
         label: Human-readable label for the field
-        value: Current value (None if empty)
+        options: Available options for select/radio fields (None for text inputs)
+        value: Current value (None if empty, filled by LLM generation step)
         confidence: How confident the system is in this value (0.0 to 1.0)
         user_edited: Whether the user has manually modified this field
         required: Whether this field is required
+        skipped: Whether this field was skipped by the automation
+        skip_reason: Reason why the field was skipped (if applicable)
     """
-    field_id: str
+    xpath: str
     field_type: FieldType = FieldType.TEXT
     label: Optional[str] = None
+    options: Optional[List[str]] = None  # For select/radio fields
     value: Optional[str] = None
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     user_edited: bool = False
     required: bool = False
+    skipped: bool = False
+    skip_reason: Optional[str] = None
 
 
 class FormState(BaseModel):
@@ -80,21 +86,21 @@ class FormState(BaseModel):
     extracted_at: datetime = Field(default_factory=datetime.utcnow)
     last_modified: datetime = Field(default_factory=datetime.utcnow)
     
-    def get_field(self, field_id: str) -> Optional[FieldState]:
-        """Retrieve a field by its ID."""
+    def get_field(self, xpath: str) -> Optional[FieldState]:
+        """Retrieve a field by its XPath."""
         for field in self.fields:
-            if field.field_id == field_id:
+            if field.xpath == xpath:
                 return field
         return None
     
-    def update_field(self, field_id: str, value: str, user_edited: bool = False) -> bool:
+    def update_field(self, xpath: str, value: str, user_edited: bool = False) -> bool:
         """
         Update a field's value and mark as modified.
         
         Returns:
             True if field was found and updated, False otherwise.
         """
-        field = self.get_field(field_id)
+        field = self.get_field(xpath)
         if field:
             field.value = value
             field.user_edited = user_edited

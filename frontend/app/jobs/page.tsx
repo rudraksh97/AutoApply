@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { RefreshCw, Download, FileText, AlertTriangle, ExternalLink, Play, Trash2, Plus } from 'lucide-react';
+import { RefreshCw, Download, FileText, AlertTriangle, ExternalLink, Play, Trash2, Plus, Code, Copy, Check } from 'lucide-react';
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +26,34 @@ interface Draft {
     filled_field_count: number;
 }
 
+interface FullDraft {
+    id: string;
+    job_url: string;
+    status: string;
+    form_state: {
+        version: string;
+        job_url: string;
+        page_index: number;
+        fields: Array<{
+            xpath: string;
+            field_type: string;
+            label: string | null;
+            options: string[] | null;
+            value: string | null;
+            confidence: number;
+            required: boolean;
+            skipped: boolean;
+            skip_reason: string | null;
+        }>;
+        extracted_at: string;
+        last_modified: string;
+    };
+    resume_path: string | null;
+    job_details: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
 export default function JobsPage() {
     const [jobs, setJobs] = useState<Job[]>([]);
     const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -35,6 +63,10 @@ export default function JobsPage() {
     const [addingJob, setAddingJob] = useState(false);
     const [addJobOpen, setAddJobOpen] = useState(false);
     const [deletingJob, setDeletingJob] = useState<string | null>(null);
+    const [viewDraftOpen, setViewDraftOpen] = useState(false);
+    const [selectedDraft, setSelectedDraft] = useState<FullDraft | null>(null);
+    const [loadingDraft, setLoadingDraft] = useState(false);
+    const [copied, setCopied] = useState(false);
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -101,6 +133,30 @@ export default function JobsPage() {
             toast.error("Failed to delete job");
         } finally {
             setDeletingJob(null);
+        }
+    };
+
+    const viewDraft = async (draftId: string) => {
+        setLoadingDraft(true);
+        setViewDraftOpen(true);
+        try {
+            const res = await axios.get(`${API_URL}/drafts/${draftId}`);
+            setSelectedDraft(res.data);
+        } catch (e) {
+            console.error(e);
+            toast.error("Failed to load draft details");
+            setViewDraftOpen(false);
+        } finally {
+            setLoadingDraft(false);
+        }
+    };
+
+    const copyToClipboard = () => {
+        if (selectedDraft) {
+            navigator.clipboard.writeText(JSON.stringify(selectedDraft, null, 2));
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+            toast.success("Copied to clipboard");
         }
     };
 
@@ -273,6 +329,18 @@ export default function JobsPage() {
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex items-center justify-end gap-2">
+                                                        {draft && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={() => viewDraft(draft.id)}
+                                                                className="h-8 shadow-sm"
+                                                            >
+                                                                <Code className="h-3 w-3 mr-1" />
+                                                                View JSON
+                                                            </Button>
+                                                        )}
+
                                                         {isDraftReady && draft && (
                                                             <Button
                                                                 size="sm"
@@ -319,6 +387,117 @@ export default function JobsPage() {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* View Draft JSON Dialog */}
+            <Dialog open={viewDraftOpen} onOpenChange={setViewDraftOpen}>
+                <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Code className="h-5 w-5" />
+                            Draft State JSON
+                        </DialogTitle>
+                    </DialogHeader>
+                    
+                    {loadingDraft ? (
+                        <div className="flex items-center justify-center py-12">
+                            <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+                        </div>
+                    ) : selectedDraft ? (
+                        <div className="flex-1 overflow-hidden flex flex-col gap-4">
+                            {/* Summary */}
+                            <div className="grid grid-cols-3 gap-4 text-sm">
+                                <div className="bg-muted/50 rounded-lg p-3">
+                                    <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Status</div>
+                                    <div className="font-medium">{selectedDraft.status}</div>
+                                </div>
+                                <div className="bg-muted/50 rounded-lg p-3">
+                                    <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Total Fields</div>
+                                    <div className="font-medium">{selectedDraft.form_state?.fields?.length || 0}</div>
+                                </div>
+                                <div className="bg-muted/50 rounded-lg p-3">
+                                    <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Filled Fields</div>
+                                    <div className="font-medium">
+                                        {selectedDraft.form_state?.fields?.filter(f => f.value && !f.skipped).length || 0}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Fields Table */}
+                            {selectedDraft.form_state?.fields && selectedDraft.form_state.fields.length > 0 && (
+                                <div className="border rounded-lg overflow-hidden">
+                                    <div className="bg-muted/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide border-b">
+                                        Form Fields
+                                    </div>
+                                    <div className="max-h-[200px] overflow-y-auto">
+                                        <table className="w-full text-sm">
+                                            <thead className="bg-muted/20 text-xs sticky top-0">
+                                                <tr>
+                                                    <th className="px-3 py-2 text-left">Label</th>
+                                                    <th className="px-3 py-2 text-left">Type</th>
+                                                    <th className="px-3 py-2 text-left">Value</th>
+                                                    <th className="px-3 py-2 text-left">XPath</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y">
+                                                {selectedDraft.form_state.fields.map((field, i) => (
+                                                    <tr key={i} className={cn(
+                                                        "hover:bg-muted/20",
+                                                        field.skipped && "bg-yellow-50/50"
+                                                    )}>
+                                                        <td className="px-3 py-2 font-medium">
+                                                            {field.label || <span className="text-muted-foreground italic">No label</span>}
+                                                            {field.required && <span className="text-red-500 ml-1">*</span>}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-muted-foreground">{field.field_type}</td>
+                                                        <td className="px-3 py-2">
+                                                            {field.skipped ? (
+                                                                <span className="text-yellow-600 text-xs">
+                                                                    Skipped: {field.skip_reason}
+                                                                </span>
+                                                            ) : field.value ? (
+                                                                <span className="text-green-700 truncate block max-w-[200px]" title={field.value}>
+                                                                    {field.value}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-muted-foreground italic">Empty</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-xs text-muted-foreground font-mono truncate max-w-[150px]" title={field.xpath}>
+                                                            {field.xpath}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Raw JSON */}
+                            <div className="flex-1 min-h-0 flex flex-col border rounded-lg overflow-hidden">
+                                <div className="bg-muted/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide border-b flex items-center justify-between">
+                                    <span>Raw JSON</span>
+                                    <Button size="sm" variant="ghost" onClick={copyToClipboard} className="h-7 px-2">
+                                        {copied ? (
+                                            <Check className="h-3 w-3 mr-1 text-green-600" />
+                                        ) : (
+                                            <Copy className="h-3 w-3 mr-1" />
+                                        )}
+                                        {copied ? "Copied!" : "Copy"}
+                                    </Button>
+                                </div>
+                                <pre className="flex-1 overflow-auto p-4 text-xs bg-slate-950 text-slate-100 font-mono">
+                                    {JSON.stringify(selectedDraft, null, 2)}
+                                </pre>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="text-center py-8 text-muted-foreground">
+                            No draft data available
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

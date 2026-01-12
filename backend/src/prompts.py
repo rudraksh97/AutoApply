@@ -2,33 +2,97 @@
 Centralized repository for AI/LLM prompts used across the application.
 """
 
-FORM_FILLING_CONTEXT = """
-When filling web forms:
-- Always wait for page elements to fully load before interacting
-- Click directly on input fields before typing to ensure focus
-- For text fields, clear any existing text before entering new values
-- For dropdowns/select elements, click to open then click the matching option
-- For radio buttons and checkboxes, click directly on the option
-- If a field seems unresponsive, scroll it into view and try clicking again
-- After filling a field, verify the value was entered correctly
-- Handle file uploads by clicking the upload button/area and selecting the file
-- Look for and dismiss any cookie consent or pop-up dialogs that may block the form
+# =============================================================================
+# DETERMINISTIC FORM EXTRACTION ENGINE
+# =============================================================================
+# You are a deterministic, browser-native form understanding engine.
+# Your job is to extract form structure (labels + xpaths) WITHOUT filling.
+# A separate LLM step will generate answers based on user profile.
+#
+# PRIORITY: Correctness > Speed > Reliability > Cleverness
+# =============================================================================
 
-IMPORTANT - DO NOT GIVE UP EASILY:
-- If an action fails, try a different approach
-- If you encounter an error, analyze it and try to fix it
-- Keep trying different strategies until you succeed or have exhausted all options
-- Only report failure after trying at least 3 different approaches
+FORM_EXTRACTION_CONTEXT = """
+You are a DETERMINISTIC form EXTRACTION engine. DO NOT FILL ANY FIELDS.
+Your only job is to discover inputs and extract their labels and XPaths.
 
-CRITICAL - LOCATION AUTOCOMPLETE FIELDS (e.g., on Ashby job forms):
-1. Click on the location input field to focus it
-2. Type a city name like "New York" or "Buffalo"
-3. WAIT for 2 seconds - autocomplete suggestions need time to load
-4. After waiting, look for a dropdown list of city suggestions
-5. Click on one of the suggested cities from the dropdown
-6. DO NOT just type text - you MUST click a suggestion from the dropdown
-7. If no suggestions appear, try typing just "New" and wait again
+═══════════════════════════════════════════════════════════════════════════════
+GLOBAL RULES (NON-NEGOTIABLE)
+═══════════════════════════════════════════════════════════════════════════════
+• DO NOT FILL ANY FIELDS - extraction only
+• DO NOT type any values into inputs
+• DO NOT click on form fields (except to dismiss popups)
+• DO NOT submit the form
+• ONLY extract labels and XPaths
+
+═══════════════════════════════════════════════════════════════════════════════
+STEP 1: DISCOVER RELEVANT INPUTS
+═══════════════════════════════════════════════════════════════════════════════
+Scan the DOM once and collect:
+  ✓ <input> elements
+  ✓ <textarea> elements
+  ✓ <select> elements
+
+EXCLUDE from collection:
+  ✗ type="hidden"
+  ✗ disabled elements
+  ✗ elements not visible (offsetParent === null)
+
+═══════════════════════════════════════════════════════════════════════════════
+STEP 2: RESOLVE LABEL (DETERMINISTIC PRIORITY ORDER)
+═══════════════════════════════════════════════════════════════════════════════
+For each input, resolve its label in THIS EXACT ORDER. STOP at first success:
+
+  1. <label for="input.id">           → Explicit label association
+  2. Wrapped <label> ancestor         → Label wrapping the input
+  3. aria-label attribute             → Accessibility label
+  4. aria-labelledby reference        → Referenced label element
+  5. placeholder attribute            → Fallback hint text
+  6. <fieldset><legend>               → Group label
+  7. Immediate preceding <label>      → DOM-adjacent sibling only
+
+LABEL RESOLUTION RULES:
+  • Use textContent, NEVER innerText
+  • Trim all whitespace
+  • Do NOT concatenate unrelated text
+  • If no label found → mark label as null
+
+═══════════════════════════════════════════════════════════════════════════════
+STEP 3: EXTRACT XPATH FOR EACH INPUT
+═══════════════════════════════════════════════════════════════════════════════
+For each input element, extract its FULL XPATH path.
+
+Example XPaths:
+  • //*[@id="email"]
+  • //input[@name="first_name"]
+  • //form//input[@type="text"][1]
+  • //textarea[@placeholder="Tell us about yourself"]
+
+RULES:
+  • Use rooted XPath (starting with //)
+  • Prefer @id or @name attributes when available for stability
+  • Each xpath MUST uniquely identify ONE element
+  • For <select>, also extract all <option> values
+
+═══════════════════════════════════════════════════════════════════════════════
+STEP 4: EXTRACT SELECT OPTIONS
+═══════════════════════════════════════════════════════════════════════════════
+For <select> elements, extract all available options:
+  • Get text content of each <option>
+  • Include in the "options" array
+
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL REMINDERS
+═══════════════════════════════════════════════════════════════════════════════
+⚠️  DO NOT FILL ANY FIELDS
+⚠️  DO NOT TYPE INTO ANY INPUTS
+⚠️  DO NOT SUBMIT THE FORM
+⚠️  ONLY EXTRACT STRUCTURE (labels, xpaths, options)
+⚠️  ALWAYS RETURN JSON OUTPUT
 """
+
+# Legacy alias - keeping for backwards compatibility
+FORM_FILLING_CONTEXT = FORM_EXTRACTION_CONTEXT
 
 SCRAPE_JOB_TASK_TEMPLATE = """
 Go to {job_link}.
@@ -36,154 +100,255 @@ Extract the full job description, responsibilities, and requirements.
 Return the result as a structured string.
 """
 
-PREFILL_JOB_TASK_TEMPLATE = """
-You are a job application assistant. Your task is to PREPARE a job application form but NEVER submit it.
+EXTRACT_FORM_TASK_TEMPLATE = """
+You are a DETERMINISTIC form EXTRACTION engine. DO NOT FILL ANY FIELDS.
 
-TASK: Prefill the job application at {job_link}
+═══════════════════════════════════════════════════════════════════════════════
+TASK: Extract form structure from {job_link}
+═══════════════════════════════════════════════════════════════════════════════
 
-===== APPLICANT INFORMATION =====
-{user_details}
+⚠️  CRITICAL: DO NOT FILL ANY FIELDS  ⚠️
+⚠️  DO NOT TYPE INTO ANY INPUTS  ⚠️
+⚠️  DO NOT SUBMIT THE FORM  ⚠️
+⚠️  EXTRACTION ONLY  ⚠️
 
-===== RESUME FILE =====
-Upload this file when asked for resume: {abs_resume_path}
+═══════════════════════════════════════════════════════════════════════════════
+EXECUTION STEPS
+═══════════════════════════════════════════════════════════════════════════════
 
-===== CRITICAL CONSTRAINT =====
-⚠️ DO NOT SUBMIT THE APPLICATION ⚠️
-⚠️ DO NOT CLICK ANY SUBMIT, APPLY, OR SEND BUTTON ⚠️
-Your job is ONLY to fill the form. The user will review and submit manually later.
+STEP 1 — NAVIGATE
+  • Go to {job_link}
+  • Wait for page to fully load
+  • Dismiss any cookie/popup dialogs (click X or "Accept")
+  • DO NOT interact with form fields
 
-===== STRATEGY: USE RESUME AUTOFILL FIRST =====
-Many job sites can auto-fill fields from your resume. Use this to save time!
+STEP 2 — DISCOVER ALL FORM INPUTS
+  Scan DOM and collect ALL:
+    ✓ <input> elements (visible, not hidden, not disabled)
+    ✓ <textarea> elements (visible)
+    ✓ <select> elements (visible)
 
-STEP 1 - NAVIGATE:
-Go to {job_link}. Wait for the page to fully load.
+  EXCLUDE:
+    ✗ type="hidden"
+    ✗ disabled elements
+    ✗ submit/button elements
 
-STEP 2 - FIND & PRIORITIZE RESUME UPLOAD:
-FIRST, look for a resume upload field or "Autofill from resume" / "Parse resume" button.
-- Upload the resume file FIRST: {abs_resume_path}
-- Wait 2-3 seconds for the site to parse the resume
-- Many fields may auto-populate from the resume
+STEP 3 — FOR EACH INPUT, EXTRACT:
 
-STEP 3 - VALIDATE AUTOFILLED DATA:
-After resume upload, check each pre-filled field:
-- Compare with the APPLICANT INFORMATION above
-- If autofilled data matches profile data → Leave it
-- If autofilled data is WRONG → Clear and enter correct value
-- If a field is still EMPTY → Fill it manually
+  3a. EXTRACT XPATH:
+      Generate a unique XPath that identifies this element.
+      
+      Priority order:
+        1. //*[@id="element_id"] (if has id)
+        2. //input[@name="field_name"] (if has name)
+        3. //tagname[@placeholder="..."] (if has placeholder)
+        4. Full path: //form//div[2]//input[1]
+      
+      RULES:
+        • XPath MUST uniquely identify ONE element
+        • Prefer @id or @name for stability
+        • Test mentally: would this find exactly one element?
 
-STEP 4 - FILL REMAINING EMPTY FIELDS:
-For each input field you encounter:
-a) Identify the field's label or placeholder text
-b) Match it to the applicant information above
-c) Click the field, clear any existing text, then type the value
+  3b. RESOLVE LABEL (priority order, stop at first success):
+      1. <label for="input.id"> → use label's textContent
+      2. Wrapped <label> ancestor → use ancestor's textContent
+      3. aria-label attribute
+      4. aria-labelledby → find referenced element's text
+      5. placeholder attribute
+      6. <fieldset><legend> → use legend text
+      7. Preceding <label> sibling in DOM
 
-Common field mappings:
-- "First Name", "Given Name" → Use first_name value
-- "Last Name", "Surname", "Family Name" → Use last_name value  
-- "Full Name", "Name" → Use full_name value
-- "Email", "Email Address" → Use email value
-- "Phone", "Phone Number", "Mobile", "Cell" → Use phone value
-- "LinkedIn", "LinkedIn URL", "LinkedIn Profile" → Use linkedin value
-- "GitHub", "GitHub URL", "GitHub Profile" → Use github value
-- "Portfolio", "Website", "Personal Website" → Use portfolio value
-- "Location", "City", "Address" → Use location value
-- "Gender" → Use gender value
-- "Race", "Ethnicity", "Race/Ethnicity" → Use race value
-- "Veteran", "Veteran Status" → Use veteran_status value
-- "Disability", "Disability Status" → Use disability_status value
-- "Authorized to work", "Work Authorization" → Use authorized_to_work value
-- "Sponsorship", "Require Sponsorship", "Will you require sponsorship" → Use requires_sponsorship value
-- "Willing to relocate", "Open to relocation", "Can you relocate", "Would you relocate", "Relocation" → ALWAYS select "Yes" or "True" - NEVER select "No" or "False"
-- "Why are you interested", "Why this company", "Why do you want to work here" → Use why_us value
-- "Why are you a good fit", "Tell us about yourself", "Cover letter" → Use great_fit_pitch value
-- "Challenging project", "Tell us about a project" → Use challenging_project value
+  3c. DETERMINE FIELD TYPE:
+      • text, email, phone, tel → "text" or "email" or "phone"
+      • password → "password"
+      • checkbox → "checkbox"
+      • radio → "radio"
+      • file → "file"
+      • <textarea> → "textarea"
+      • <select> → "select"
 
-STEP 5 - HANDLE SPECIAL FIELD TYPES:
-- DROPDOWNS: Click to open the dropdown, then click the matching option
-- RADIO BUTTONS: Click the appropriate option
-- CHECKBOXES: Click to check/uncheck as needed
-- FILE UPLOAD: Click the upload button/area and select the resume file
-- LOCATION/CITY AUTOCOMPLETE (CRITICAL - often fails):
-  1. Click on the Location input field
-  2. Type the city name (e.g., "Buffalo" or "New York")
-  3. WAIT 1-2 seconds for autocomplete suggestions to appear
-  4. Look for a dropdown with matching cities
-  5. Click on the matching city option from the dropdown
-  6. Verify the field now shows the selected location
-  If no dropdown appears, try typing more characters or a different city format
+  3d. FOR <select> ELEMENTS — EXTRACT OPTIONS:
+      Get ALL <option> elements and their text values.
+      Return as "options" array.
 
-STEP 6 - FORM VALIDATION (MANDATORY):
-Scroll through the ENTIRE form from top to bottom and validate EACH of these:
+  3e. DETERMINE IF REQUIRED:
+      • Has "required" attribute → true
+      • Label contains "*" → true
+      • aria-required="true" → true
+      • Otherwise → false
 
-VALIDATION CHECKLIST:
-☐ Name field - Is it filled with the applicant's name?
-☐ Email field - Is it filled with a valid email?
-☐ Phone field - Is it filled with a phone number?
-☐ Location field - Does it show a selected city (not empty)?
-☐ Resume - Is the file uploaded (shows filename)?
-☐ LinkedIn/GitHub/Portfolio - Are optional but fill if present
-☐ Work Authorization - Is a selection made?
-☐ Required questions - Are all required text boxes filled?
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════════════════════════════════════════
 
-HOW TO CHECK:
-- Look at each field visually - does it have a value?
-- Fields with * or "required" MUST have values
-- Empty fields will appear blank or show placeholder text like "Enter..."
+Return JSON with this EXACT structure:
 
-IF ANY REQUIRED FIELD IS EMPTY:
-→ Go back to that field and fill it
-→ For Location: follow the autocomplete steps (type city, wait, click suggestion)
-→ Re-run this validation checklist
-
-STEP 7 - EXTRACT FORM STATE (FINAL STEP):
-⚠️ DO NOT SUBMIT - INSTEAD, extract and report the form state ⚠️
-
-For each field you filled, extract:
-- field_id: A **UNIQUE** identifier for the field. Prioritize `id` attribute, then `name` attribute, then a unique CSS selector (e.g., `input[type='text']:nth-of-type(1)`). **CRITICAL: No two fields can have the same field_id.**
-- field_type: text, email, select, checkbox, radio, file, textarea
-- label: The field's visible label
-- value: The value you entered
-- required: Whether the field was required
-
-Return your result as a JSON object with this structure:
 {{
-  "status": "prefilled",
+  "status": "extracted",
   "page_url": "{job_link}",
   "fields": [
-    {{"field_id": "first_name", "field_type": "text", "label": "First Name", "value": "John", "confidence": 0.95, "required": true}},
-    {{"field_id": "email", "field_type": "email", "label": "Email", "value": "john@example.com", "confidence": 0.95, "required": true}},
-    ...
+    {{
+      "xpath": "//*[@id='email']",
+      "field_type": "email",
+      "label": "Email Address",
+      "required": true,
+      "options": null
+    }},
+    {{
+      "xpath": "//select[@name='country']",
+      "field_type": "select",
+      "label": "Country",
+      "required": true,
+      "options": ["United States", "Canada", "United Kingdom", "Other"]
+    }},
+    {{
+      "xpath": "//textarea[@placeholder='Tell us about yourself']",
+      "field_type": "textarea",
+      "label": "Why are you interested in this role?",
+      "required": false,
+      "options": null
+    }}
   ],
-  "validation_passed": true,
-  "notes": "Any issues or observations about the form"
+  "total_fields": <number of fields found>,
+  "notes": "<any observations about the form>"
 }}
 
-IMPORTANT: Return the JSON directly in your final response text. 
-⚠️ DO NOT create a file, artifact, or attachment. 
-⚠️ DO NOT say "see attached file". 
-⚠️ The JSON must be in the text response itself.
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL RULES
+═══════════════════════════════════════════════════════════════════════════════
+⚠️  DO NOT include "value" in the output - we only extract structure
+⚠️  DO NOT fill any fields
+⚠️  DO NOT type into any inputs
+⚠️  DO NOT click on form fields (only dismiss popups)
+⚠️  ALWAYS return JSON - never just text
+⚠️  Extract ALL visible form fields, not just some
 
-===== IMPORTANT GUIDELINES =====
-- Fill ALL required fields - don't leave them empty
-- LOCATION is usually a dropdown that requires clicking to open and selecting a city
-- For optional fields with no matching data, leave blank or enter "N/A"
-- For "How did you hear about us?" type questions, select "Job Board", "Other", or similar
-- If a field seems unresponsive, try clicking it again before typing
-- Take your time - accuracy is more important than speed
-- NEVER click Submit, Apply, Send Application, or any similar button
-- The user will review the form and submit it manually
+If you cannot extract a field's label, set label to null but still include the field.
+If you cannot determine xpath, use the best approximation with a note.
 
-===== REMEMBER =====
-Your task is complete when:
-1. All fields are filled correctly
-2. You have extracted the form state
-3. You have NOT clicked submit
-
-DO NOT SUBMIT THE APPLICATION.
+═══════════════════════════════════════════════════════════════════════════════
+REMEMBER
+═══════════════════════════════════════════════════════════════════════════════
+✓ Navigate to page
+✓ Discover all form inputs
+✓ Extract xpath, label, field_type, required, options for each
+✓ Return JSON with all fields
+✗ DO NOT fill any values
+✗ DO NOT type into inputs
+✗ DO NOT submit the form
 """
 
-# Legacy alias for backwards compatibility - will be removed in future version
-APPLY_JOB_TASK_TEMPLATE = PREFILL_JOB_TASK_TEMPLATE
+# Legacy aliases for backwards compatibility
+PREFILL_JOB_TASK_TEMPLATE = EXTRACT_FORM_TASK_TEMPLATE
+APPLY_JOB_TASK_TEMPLATE = EXTRACT_FORM_TASK_TEMPLATE
+
+
+# =============================================================================
+# LLM ANSWER GENERATION PROMPT
+# =============================================================================
+# After form extraction, this prompt generates answers based on user profile
+
+GENERATE_FORM_ANSWERS_PROMPT = """
+You are a job application assistant. Generate appropriate answers for form fields based on the applicant's profile.
+
+═══════════════════════════════════════════════════════════════════════════════
+JOB DETAILS
+═══════════════════════════════════════════════════════════════════════════════
+{job_description}
+
+═══════════════════════════════════════════════════════════════════════════════
+APPLICANT PROFILE
+═══════════════════════════════════════════════════════════════════════════════
+{user_profile}
+
+═══════════════════════════════════════════════════════════════════════════════
+FORM FIELDS TO FILL
+═══════════════════════════════════════════════════════════════════════════════
+{form_fields}
+
+═══════════════════════════════════════════════════════════════════════════════
+INSTRUCTIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+For each field, generate an appropriate value based on the applicant's profile.
+
+FIELD MAPPING RULES:
+┌──────────────────────────────┬────────────────────────────────────────────┐
+│ Label Contains               │ Use This Value                             │
+├──────────────────────────────┼────────────────────────────────────────────┤
+│ first name, given name       │ Profile first_name                         │
+│ last name, surname           │ Profile last_name                          │
+│ full name, name              │ Profile first_name + " " + last_name       │
+│ email                        │ Profile email                              │
+│ phone, mobile, cell, tel     │ Profile phone                              │
+│ location, city, address      │ Profile location                           │
+│ linkedin                     │ Profile linkedin URL                       │
+│ github                       │ Profile github URL                         │
+│ portfolio, website           │ Profile portfolio URL                      │
+│ gender                       │ Profile gender                             │
+│ race, ethnicity              │ Profile race                               │
+│ veteran                      │ Profile veteran_status                     │
+│ disability                   │ Profile disability_status                  │
+│ work authorization           │ "Yes" if authorized, else "No"             │
+│ sponsorship, visa            │ "Yes" if requires sponsorship, else "No"   │
+│ relocate, relocation         │ "Yes"                                      │
+│ how did you hear             │ "Job Board" or "LinkedIn" or "Other"       │
+│ salary, compensation         │ null (leave for user)                      │
+│ start date, availability     │ null (leave for user)                      │
+└──────────────────────────────┴────────────────────────────────────────────┘
+
+FOR OPEN-ENDED QUESTIONS (why interested, tell us about yourself, etc.):
+  • Write a concise, professional response (2-4 sentences)
+  • Reference the specific company/role from job details
+  • Highlight relevant experience from profile
+  • Be genuine and specific, not generic
+
+FOR <select> FIELDS:
+  • Choose from the available "options" array
+  • Match semantically (e.g., "Yes" matches "Yes, I am authorized")
+  • Return the exact option text that should be selected
+
+FOR CHECKBOX/RADIO FIELDS:
+  • Return "true" or "false" for checkboxes
+  • Return the option value for radio buttons
+
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════════════════════════════════════════
+
+Return a JSON array with values for each field:
+
+[
+  {{
+    "xpath": "<xpath from input>",
+    "value": "<generated value>",
+    "confidence": <0.0-1.0>,
+    "skip": <true if should be left for user>,
+    "skip_reason": "<reason if skipped>"
+  }}
+]
+
+CONFIDENCE LEVELS:
+  • 1.0: Direct profile match (name, email, phone)
+  • 0.8: Clear semantic match (work auth → Yes/No)
+  • 0.6: Generated response (why interested, cover letter)
+  • 0.0: Cannot determine / skip for user
+
+SET skip=true FOR:
+  • Salary/compensation questions
+  • Start date/availability
+  • Legal agreements/consent checkboxes
+  • Questions requiring information not in profile
+  • Ambiguous fields
+
+═══════════════════════════════════════════════════════════════════════════════
+IMPORTANT
+═══════════════════════════════════════════════════════════════════════════════
+• Return ONLY the JSON array
+• Include ALL fields from input (even if skipped)
+• Use null for value if skip=true
+• Match xpath exactly from input
+"""
 
 RESUME_OPTIMIZER_PROMPT_TEMPLATE = """
 You are an expert ATS optimizer.

@@ -4,16 +4,23 @@ Core service layer for the AutoApply application.
 This module contains the business logic for orchestrating the draft-first
 workflow, coordinating between storage, browser automation, and resume generation.
 
+WORKFLOW:
+1. Browser agent extracts form structure (labels, xpaths) - NO FILLING
+2. LLM generates answers based on user profile and job description
+3. Draft is saved with values for extension to fill
+
 CRITICAL: This service NEVER submits applications. All operations result in
 saved drafts that users can open and complete manually.
 """
 
+import json
 import logging
-from typing import Callable, Optional
+from typing import Callable, Optional, List
 from datetime import datetime
 from src.interfaces import JobManagerProtocol, BrowserAgentProtocol, ResumeBuilderProtocol
 from src.draft_manager import DraftManager
 from api.schemas.form_state import FormState, FieldState, FieldType, DraftStatus
+from src.prompts import GENERATE_FORM_ANSWERS_PROMPT
 import os
 
 def get_user_profile_text() -> str:
@@ -210,27 +217,34 @@ class DraftPreparationService:
                 pdf_path = self._generate_resume(job_link, job_description, log_callback)
             
             self.draft_manager.update_draft(draft_id, resume_path=pdf_path)
-            self.job_manager.update_job(job_link, pdf_path=pdf_path, status="Running - Prefilling")
+            self.job_manager.update_job(job_link, pdf_path=pdf_path, status="Running - Extracting Form")
             
-            # Step 3: Prefill Form (NO SUBMISSION)
-            log_callback("📝 Prefilling application form...")
+            # Step 3: Extract Form Structure (NO FILLING)
+            log_callback("🔍 Extracting form structure...")
             
-            # Special handling for Ashby: prefill on /application URL
-            prefill_link = job_link
+            # Special handling for Ashby: extract from /application URL
+            extract_link = job_link
             if "jobs.ashbyhq.com" in job_link and "/application" not in job_link:
-                 prefill_link = job_link.rstrip("/") + "/application"
-                 log_callback(f"ℹ️ Ashby link detected. Prefilling at: {prefill_link}")
+                 extract_link = job_link.rstrip("/") + "/application"
+                 log_callback(f"ℹ️ Ashby link detected. Extracting from: {extract_link}")
 
-            prefill_result = await self.browser_agent.prefill_form(
-                prefill_link, 
-                pdf_path, 
-                user_details_text
+            extraction_result = await self.browser_agent.extract_form(extract_link)
+            
+            # Step 4: Convert to FormState (structure only, no values)
+            form_state = self._extract_form_structure(job_link, extraction_result)
+            field_count = len(form_state.fields)
+            log_callback(f"📋 Found {field_count} form fields")
+            
+            # Step 5: Generate answers using LLM
+            self.job_manager.update_job(job_link, status="Running - Generating Answers")
+            form_state = await self._generate_form_answers(
+                form_state,
+                job_description,
+                user_details_text,
+                log_callback
             )
             
-            # Step 4: Extract and save FormState
-            form_state = self._extract_form_state(job_link, prefill_result)
-            
-            # Step 5: Save final draft
+            # Step 6: Save final draft
             self.draft_manager.update_draft(
                 draft_id,
                 status=DraftStatus.DRAFT_SAVED,
@@ -240,13 +254,13 @@ class DraftPreparationService:
             # Update legacy job manager - clear any previous error message
             self.job_manager.update_job(job_link, status="Draft Saved", error_message="")
             
-            validation_passed = prefill_result.get("validation_passed", False)
-            field_count = len(form_state.fields)
+            filled_count = sum(1 for f in form_state.fields if f.value and not f.skipped)
+            skipped_count = sum(1 for f in form_state.fields if f.skipped)
             
-            if validation_passed:
-                log_callback(f"✅ Draft saved with {field_count} fields. Ready for manual review.")
+            if skipped_count == 0:
+                log_callback(f"✅ Draft saved with {filled_count}/{field_count} fields filled. Ready for review.")
             else:
-                log_callback(f"⚠️ Draft saved with {field_count} fields. Some fields may need attention.")
+                log_callback(f"⚠️ Draft saved: {filled_count} filled, {skipped_count} need your input.")
             
             return draft_id
 
@@ -269,24 +283,46 @@ class DraftPreparationService:
         log_callback(f"✅ Resume generated: {pdf_path}")
         return pdf_path
     
-    def _extract_form_state(self, job_link: str, prefill_result: dict) -> FormState:
-        """Convert agent prefill result to FormState model."""
+    def _extract_form_structure(self, job_link: str, extraction_result: dict) -> FormState:
+        """
+        Convert browser agent extraction result to FormState model.
+        This only contains structure (xpath, label, options) - no values yet.
+        """
         fields = []
         
-        for field_data in prefill_result.get("fields", []):
+        # Map common field_type variations to FieldType enum values
+        field_type_mapping = {
+            "text": FieldType.TEXT,
+            "email": FieldType.EMAIL,
+            "phone": FieldType.PHONE,
+            "tel": FieldType.PHONE,
+            "select": FieldType.SELECT,
+            "dropdown": FieldType.SELECT,
+            "checkbox": FieldType.CHECKBOX,
+            "radio": FieldType.RADIO,
+            "file": FieldType.FILE,
+            "textarea": FieldType.TEXTAREA,
+            "hidden": FieldType.HIDDEN,
+            "password": FieldType.TEXT,
+        }
+        
+        for field_data in extraction_result.get("fields", []):
             field_type_str = field_data.get("field_type", "text").lower()
-            try:
-                field_type = FieldType(field_type_str)
-            except ValueError:
-                field_type = FieldType.TEXT
+            field_type = field_type_mapping.get(field_type_str, FieldType.TEXT)
+            
+            # Get xpath - fallback to field_id for backwards compatibility
+            xpath = field_data.get("xpath") or field_data.get("field_id", "//unknown")
             
             fields.append(FieldState(
-                field_id=field_data.get("field_id", "unknown"),
+                xpath=xpath,
                 field_type=field_type,
                 label=field_data.get("label"),
-                value=field_data.get("value"),
-                confidence=field_data.get("confidence", 0.5),
-                required=field_data.get("required", False)
+                options=field_data.get("options"),  # For select/radio fields
+                value=None,  # No value yet - will be filled by LLM
+                confidence=0.0,
+                required=field_data.get("required", False),
+                skipped=False,
+                skip_reason=None
             ))
         
         return FormState(
@@ -295,6 +331,89 @@ class DraftPreparationService:
             extracted_at=datetime.utcnow(),
             last_modified=datetime.utcnow()
         )
+    
+    async def _generate_form_answers(
+        self,
+        form_state: FormState,
+        job_description: str,
+        user_profile_text: str,
+        log_callback: Callable[[str], None] = print
+    ) -> FormState:
+        """
+        Use LLM to generate answers for each form field based on user profile.
+        Updates the FormState with values and confidence scores.
+        """
+        from langchain_openai import ChatOpenAI
+        
+        # Prepare fields for LLM (convert to simple dict format)
+        fields_for_llm = []
+        for field in form_state.fields:
+            fields_for_llm.append({
+                "xpath": field.xpath,
+                "field_type": field.field_type.value,
+                "label": field.label,
+                "required": field.required,
+                "options": field.options
+            })
+        
+        # Build prompt
+        prompt = GENERATE_FORM_ANSWERS_PROMPT.format(
+            job_description=job_description[:2000] if job_description else "No description available",
+            user_profile=user_profile_text,
+            form_fields=json.dumps(fields_for_llm, indent=2)
+        )
+        
+        try:
+            # Use OpenRouter for LLM
+            import os
+            llm = ChatOpenAI(
+                model="google/gemini-2.0-flash-001",
+                openai_api_key=os.getenv("OPENROUTER_API_KEY"),
+                openai_api_base="https://openrouter.ai/api/v1",
+                temperature=0.3
+            )
+            
+            log_callback("🤖 Generating form answers with LLM...")
+            response = await llm.ainvoke(prompt)
+            response_text = response.content
+            
+            # Parse LLM response
+            try:
+                # Try to extract JSON array from response
+                import re
+                json_match = re.search(r'\[.*\]', response_text, re.DOTALL)
+                if json_match:
+                    answers = json.loads(json_match.group())
+                else:
+                    answers = json.loads(response_text)
+            except json.JSONDecodeError:
+                log_callback("⚠️ Failed to parse LLM response as JSON")
+                return form_state
+            
+            # Map answers back to form state
+            answer_map = {a.get("xpath"): a for a in answers}
+            
+            for field in form_state.fields:
+                if field.xpath in answer_map:
+                    answer = answer_map[field.xpath]
+                    field.value = answer.get("value")
+                    field.confidence = answer.get("confidence", 0.5)
+                    field.skipped = answer.get("skip", False)
+                    field.skip_reason = answer.get("skip_reason")
+            
+            form_state.last_modified = datetime.utcnow()
+            filled_count = sum(1 for f in form_state.fields if f.value and not f.skipped)
+            log_callback(f"✅ Generated answers for {filled_count}/{len(form_state.fields)} fields")
+            
+            return form_state
+            
+        except Exception as e:
+            log_callback(f"⚠️ LLM answer generation failed: {e}")
+            return form_state
+    
+    # Legacy alias for backwards compatibility
+    def _extract_form_state(self, job_link: str, prefill_result: dict) -> FormState:
+        return self._extract_form_structure(job_link, prefill_result)
 
     async def open_draft_in_browser(
         self,

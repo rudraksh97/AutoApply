@@ -15,7 +15,14 @@ import os
 from typing import Optional
 
 from dotenv import load_dotenv
-from src.prompts import SCRAPE_JOB_TASK_TEMPLATE, PREFILL_JOB_TASK_TEMPLATE, FORM_FILLING_CONTEXT
+from src.prompts import (
+    SCRAPE_JOB_TASK_TEMPLATE, 
+    EXTRACT_FORM_TASK_TEMPLATE,
+    FORM_EXTRACTION_CONTEXT,
+    # Legacy aliases
+    PREFILL_JOB_TASK_TEMPLATE,
+    FORM_FILLING_CONTEXT
+)
 
 load_dotenv()
 
@@ -93,15 +100,14 @@ class BrowserAgent:
         """Generates the LLM task string for job scraping."""
         return SCRAPE_JOB_TASK_TEMPLATE.format(job_link=job_link)
 
+    def _create_extract_task(self, job_link: str) -> str:
+        """Generates the LLM task string for form extraction (no filling)."""
+        return EXTRACT_FORM_TASK_TEMPLATE.format(job_link=job_link)
+
     def _create_prefill_task(self, job_link: str, resume_path: str, user_details: str) -> str:
-        """Generates the LLM task string for form prefilling (no submission)."""
-        # Ensure resume path is absolute
-        abs_resume_path = os.path.abspath(resume_path)
-        return PREFILL_JOB_TASK_TEMPLATE.format(
-            job_link=job_link,
-            user_details=user_details,
-            abs_resume_path=abs_resume_path
-        )
+        """DEPRECATED: Use _create_extract_task instead."""
+        # Now just extracts, doesn't fill
+        return self._create_extract_task(job_link)
 
     def _create_rehydrate_task(self, job_link: str, form_state: dict) -> str:
         """Generates the LLM task string for reopening a saved draft."""
@@ -143,7 +149,7 @@ class BrowserAgent:
                 max_actions_per_step=5,  # Allow more actions per reasoning step
                 max_failures=10,  # Keep trying on errors - don't give up easily
                 max_steps=50,  # Allow more steps to complete complex forms
-                extend_system_message=FORM_FILLING_CONTEXT,  # Inject form-filling guidance
+                extend_system_message=FORM_EXTRACTION_CONTEXT,  # Inject form extraction guidance
                 available_file_paths=self.available_file_paths,  # Allow file uploads
             )
             result = await agent.run()
@@ -165,34 +171,29 @@ class BrowserAgent:
         task = self._create_scrape_task(job_link)
         return await self._run_agent(task)
 
-    async def prefill_form(self, job_link: str, resume_path: str, user_details: str) -> dict:
+    async def extract_form(self, job_link: str) -> dict:
         """
-        Opens a job application form and prefills it WITHOUT submitting.
+        Opens a job application form and extracts its structure WITHOUT filling.
         
-        This is the primary method for the draft-first workflow. It fills out
-        all form fields based on user profile data but never clicks submit.
+        This is the primary method for the new extraction-first workflow.
+        The agent only discovers form fields and extracts labels/xpaths.
+        A separate LLM step will generate the answers.
 
         Args:
             job_link: The URL of the job posting.
-            resume_path: Path to the tailored resume PDF.
-            user_details: Text info used to fill form fields.
 
         Returns:
             A dict containing:
-            - status: "prefilled" on success
-            - fields: List of field states with IDs, types, values, confidence
-            - validation_passed: Whether all required fields were filled
+            - status: "extracted" on success
+            - fields: List of field structures with xpath, label, field_type, options
+            - total_fields: Number of fields found
             - notes: Any observations about the form
             
         Raises:
-            Exception: If form filling fails
+            Exception: If form extraction fails
             json.JSONDecodeError: If agent returns malformed JSON
         """
-        # Make resume available for upload
-        abs_resume_path = os.path.abspath(resume_path)
-        self.available_file_paths = [abs_resume_path]
-        
-        task = self._create_prefill_task(job_link, resume_path, user_details)
+        task = self._create_extract_task(job_link)
         result = await self._run_agent(task)
         
         # Parse the JSON result from the agent
@@ -211,12 +212,21 @@ class BrowserAgent:
             
             # If all parsing fails, return fallback
             return {
-                "status": "prefilled",
+                "status": "extracted",
                 "fields": [],
-                "validation_passed": False,
+                "total_fields": 0,
                 "notes": result,
                 "raw_response": True
             }
+
+    async def prefill_form(self, job_link: str, resume_path: str, user_details: str) -> dict:
+        """
+        DEPRECATED: Use extract_form instead.
+        
+        This method now just calls extract_form for backwards compatibility.
+        The filling is now done by the extension using LLM-generated values.
+        """
+        return await self.extract_form(job_link)
 
     async def open_draft(self, job_link: str, form_state: dict) -> dict:
         """
