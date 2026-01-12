@@ -17,7 +17,7 @@ from src.rss_watcher import RSSWatcher
 from src.infrastructure import JobManagerEventPublisher, JobManagerDeduplicator
 from src.job_manager import JobManager
 from src.config import ConfigManager
-from src.services import JobApplicationService, CURRENT_RESUME_INFO
+from src.services import JobApplicationService, get_user_profile_text
 from src.agent import BrowserAgent
 from src.resume_builder import ResumeBuilder
 
@@ -91,7 +91,8 @@ async def automation_loop():
                     url = job.get('url')
                     if url:
                         logging.info(f"Automated processing start for: {url}")
-                        await service.process_job(url, CURRENT_RESUME_INFO, log_callback=logging.info)
+                        user_profile_text = get_user_profile_text()
+                        await service.process_job(url, user_profile_text, log_callback=logging.info)
             else:
                 logging.debug("No pending jobs to process.")
                 

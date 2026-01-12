@@ -16,13 +16,91 @@ from src.draft_manager import DraftManager
 from api.schemas.form_state import FormState, FieldState, FieldType, DraftStatus
 import os
 
-# Preserving the constant from main.py for behavior compatibility
-# In a future refactor, this should move to ProfileManager or Config
-CURRENT_RESUME_INFO = """
-Software Engineer with 5 years of experience in Python, AWS, and Web Development.
-Education: BS in Computer Science.
-Key Skills: Python, Django, React, Docker, Kubernetes.
-"""
+def get_user_profile_text() -> str:
+    """
+    Converts the user's profile into a structured text format for form filling.
+    This replaces the hardcoded CURRENT_RESUME_INFO with actual profile data.
+    """
+    from src.profile_manager import ProfileManager
+    pm = ProfileManager()
+    profile = pm.get_profile()
+    
+    basics = profile.get("basics", {})
+    urls = profile.get("urls", {})
+    demographics = profile.get("demographics", {})
+    work_auth = profile.get("work_auth", {})
+    education = profile.get("education", [])
+    experience = profile.get("experience", [])
+    
+    # Build structured text
+    lines = []
+    
+    # Personal Info
+    lines.append("=== APPLICANT INFORMATION ===")
+    lines.append(f"Full Name: {basics.get('first_name', '')} {basics.get('last_name', '')}")
+    lines.append(f"Email: {basics.get('email', '')}")
+    lines.append(f"Phone: {basics.get('phone', '')}")
+    lines.append(f"Location: {basics.get('location', '')}")
+    
+    # URLs
+    if urls:
+        lines.append("")
+        lines.append("=== LINKS ===")
+        if urls.get("linkedin"):
+            lines.append(f"LinkedIn: {urls.get('linkedin')}")
+        if urls.get("github"):
+            lines.append(f"GitHub: {urls.get('github')}")
+        if urls.get("portfolio"):
+            lines.append(f"Portfolio: {urls.get('portfolio')}")
+    
+    # Demographics
+    if demographics:
+        lines.append("")
+        lines.append("=== DEMOGRAPHICS ===")
+        lines.append(f"Gender: {demographics.get('gender', '')}")
+        lines.append(f"Race/Ethnicity: {demographics.get('race', '')}")
+        lines.append(f"Veteran Status: {demographics.get('veteran', '')}")
+        lines.append(f"Disability Status: {demographics.get('disability', '')}")
+    
+    # Work Authorization
+    if work_auth:
+        lines.append("")
+        lines.append("=== WORK AUTHORIZATION ===")
+        lines.append(f"Authorized to work in US: {'Yes' if work_auth.get('authorized_in_us') else 'No'}")
+        lines.append(f"Requires sponsorship: {'Yes' if work_auth.get('requires_sponsorship') else 'No'}")
+    
+    # Education
+    if education:
+        lines.append("")
+        lines.append("=== EDUCATION ===")
+        for edu in education:
+            lines.append(f"- {edu.get('degree', '')} in {edu.get('field_of_study', '')} from {edu.get('university', '')} ({edu.get('graduation_year', '')})")
+    
+    # Experience
+    if experience:
+        lines.append("")
+        lines.append("=== EXPERIENCE ===")
+        for exp in experience:
+            lines.append(f"- {exp.get('role', '')} at {exp.get('company', '')} ({exp.get('start_date', '')} - {exp.get('end_date', '')})")
+            if exp.get('description'):
+                lines.append(f"  {exp.get('description')}")
+    
+    # Additional fields
+    if profile.get("great_fit_pitch"):
+        lines.append("")
+        lines.append("=== WHY I'M A GREAT FIT ===")
+        lines.append(profile.get("great_fit_pitch"))
+    
+    if profile.get("challenging_project"):
+        lines.append("")
+        lines.append("=== CHALLENGING PROJECT ===")
+        lines.append(profile.get("challenging_project"))
+    
+    return "\n".join(lines)
+
+
+# Legacy constant for backwards compatibility - now calls the function
+CURRENT_RESUME_INFO = None  # Will be replaced at runtime
 
 
 class DraftPreparationService:
@@ -187,7 +265,7 @@ class DraftPreparationService:
         """Generate a tailored resume PDF."""
         self.job_manager.update_job(job_link, status="Running - Generating Resume")
         job_id = abs(hash(job_link))
-        pdf_path = self.resume_builder.build(job_description, CURRENT_RESUME_INFO, job_id=job_id)
+        pdf_path = self.resume_builder.build(job_description, get_user_profile_text(), job_id=job_id)
         log_callback(f"✅ Resume generated: {pdf_path}")
         return pdf_path
     
