@@ -19,7 +19,7 @@ TEST_JOBS = [
     },
     {
         "title": "Role at Pear VC",
-        "link": "https://jobs.ashbyhq.com/Pear-VC/eeb2d80c-a65e-4318-b769-1c88b026cbc4/application",
+        "link": "https://jobs.ashbyhq.com/Pear-VC/eeb2d80c-a65e-4318-b769-1c88b026cbc4",
         "company": "Pear VC",
         "description": "Join Pear VC, a leading early-stage venture capital firm.",
     },
