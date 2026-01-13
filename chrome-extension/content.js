@@ -1,15 +1,23 @@
 /**
  * AutoApply Content Script - Production-Grade Form Filler
  * 
- * A deterministic executor of declarative JSON form specifications.
- * Follows the principles of Simplify and JobRight for reliability and safety.
+ * Architecture: Clean separation of concerns with single-responsibility classes
  * 
- * CORE PRINCIPLES:
- * 1. JSON is the source of truth for element identification
- * 2. XPath resolution with validation, not discovery
- * 3. Conservative filling - skip when uncertain
- * 4. Idempotent - safe to run multiple times
- * 5. Never submits forms under any circumstances
+ * ┌─────────────────────────────────────────────────────────────────────────────┐
+ * │  CONFIG          - All configurable constants                               │
+ * │  Utils           - Pure utility functions                                   │
+ * │  FillReport      - Logging and reporting                                    │
+ * │  XPathResolver   - DOM element resolution                                   │
+ * │  ElementValidator- Element validation against spec                          │
+ * │  DropdownDetector- Runtime dropdown detection                               │
+ * │  OptionMatcher   - Fuzzy option matching with scoring                       │
+ * │  EventDispatcher - Framework-compatible event dispatching                   │
+ * │  IdempotencyChecker - Check if fields already filled                        │
+ * │  FieldFillers    - Strategy pattern for different field types               │
+ * │  SubmissionBlocker - Safety: prevent accidental submissions                 │
+ * │  UIFeedback      - User notifications and highlights                        │
+ * │  FormFiller      - Main orchestrator                                        │
+ * └─────────────────────────────────────────────────────────────────────────────┘
  */
 
 // ============================================================================
@@ -20,21 +28,118 @@ const CONFIG = {
     API_BASE: "http://localhost:8000",
     
     // Timing (ms)
-    FIELD_FILL_DELAY: 600,          // Delay between fields for visual feedback
-    TYPING_DELAY_PER_CHAR: 25,      // Base typing speed
-    TYPING_CHUNK_THRESHOLD: 50,     // Characters before chunking
-    DROPDOWN_OPEN_DELAY: 250,       // Wait for dropdown to open
-    VALIDATION_TIMEOUT: 100,        // Time for validation checks
+    TIMING: {
+        FIELD_FILL_DELAY: 600,
+        TYPING_DELAY_PER_CHAR: 25,
+        DROPDOWN_OPEN_DELAY: 250,
+        VALIDATION_TIMEOUT: 100,
+        RETRY_DELAY: 200,
+    },
     
-    // Validation thresholds
-    MIN_LABEL_MATCH_RATIO: 0.6,     // Minimum similarity for label matching
-    MAX_SECTION_DISTANCE: 5,        // Max DOM levels to find section context
+    // Thresholds
+    THRESHOLDS: {
+        MIN_LABEL_MATCH: 0.6,
+        GOOD_MATCH: 0.8,          // Stop searching if we find this
+        MIN_ACCEPTABLE_MATCH: 0.3, // Minimum score to accept
+        MAX_SECTION_DISTANCE: 5,
+    },
     
-    // Safety
+    // Safety patterns
     BLOCKED_BUTTON_PATTERNS: [
         /submit/i, /apply/i, /send/i, /next/i, /continue/i,
         /finish/i, /complete/i, /confirm/i, /save.*submit/i
-    ]
+    ],
+    
+    // Dropdown option selectors (order matters - most specific first)
+    DROPDOWN_OPTION_SELECTORS: [
+        // ARIA-based (most reliable)
+        '[role="option"]',
+        '[role="menuitem"]',
+        'ul[role="listbox"] li',
+        
+        // React Select
+        '[class*="select__option"]',
+        '[class*="SelectOption"]',
+        
+        // Material UI
+        '[class*="MuiMenuItem"]',
+        '[class*="MuiOption"]',
+        'div[role="presentation"] li',
+        
+        // Ant Design
+        '.rc-virtual-list-holder-inner > div',
+        
+        // Headless UI
+        '[class*="ComboboxOption"]',
+        '[class*="Listbox-option"]',
+        
+        // Bootstrap
+        '[class*="dropdown-item"]',
+        
+        // Generic patterns
+        '[class*="option"]:not([class*="options"])',
+        '[class*="Option"]:not([class*="Options"])',
+        '[class*="MenuItem"]',
+        '[class*="menu-item"]',
+        '[class*="dropdown__option"]',
+        '[class*="listbox-option"]',
+        '[class*="autocomplete-option"]',
+        '[data-testid*="option"]',
+        'li[data-value]',
+    ],
+    
+    // Dropdown indicator selectors (for detection)
+    DROPDOWN_INDICATORS: [
+        '[class*="indicator"]',
+        '[class*="arrow"]',
+        '[class*="caret"]',
+        '[class*="chevron"]',
+        'svg[class*="dropdown"]',
+    ],
+    
+    // Class names that indicate a dropdown
+    DROPDOWN_CLASS_PATTERNS: [
+        'select', 'dropdown', 'combobox', 'listbox', 'autocomplete',
+        'react-select', 'mui-select', 'ant-select', 'choices',
+        'selectize', 'select2', 'chosen', 'typeahead'
+    ],
+};
+
+// ============================================================================
+// UTILITIES
+// ============================================================================
+
+const Utils = {
+    sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    },
+    
+    normalizeText(text) {
+        return (text || '').toLowerCase().trim().replace(/\s+/g, ' ');
+    },
+    
+    /**
+     * Calculate similarity between two strings (0-1)
+     */
+    calculateSimilarity(str1, str2) {
+        const s1 = this.normalizeText(str1);
+        const s2 = this.normalizeText(str2);
+        
+        if (s1 === s2) return 1;
+        if (!s1 || !s2) return 0;
+        
+        // Containment check
+        if (s1.includes(s2) || s2.includes(s1)) {
+            return Math.min(s1.length, s2.length) / Math.max(s1.length, s2.length);
+        }
+        
+        // Word overlap
+        const words1 = new Set(s1.split(' '));
+        const words2 = new Set(s2.split(' '));
+        const intersection = [...words1].filter(w => words2.has(w));
+        
+        return intersection.length / Math.max(words1.size, words2.size);
+    },
 };
 
 // ============================================================================
@@ -112,46 +217,12 @@ class FillReport {
 }
 
 // ============================================================================
-// UTILITIES
-// ============================================================================
-
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function normalizeText(text) {
-    return (text || '').toLowerCase().trim().replace(/\s+/g, ' ');
-}
-
-function calculateSimilarity(str1, str2) {
-    const s1 = normalizeText(str1);
-    const s2 = normalizeText(str2);
-    
-    if (s1 === s2) return 1;
-    if (!s1 || !s2) return 0;
-    
-    // Check for containment
-    if (s1.includes(s2) || s2.includes(s1)) {
-        return Math.min(s1.length, s2.length) / Math.max(s1.length, s2.length);
-    }
-    
-    // Word overlap
-    const words1 = new Set(s1.split(' '));
-    const words2 = new Set(s2.split(' '));
-    const intersection = [...words1].filter(w => words2.has(w));
-    
-    return intersection.length / Math.max(words1.size, words2.size);
-}
-
-// ============================================================================
 // XPATH RESOLUTION
 // ============================================================================
 
 class XPathResolver {
     /**
      * Resolve an XPath to a DOM element
-     * @param {string} xpath - The XPath expression
-     * @returns {Element|null} - The resolved element or null
      */
     static resolve(xpath) {
         try {
@@ -170,21 +241,15 @@ class XPathResolver {
     }
     
     /**
-     * Resolve multiple XPaths in priority order, returning first valid match
-     * @param {string[]} xpaths - Array of XPath expressions in priority order
-     * @returns {{element: Element|null, xpath: string|null}} - Result with matched xpath
+     * Resolve multiple XPaths in priority order
      */
     static resolveWithFallback(xpaths) {
-        if (!Array.isArray(xpaths)) {
-            xpaths = [xpaths];
-        }
+        const xpathList = Array.isArray(xpaths) ? xpaths : [xpaths];
         
-        for (const xpath of xpaths) {
+        for (const xpath of xpathList) {
             if (!xpath) continue;
             const element = this.resolve(xpath);
-            if (element) {
-                return { element, xpath };
-            }
+            if (element) return { element, xpath };
         }
         
         return { element: null, xpath: null };
@@ -196,12 +261,6 @@ class XPathResolver {
 // ============================================================================
 
 class ElementValidator {
-    /**
-     * Validate that a resolved element matches the expected field specification
-     * @param {Element} element - The DOM element
-     * @param {Object} fieldSpec - The field specification from JSON
-     * @returns {{valid: boolean, confidence: number, issues: string[]}}
-     */
     static validate(element, fieldSpec) {
         const issues = [];
         let confidence = 1.0;
@@ -210,40 +269,39 @@ class ElementValidator {
             return { valid: false, confidence: 0, issues: ['Element not found'] };
         }
         
-        // Check element visibility
+        // Visibility check
         if (!this.isVisible(element)) {
             issues.push('Element not visible');
             confidence -= 0.5;
         }
         
-        // Check element is not disabled
+        // Disabled check
         if (element.disabled) {
-            issues.push('Element is disabled');
-            return { valid: false, confidence: 0, issues };
+            return { valid: false, confidence: 0, issues: ['Element is disabled'] };
         }
         
-        // Validate tag name
+        // Tag validation
         const tagValidation = this.validateTagName(element, fieldSpec);
         if (!tagValidation.valid) {
             issues.push(tagValidation.issue);
             confidence -= 0.3;
         }
         
-        // Validate input type
+        // Input type validation
         const typeValidation = this.validateInputType(element, fieldSpec);
         if (!typeValidation.valid) {
             issues.push(typeValidation.issue);
             confidence -= 0.3;
         }
         
-        // Validate label match
+        // Label validation
         const labelValidation = this.validateLabel(element, fieldSpec);
         if (!labelValidation.valid) {
             issues.push(labelValidation.issue);
             confidence -= 0.2;
         }
         
-        // Validate section context (if specified)
+        // Section validation (soft)
         if (fieldSpec.section) {
             const sectionValidation = this.validateSection(element, fieldSpec.section);
             if (!sectionValidation.valid) {
@@ -252,9 +310,7 @@ class ElementValidator {
             }
         }
         
-        // Element is valid if confidence remains above threshold
         const valid = confidence >= 0.5 && issues.length < 3;
-        
         return { valid, confidence: Math.max(0, confidence), issues };
     }
     
@@ -275,7 +331,7 @@ class ElementValidator {
         const fieldType = (fieldSpec.field_type || '').toLowerCase();
         
         const expectedTags = {
-            'select': ['select'],
+            'select': ['select', 'div', 'input', 'span', 'button'], // Custom dropdowns
             'textarea': ['textarea'],
             'checkbox': ['input'],
             'radio': ['input'],
@@ -292,10 +348,7 @@ class ElementValidator {
         const expected = expectedTags[fieldType] || ['input', 'textarea', 'select'];
         
         if (!expected.includes(tagName)) {
-            return {
-                valid: false,
-                issue: `Expected tag ${expected.join('/')} but found ${tagName}`
-            };
+            return { valid: false, issue: `Expected tag ${expected.join('/')} but found ${tagName}` };
         }
         
         return { valid: true };
@@ -305,7 +358,6 @@ class ElementValidator {
         const elType = (element.type || '').toLowerCase();
         const fieldType = (fieldSpec.field_type || '').toLowerCase();
         
-        // Map field types to acceptable input types
         const typeMap = {
             'text': ['text', 'search', ''],
             'email': ['email', 'text'],
@@ -321,73 +373,57 @@ class ElementValidator {
         
         const acceptable = typeMap[fieldType];
         if (acceptable && !acceptable.includes(elType)) {
-            return {
-                valid: false,
-                issue: `Expected input type ${acceptable.join('/')} but found ${elType}`
-            };
+            return { valid: false, issue: `Expected input type ${acceptable.join('/')} but found ${elType}` };
         }
         
         return { valid: true };
     }
     
     static validateLabel(element, fieldSpec) {
-        if (!fieldSpec.label) {
-            return { valid: true }; // No label to validate against
-        }
+        if (!fieldSpec.label) return { valid: true };
         
         const actualLabel = this.extractElementLabel(element);
-        const similarity = calculateSimilarity(actualLabel, fieldSpec.label);
+        const similarity = Utils.calculateSimilarity(actualLabel, fieldSpec.label);
         
-        if (similarity < CONFIG.MIN_LABEL_MATCH_RATIO) {
-            return {
-                valid: false,
-                issue: `Label mismatch: expected "${fieldSpec.label}", found "${actualLabel}"`
-            };
+        if (similarity < CONFIG.THRESHOLDS.MIN_LABEL_MATCH) {
+            return { valid: false, issue: `Label mismatch: expected "${fieldSpec.label}", found "${actualLabel}"` };
         }
         
         return { valid: true };
     }
     
     static extractElementLabel(element) {
-        // 1. Check for explicit label via 'for' attribute
+        // 1. Explicit label via 'for'
         if (element.id) {
             const label = document.querySelector(`label[for="${CSS.escape(element.id)}"]`);
             if (label) return label.textContent?.trim() || '';
         }
         
-        // 2. Check for wrapping label
+        // 2. Wrapping label
         const parentLabel = element.closest('label');
-        if (parentLabel) {
-            return parentLabel.textContent?.trim() || '';
-        }
+        if (parentLabel) return parentLabel.textContent?.trim() || '';
         
-        // 3. Check aria-label
+        // 3. ARIA attributes
         if (element.getAttribute('aria-label')) {
             return element.getAttribute('aria-label');
         }
         
-        // 4. Check aria-labelledby
         const labelledBy = element.getAttribute('aria-labelledby');
         if (labelledBy) {
             const labelEl = document.getElementById(labelledBy);
             if (labelEl) return labelEl.textContent?.trim() || '';
         }
         
-        // 5. Check placeholder
-        if (element.placeholder) {
-            return element.placeholder;
-        }
+        // 4. Placeholder
+        if (element.placeholder) return element.placeholder;
         
-        // 6. Check name attribute (cleaned up)
-        if (element.name) {
-            return element.name.replace(/[_-]/g, ' ');
-        }
+        // 5. Name attribute
+        if (element.name) return element.name.replace(/[_-]/g, ' ');
         
         return '';
     }
     
     static validateSection(element, expectedSection) {
-        // Look for section indicators in ancestor elements
         const sectionKeywords = {
             'personal': ['personal', 'contact', 'about', 'basic'],
             'experience': ['experience', 'work', 'employment', 'job', 'career'],
@@ -399,11 +435,10 @@ class ElementValidator {
         
         const keywords = sectionKeywords[expectedSection.toLowerCase()] || [expectedSection.toLowerCase()];
         
-        // Walk up the DOM tree looking for section context
         let current = element;
         let depth = 0;
         
-        while (current && depth < CONFIG.MAX_SECTION_DISTANCE) {
+        while (current && depth < CONFIG.THRESHOLDS.MAX_SECTION_DISTANCE) {
             const text = (
                 current.className +
                 ' ' + (current.getAttribute('aria-label') || '') +
@@ -411,17 +446,157 @@ class ElementValidator {
             ).toLowerCase();
             
             for (const keyword of keywords) {
-                if (text.includes(keyword)) {
-                    return { valid: true };
-                }
+                if (text.includes(keyword)) return { valid: true };
             }
             
             current = current.parentElement;
             depth++;
         }
         
-        // If no section found, don't fail - just note it
-        return { valid: true }; // Soft validation - don't fail on section mismatch alone
+        return { valid: true }; // Soft validation
+    }
+}
+
+// ============================================================================
+// DROPDOWN DETECTION
+// ============================================================================
+
+class DropdownDetector {
+    /**
+     * Detect if an element is a dropdown based on DOM attributes
+     * Works for both native <select> and custom dropdown components
+     */
+    static isDropdown(element) {
+        if (!element) return false;
+        
+        const tagName = element.tagName.toLowerCase();
+        
+        // Native select
+        if (tagName === 'select') return true;
+        
+        // ARIA attributes (most reliable for custom dropdowns)
+        if (this.hasDropdownARIA(element)) return true;
+        
+        // Class name patterns
+        if (this.hasDropdownClass(element)) return true;
+        
+        // Data attributes
+        if (this.hasDropdownDataAttr(element)) return true;
+        
+        // Visual indicators (arrow icons)
+        if (this.hasDropdownIndicator(element)) return true;
+        
+        // Parent/wrapper check
+        if (this.parentIsDropdown(element)) return true;
+        
+        return false;
+    }
+    
+    static hasDropdownARIA(element) {
+        const role = element.getAttribute('role');
+        const ariaHasPopup = element.getAttribute('aria-haspopup');
+        const ariaExpanded = element.getAttribute('aria-expanded');
+        const ariaAutocomplete = element.getAttribute('aria-autocomplete');
+        
+        return (
+            role === 'combobox' ||
+            role === 'listbox' ||
+            ariaHasPopup === 'listbox' ||
+            ariaHasPopup === 'menu' ||
+            ariaHasPopup === 'true' ||
+            ariaExpanded !== null ||
+            ariaAutocomplete === 'list' ||
+            ariaAutocomplete === 'both'
+        );
+    }
+    
+    static hasDropdownClass(element) {
+        const className = (element.className || '').toLowerCase();
+        return CONFIG.DROPDOWN_CLASS_PATTERNS.some(pattern => className.includes(pattern));
+    }
+    
+    static hasDropdownDataAttr(element) {
+        const dataRole = element.dataset?.role || element.dataset?.type || '';
+        return dataRole.includes('select') || dataRole.includes('dropdown') || dataRole.includes('combobox');
+    }
+    
+    static hasDropdownIndicator(element) {
+        const selector = CONFIG.DROPDOWN_INDICATORS.join(', ');
+        return element.querySelector(selector) !== null;
+    }
+    
+    static parentIsDropdown(element) {
+        const parent = element.parentElement;
+        if (!parent) return false;
+        
+        const parentClass = (parent.className || '').toLowerCase();
+        const parentRole = parent.getAttribute('role');
+        
+        return (
+            parentRole === 'combobox' ||
+            parentClass.includes('select') ||
+            parentClass.includes('dropdown')
+        );
+    }
+}
+
+// ============================================================================
+// OPTION MATCHING
+// ============================================================================
+
+class OptionMatcher {
+    /**
+     * Find the best matching option from a list
+     * @returns {{ match: Element|null, score: number }}
+     */
+    static findBestMatch(options, targetValue, getOptionText) {
+        const normalizedTarget = Utils.normalizeText(targetValue);
+        let bestMatch = null;
+        let bestScore = 0;
+        
+        for (const option of options) {
+            const optText = Utils.normalizeText(getOptionText(option));
+            const score = this.calculateMatchScore(optText, normalizedTarget);
+            
+            if (score > bestScore) {
+                bestScore = score;
+                bestMatch = option;
+            }
+            
+            // Early exit for excellent matches
+            if (bestScore >= CONFIG.THRESHOLDS.GOOD_MATCH) {
+                console.log(`✅ Found good match "${optText}" = ${(bestScore * 100).toFixed(1)}% (stopped early)`);
+                break;
+            }
+        }
+        
+        return { match: bestMatch, score: bestScore };
+    }
+    
+    /**
+     * Calculate match score between option text and target value
+     */
+    static calculateMatchScore(optText, targetValue) {
+        // Exact match
+        if (optText === targetValue) return 1.0;
+        
+        // Substring matches
+        if (optText.includes(targetValue)) {
+            return 0.85 + (0.1 * targetValue.length / optText.length);
+        }
+        if (targetValue.includes(optText)) {
+            return 0.8 + (0.1 * optText.length / targetValue.length);
+        }
+        
+        // Fuzzy similarity
+        return Utils.calculateSimilarity(optText, targetValue);
+    }
+    
+    /**
+     * Check if match score is acceptable
+     */
+    static isAcceptableMatch(score) {
+        return score >= CONFIG.THRESHOLDS.MIN_ACCEPTABLE_MATCH;
     }
 }
 
@@ -430,28 +605,19 @@ class ElementValidator {
 // ============================================================================
 
 class EventDispatcher {
-    /**
-     * Get native value setter for React compatibility
-     */
     static getNativeSetter(element) {
         const tagName = element.tagName.toLowerCase();
         
-        if (tagName === 'input') {
-            return Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-        }
-        if (tagName === 'textarea') {
-            return Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
-        }
-        if (tagName === 'select') {
-            return Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
-        }
+        const setterMap = {
+            'input': HTMLInputElement.prototype,
+            'textarea': HTMLTextAreaElement.prototype,
+            'select': HTMLSelectElement.prototype,
+        };
         
-        return null;
+        const proto = setterMap[tagName];
+        return proto ? Object.getOwnPropertyDescriptor(proto, 'value')?.set : null;
     }
     
-    /**
-     * Set value using native setter for React compatibility
-     */
     static setNativeValue(element, value) {
         const setter = this.getNativeSetter(element);
         if (setter) {
@@ -461,38 +627,41 @@ class EventDispatcher {
         }
     }
     
-    /**
-     * Dispatch all necessary events for framework compatibility
-     */
-    static dispatchInputEvents(element, eventSequence = ['focus', 'input', 'change', 'blur']) {
-        for (const eventType of eventSequence) {
+    static dispatchInputEvents(element, events = ['focus', 'input', 'change', 'blur']) {
+        for (const eventType of events) {
             const eventInit = { bubbles: true, cancelable: true };
             
             let event;
-            if (eventType === 'input') {
-                event = new InputEvent(eventType, { ...eventInit, inputType: 'insertText' });
-            } else if (eventType === 'change') {
-                event = new Event(eventType, eventInit);
-            } else if (eventType === 'focus' || eventType === 'blur') {
-                event = new FocusEvent(eventType, eventInit);
-            } else {
-                event = new Event(eventType, eventInit);
+            switch (eventType) {
+                case 'input':
+                    event = new InputEvent(eventType, { ...eventInit, inputType: 'insertText' });
+                    break;
+                case 'focus':
+                case 'blur':
+                    event = new FocusEvent(eventType, eventInit);
+                    break;
+                default:
+                    event = new Event(eventType, eventInit);
             }
             
             element.dispatchEvent(event);
         }
     }
     
-    /**
-     * Dispatch click event
-     */
     static dispatchClick(element) {
-        const event = new MouseEvent('click', {
+        element.dispatchEvent(new MouseEvent('click', {
             bubbles: true,
             cancelable: true,
             view: window
-        });
-        element.dispatchEvent(event);
+        }));
+    }
+    
+    static dispatchKeydown(element, key) {
+        element.dispatchEvent(new KeyboardEvent('keydown', {
+            key,
+            bubbles: true,
+            cancelable: true
+        }));
     }
 }
 
@@ -501,50 +670,39 @@ class EventDispatcher {
 // ============================================================================
 
 class IdempotencyChecker {
-    /**
-     * Check if field already contains the intended value
-     * @param {Element} element - The DOM element
-     * @param {*} intendedValue - The value we want to set
-     * @param {string} fieldType - The field type
-     * @returns {boolean} - True if field already has correct value
-     */
     static hasCorrectValue(element, intendedValue, fieldType) {
         if (!element || intendedValue === undefined || intendedValue === null) {
             return false;
         }
         
         const type = (fieldType || '').toLowerCase();
+        const intended = String(intendedValue).toLowerCase();
         
         switch (type) {
             case 'checkbox':
-                const shouldBeChecked = ['true', '1', 'yes', 'on'].includes(
-                    String(intendedValue).toLowerCase()
-                );
+                const shouldBeChecked = ['true', '1', 'yes', 'on'].includes(intended);
                 return element.checked === shouldBeChecked;
                 
             case 'radio':
-                // For radio, check if the intended option is selected
                 return element.checked && (
-                    element.value?.toLowerCase() === String(intendedValue).toLowerCase() ||
-                    this.getRadioLabel(element).toLowerCase().includes(String(intendedValue).toLowerCase())
+                    element.value?.toLowerCase() === intended ||
+                    this.getRadioLabel(element).toLowerCase().includes(intended)
                 );
                 
             case 'select':
                 const selectedText = element.options?.[element.selectedIndex]?.text || '';
                 return (
-                    element.value?.toLowerCase() === String(intendedValue).toLowerCase() ||
-                    selectedText.toLowerCase().includes(String(intendedValue).toLowerCase())
+                    element.value?.toLowerCase() === intended ||
+                    selectedText.toLowerCase().includes(intended)
                 );
                 
             case 'file':
-                // Can't check file inputs - always return false to show upload prompt
-                return false;
+                return false; // Always show file upload prompt
                 
             default:
-                // Text-like fields
-                const currentValue = normalizeText(element.value);
-                const intended = normalizeText(String(intendedValue));
-                return currentValue === intended || currentValue.includes(intended);
+                const currentValue = Utils.normalizeText(element.value);
+                const intendedNorm = Utils.normalizeText(intendedValue);
+                return currentValue === intendedNorm || currentValue.includes(intendedNorm);
         }
     }
     
@@ -553,8 +711,10 @@ class IdempotencyChecker {
             const label = document.querySelector(`label[for="${CSS.escape(radio.id)}"]`);
             if (label) return label.textContent?.trim() || '';
         }
+        
         const parentLabel = radio.closest('label');
         if (parentLabel) return parentLabel.textContent?.trim() || '';
+        
         return radio.nextSibling?.textContent?.trim() || '';
     }
 }
@@ -564,22 +724,23 @@ class IdempotencyChecker {
 // ============================================================================
 
 class FieldFillers {
-    /**
-     * Fill a text-like input field with typing animation
-     */
+    // -------------------------------------------------------------------------
+    // Text Fields
+    // -------------------------------------------------------------------------
+    
     static async fillText(element, value, report, field) {
         element.focus();
         EventDispatcher.dispatchInputEvents(element, ['focus']);
-        await sleep(50);
+        await Utils.sleep(50);
         
         // Clear existing value
         EventDispatcher.setNativeValue(element, '');
         EventDispatcher.dispatchInputEvents(element, ['input']);
         
-        // Type with animation
+        // Type with animation (chunked for performance)
         const text = String(value);
         const chunkSize = text.length > 200 ? 10 : text.length > 50 ? 3 : 1;
-        const delayMs = text.length > 200 ? 15 : text.length > 50 ? 20 : CONFIG.TYPING_DELAY_PER_CHAR;
+        const delayMs = text.length > 200 ? 15 : text.length > 50 ? 20 : CONFIG.TIMING.TYPING_DELAY_PER_CHAR;
         
         for (let i = 0; i <= text.length; i += chunkSize) {
             const partial = text.substring(0, Math.min(i + chunkSize, text.length));
@@ -587,7 +748,7 @@ class FieldFillers {
             EventDispatcher.dispatchInputEvents(element, ['input']);
             
             if (i + chunkSize < text.length) {
-                await sleep(delayMs);
+                await Utils.sleep(delayMs);
             }
         }
         
@@ -599,198 +760,211 @@ class FieldFillers {
         return true;
     }
     
-    /**
-     * Fill a native <select> element
-     */
+    // -------------------------------------------------------------------------
+    // Native Select
+    // -------------------------------------------------------------------------
+    
     static async fillSelect(element, value, report, field) {
-        const normalizedValue = normalizeText(value);
-        const options = Array.from(element.options);
+        const domOptions = Array.from(element.options);
         
-        // Find best matching option
-        let bestMatch = null;
-        let bestScore = 0;
+        const { match, score } = OptionMatcher.findBestMatch(
+            domOptions,
+            value,
+            option => option.text
+        );
         
-        for (const option of options) {
-            const optText = normalizeText(option.text);
-            const optValue = normalizeText(option.value);
+        if (match && OptionMatcher.isAcceptableMatch(score)) {
+            console.log(`✅ Selected: "${Utils.normalizeText(match.text)}" (${(score * 100).toFixed(1)}%)`);
             
-            // Exact matches
-            if (optText === normalizedValue || optValue === normalizedValue) {
-                bestMatch = option;
-                break;
-            }
+            element.focus();
+            EventDispatcher.setNativeValue(element, match.value);
+            EventDispatcher.dispatchInputEvents(element, ['input', 'change', 'blur']);
+            element.blur();
             
-            // Partial matches
-            const textScore = calculateSimilarity(optText, normalizedValue);
-            const valueScore = calculateSimilarity(optValue, normalizedValue);
-            const score = Math.max(textScore, valueScore);
-            
-            if (score > bestScore && score > 0.5) {
-                bestScore = score;
-                bestMatch = option;
-            }
+            return true;
         }
         
-        if (!bestMatch) {
-            report.recordMismatch(field, value, `No matching option found. Available: ${options.map(o => o.text).join(', ')}`);
+        report.recordMismatch(field, value, `No matching option. Available: ${domOptions.map(o => o.text).join(', ')}`);
+        return false;
+    }
+    
+    // -------------------------------------------------------------------------
+    // Custom Dropdown (React Select, Material UI, etc.)
+    // -------------------------------------------------------------------------
+    
+    static async fillCustomDropdown(element, value, report, field) {
+        // Step 1: Open the dropdown
+        const opened = await this._openDropdown(element);
+        if (!opened) {
+            report.recordMismatch(field, value, 'Could not open dropdown');
             return false;
         }
         
-        element.focus();
-        EventDispatcher.setNativeValue(element, bestMatch.value);
-        EventDispatcher.dispatchInputEvents(element, ['input', 'change', 'blur']);
-        element.blur();
+        // Step 2: Find options in DOM
+        let options = await this._findDropdownOptions();
         
-        return true;
-    }
-    
-    /**
-     * Fill a custom dropdown component (React Select, Material UI, etc.)
-     */
-    static async fillCustomDropdown(element, value, report, field) {
-        // Click to open
-        EventDispatcher.dispatchClick(element);
-        await sleep(CONFIG.DROPDOWN_OPEN_DELAY);
-        
-        // Look for options
-        const optionSelectors = [
-            '[role="option"]',
-            '[role="menuitem"]',
-            '[class*="option"]:not([class*="options"])',
-            '[class*="Option"]:not([class*="Options"])',
-            '[class*="MenuItem"]',
-            '[class*="menu-item"]',
-            'li[data-value]',
-            'ul[role="listbox"] li'
-        ];
-        
-        let options = [];
-        for (const selector of optionSelectors) {
-            options = Array.from(document.querySelectorAll(selector));
-            if (options.length > 0) break;
-        }
-        
+        // Step 3: If no options, try searchable dropdown
         if (options.length === 0) {
-            // Try searchable dropdown
-            const input = element.querySelector('input') || 
-                         (element.tagName === 'INPUT' ? element : null);
-            
-            if (input) {
-                input.focus();
-                EventDispatcher.setNativeValue(input, value);
-                EventDispatcher.dispatchInputEvents(input, ['input']);
-                await sleep(300);
-                
-                // Look for filtered options
-                for (const selector of optionSelectors) {
-                    options = Array.from(document.querySelectorAll(selector));
-                    if (options.length > 0) {
-                        EventDispatcher.dispatchClick(options[0]);
-                        await sleep(100);
-                        return true;
-                    }
-                }
+            options = await this._trySearchableDropdown(element, value);
+            if (options.length > 0) {
+                // For searchable, first option after typing is usually correct
+                EventDispatcher.dispatchClick(options[0]);
+                await Utils.sleep(100);
+                return true;
             }
             
-            // Close dropdown
-            document.body.click();
+            this._closeDropdown();
             report.recordMismatch(field, value, 'Could not find dropdown options');
             return false;
         }
         
-        // Find matching option
-        const normalizedValue = normalizeText(value);
-        for (const option of options) {
-            const optText = normalizeText(option.textContent);
-            if (optText === normalizedValue || optText.includes(normalizedValue) || normalizedValue.includes(optText)) {
-                EventDispatcher.dispatchClick(option);
-                await sleep(100);
-                return true;
-            }
+        // Step 4: Find best matching option
+        const { match, score } = OptionMatcher.findBestMatch(
+            options,
+            value,
+            option => option.textContent
+        );
+        
+        if (match && OptionMatcher.isAcceptableMatch(score)) {
+            console.log(`✅ Selected: "${Utils.normalizeText(match.textContent)}" (${(score * 100).toFixed(1)}%)`);
+            
+            match.scrollIntoView({ block: 'nearest' });
+            await Utils.sleep(50);
+            EventDispatcher.dispatchClick(match);
+            await Utils.sleep(100);
+            
+            return true;
         }
         
-        // Close dropdown
-        document.body.click();
+        this._closeDropdown();
         report.recordMismatch(field, value, `No matching option. Available: ${options.slice(0, 5).map(o => o.textContent?.trim()).join(', ')}`);
         return false;
     }
     
-    /**
-     * Fill a checkbox
-     */
+    static async _openDropdown(element) {
+        // Find clickable target (could be arrow icon, button, etc.)
+        const clickTarget = element.querySelector(
+            '[role="combobox"], [role="button"], button, [class*="indicator"], [class*="arrow"]'
+        ) || element;
+        
+        // Focus then click
+        element.focus();
+        await Utils.sleep(50);
+        EventDispatcher.dispatchClick(clickTarget);
+        await Utils.sleep(CONFIG.TIMING.DROPDOWN_OPEN_DELAY);
+        
+        // Retry with keyboard if needed
+        let options = this._queryOptions();
+        if (options.length === 0) {
+            EventDispatcher.dispatchKeydown(element, 'ArrowDown');
+            await Utils.sleep(CONFIG.TIMING.RETRY_DELAY);
+            
+            options = this._queryOptions();
+            if (options.length === 0) {
+                EventDispatcher.dispatchKeydown(element, ' ');
+                await Utils.sleep(CONFIG.TIMING.RETRY_DELAY);
+            }
+        }
+        
+        return this._queryOptions().length > 0 || true; // Continue anyway
+    }
+    
+    static async _findDropdownOptions() {
+        return this._queryOptions();
+    }
+    
+    static _queryOptions() {
+        for (const selector of CONFIG.DROPDOWN_OPTION_SELECTORS) {
+            const options = Array.from(document.querySelectorAll(selector));
+            if (options.length > 0) return options;
+        }
+        return [];
+    }
+    
+    static async _trySearchableDropdown(element, value) {
+        const input = element.querySelector('input') || 
+                     (element.tagName === 'INPUT' ? element : null);
+        
+        if (!input) return [];
+        
+        input.focus();
+        EventDispatcher.setNativeValue(input, value);
+        EventDispatcher.dispatchInputEvents(input, ['input']);
+        await Utils.sleep(300);
+        
+        return this._queryOptions();
+    }
+    
+    static _closeDropdown() {
+        document.body.click();
+        EventDispatcher.dispatchKeydown(document, 'Escape');
+    }
+    
+    // -------------------------------------------------------------------------
+    // Checkbox
+    // -------------------------------------------------------------------------
+    
     static async fillCheckbox(element, value, report, field) {
         const shouldCheck = ['true', '1', 'yes', 'on'].includes(String(value).toLowerCase());
         
         if (element.checked !== shouldCheck) {
             EventDispatcher.dispatchClick(element);
-            await sleep(50);
+            await Utils.sleep(50);
         }
         
         return true;
     }
     
-    /**
-     * Fill a radio button group
-     */
+    // -------------------------------------------------------------------------
+    // Radio Button
+    // -------------------------------------------------------------------------
+    
     static async fillRadio(element, value, report, field) {
-        const name = element.name || element.getAttribute('name');
-        let radioGroup = [];
-        
-        if (name) {
-            radioGroup = Array.from(document.querySelectorAll(`input[type="radio"][name="${CSS.escape(name)}"]`));
-        }
-        
-        if (radioGroup.length === 0) {
-            const parent = element.closest('fieldset, [role="radiogroup"], [class*="radio"]');
-            if (parent) {
-                radioGroup = Array.from(parent.querySelectorAll('input[type="radio"]'));
-            }
-        }
-        
-        if (radioGroup.length === 0) {
-            radioGroup = [element];
-        }
-        
-        const normalizedValue = normalizeText(value);
+        const radioGroup = this._getRadioGroup(element);
+        const normalizedValue = Utils.normalizeText(value);
         
         for (const radio of radioGroup) {
-            const labelText = normalizeText(IdempotencyChecker.getRadioLabel(radio));
-            const radioValue = normalizeText(radio.value);
+            const labelText = Utils.normalizeText(IdempotencyChecker.getRadioLabel(radio));
+            const radioValue = Utils.normalizeText(radio.value);
             
-            if (labelText.includes(normalizedValue) || normalizedValue.includes(labelText) ||
+            if (labelText.includes(normalizedValue) || 
+                normalizedValue.includes(labelText) ||
                 radioValue === normalizedValue) {
                 EventDispatcher.dispatchClick(radio);
-                await sleep(50);
+                await Utils.sleep(50);
                 return true;
             }
         }
         
-        report.recordMismatch(field, value, `No matching radio option. Available: ${radioGroup.map(r => IdempotencyChecker.getRadioLabel(r)).join(', ')}`);
+        report.recordMismatch(field, value, `No matching radio. Available: ${radioGroup.map(r => IdempotencyChecker.getRadioLabel(r)).join(', ')}`);
         return false;
     }
     
-    /**
-     * Handle file upload field (highlight for user)
-     */
-    static async handleFile(element, value, report, field) {
-        // Validate accepted file types if specified
-        const accept = element.accept || '';
-        if (field.accepted_types && accept) {
-            const acceptedTypes = accept.split(',').map(t => t.trim().toLowerCase());
-            const specifiedTypes = field.accepted_types.map(t => t.toLowerCase());
-            
-            const hasValidType = specifiedTypes.some(t => 
-                acceptedTypes.some(a => a.includes(t) || t.includes(a))
-            );
-            
-            if (!hasValidType) {
-                report.recordMismatch(field, field.accepted_types, `Accepted types: ${accept}`);
-            }
+    static _getRadioGroup(element) {
+        const name = element.name || element.getAttribute('name');
+        
+        if (name) {
+            const group = Array.from(document.querySelectorAll(`input[type="radio"][name="${CSS.escape(name)}"]`));
+            if (group.length > 0) return group;
         }
         
-        // Check if file already uploaded (if possible)
-        if (element.files && element.files.length > 0 && !field.allow_replacement) {
-            report.recordSkipped(field, 'File already uploaded and replacement not allowed');
+        const parent = element.closest('fieldset, [role="radiogroup"], [class*="radio"]');
+        if (parent) {
+            const group = Array.from(parent.querySelectorAll('input[type="radio"]'));
+            if (group.length > 0) return group;
+        }
+        
+        return [element];
+    }
+    
+    // -------------------------------------------------------------------------
+    // File Upload (highlight for user)
+    // -------------------------------------------------------------------------
+    
+    static async handleFile(element, value, report, field) {
+        // Check if file already uploaded
+        if (element.files?.length > 0 && !field.allow_replacement) {
+            report.recordSkipped(field, 'File already uploaded');
             return false;
         }
         
@@ -804,43 +978,36 @@ class FieldFillers {
             position: parent.style.position
         };
         
-        parent.style.border = '3px solid #f59e0b';
-        parent.style.background = 'rgba(245, 158, 11, 0.1)';
-        parent.style.borderRadius = '8px';
-        parent.style.position = 'relative';
+        Object.assign(parent.style, {
+            border: '3px solid #f59e0b',
+            background: 'rgba(245, 158, 11, 0.1)',
+            borderRadius: '8px',
+            position: 'relative'
+        });
         
         // Add tooltip
         const tooltip = document.createElement('div');
-        tooltip.id = `autoapply-file-tooltip-${Date.now()}`;
         tooltip.innerHTML = `
             <div style="
-                position: absolute;
-                top: -40px;
-                left: 0;
-                background: #f59e0b;
-                color: white;
-                padding: 8px 14px;
-                border-radius: 6px;
-                font-size: 13px;
+                position: absolute; top: -40px; left: 0;
+                background: #f59e0b; color: white;
+                padding: 8px 14px; border-radius: 6px;
+                font-size: 13px; font-weight: 500;
                 font-family: system-ui, -apple-system, sans-serif;
-                font-weight: 500;
-                white-space: nowrap;
-                z-index: 999999;
+                white-space: nowrap; z-index: 999999;
                 box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-            ">
-                📎 Please upload: ${field.label || value || 'Document'}
-            </div>
+            ">📎 Please upload: ${field.label || value || 'Document'}</div>
         `;
         parent.appendChild(tooltip);
         
-        // Auto-cleanup after 15 seconds
+        // Auto-cleanup
         setTimeout(() => {
             Object.assign(parent.style, originalStyles);
             tooltip.remove();
         }, 15000);
         
         report.recordFileUpload(field);
-        return true; // Return true as we've done what we can
+        return true;
     }
 }
 
@@ -852,36 +1019,27 @@ class SubmissionBlocker {
     static isSubmitElement(element) {
         if (!element) return false;
         
-        const tagName = element.tagName.toLowerCase();
         const type = (element.type || '').toLowerCase();
-        const text = normalizeText(element.textContent || element.value || '');
-        const ariaLabel = normalizeText(element.getAttribute('aria-label') || '');
-        
-        // Check type
         if (type === 'submit') return true;
-        
-        // Check role
         if (element.getAttribute('role') === 'submit') return true;
         
-        // Check text patterns
-        const textToCheck = text + ' ' + ariaLabel;
-        for (const pattern of CONFIG.BLOCKED_BUTTON_PATTERNS) {
-            if (pattern.test(textToCheck)) return true;
-        }
+        const text = Utils.normalizeText(
+            (element.textContent || '') + ' ' + 
+            (element.value || '') + ' ' + 
+            (element.getAttribute('aria-label') || '')
+        );
         
-        return false;
+        return CONFIG.BLOCKED_BUTTON_PATTERNS.some(pattern => pattern.test(text));
     }
     
     static blockSubmission() {
-        // Find and mark all submit-like elements
         const potentialSubmits = document.querySelectorAll(
             'button, input[type="submit"], [role="button"], a[class*="submit"], a[class*="apply"]'
         );
         
         for (const el of potentialSubmits) {
             if (this.isSubmitElement(el)) {
-                console.log('🛑 AutoApply: Blocking submit element:', el);
-                // Don't actually disable - just log for awareness
+                console.log('🛑 AutoApply: Submit element detected:', el);
             }
         }
     }
@@ -896,24 +1054,7 @@ class UIFeedback {
     
     static showNotification(message, type = 'info') {
         if (!this.toastElement) {
-            this.toastElement = document.createElement('div');
-            this.toastElement.id = 'autoapply-toast';
-            this.toastElement.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                padding: 12px 20px;
-                border-radius: 8px;
-                z-index: 999999;
-                font-family: system-ui, -apple-system, sans-serif;
-                font-size: 14px;
-                font-weight: 500;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-                transition: all 0.3s ease;
-                opacity: 0;
-                transform: translateY(-20px);
-                max-width: 400px;
-            `;
+            this.toastElement = this._createToastElement();
             document.body.appendChild(this.toastElement);
         }
         
@@ -943,6 +1084,22 @@ class UIFeedback {
         }
     }
     
+    static _createToastElement() {
+        const el = document.createElement('div');
+        el.id = 'autoapply-toast';
+        el.style.cssText = `
+            position: fixed; top: 20px; right: 20px;
+            padding: 12px 20px; border-radius: 8px;
+            z-index: 999999; font-size: 14px; font-weight: 500;
+            font-family: system-ui, -apple-system, sans-serif;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transition: all 0.3s ease;
+            opacity: 0; transform: translateY(-20px);
+            max-width: 400px;
+        `;
+        return el;
+    }
+    
     static highlightElement(element, color = '#3b82f6') {
         const original = {
             outline: element.style.outline,
@@ -953,15 +1110,16 @@ class UIFeedback {
         element.style.transition = 'outline 0.2s ease';
         element.style.outline = `3px solid ${color}`;
         element.style.outlineOffset = '2px';
-        
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         
         return original;
     }
     
     static removeHighlight(element, original) {
-        element.style.outline = original.outline;
-        element.style.outlineOffset = original.outlineOffset;
+        Object.assign(element.style, {
+            outline: original.outline,
+            outlineOffset: original.outlineOffset
+        });
         setTimeout(() => {
             element.style.transition = original.transition;
         }, 200);
@@ -969,7 +1127,7 @@ class UIFeedback {
 }
 
 // ============================================================================
-// MAIN FORM FILLER
+// MAIN FORM FILLER (Orchestrator)
 // ============================================================================
 
 class FormFiller {
@@ -979,77 +1137,51 @@ class FormFiller {
     
     /**
      * Main entry point - fill form based on JSON specification
-     * @param {Object} formSpec - The form specification from backend
      */
     async fill(formSpec) {
-        if (!formSpec || !formSpec.fields || !Array.isArray(formSpec.fields)) {
+        if (!formSpec?.fields?.length) {
             console.error('AutoApply: Invalid form specification');
             return this.report;
         }
         
-        const fields = formSpec.fields.filter(f => !f.skipped && f.value !== null && f.value !== undefined);
+        const fields = formSpec.fields.filter(f => !f.skipped && f.value != null);
         const totalFields = fields.length;
         
         console.log(`🚀 AutoApply: Starting fill for ${totalFields} fields`);
         UIFeedback.showNotification(`Starting form fill (${totalFields} fields)...`, 'loading');
         
-        // Block any accidental submissions
         SubmissionBlocker.blockSubmission();
         
-        let currentIndex = 0;
-        
-        for (const field of fields) {
-            currentIndex++;
-            
+        for (let i = 0; i < fields.length; i++) {
             try {
-                await this.fillField(field, currentIndex, totalFields);
+                await this._fillField(fields[i], i + 1, totalFields);
             } catch (error) {
-                this.report.recordError(field, error);
+                this.report.recordError(fields[i], error);
             }
             
-            // Delay between fields
-            await sleep(CONFIG.FIELD_FILL_DELAY);
+            await Utils.sleep(CONFIG.TIMING.FIELD_FILL_DELAY);
         }
         
-        // Show completion summary
-        const summary = this.report.getSummary();
-        let message = `🎉 Done! Filled ${summary.filled}/${totalFields} fields.`;
-        
-        if (summary.skipped > 0) {
-            message += ` Skipped: ${summary.skipped}.`;
-        }
-        if (summary.fileUploads > 0) {
-            message += ` 📎 ${summary.fileUploads} file(s) need upload.`;
-        }
-        if (summary.mismatches > 0) {
-            message += ` ⚠️ ${summary.mismatches} mismatches.`;
-        }
-        
-        UIFeedback.showNotification(message, summary.errors.length > 0 ? 'warning' : 'success');
-        
-        console.log('📊 AutoApply Fill Report:', this.report);
-        
+        this._showCompletionSummary(totalFields);
         return this.report;
     }
     
-    async fillField(field, currentIndex, totalFields) {
-        // Update progress
+    async _fillField(field, currentIndex, totalFields) {
         const label = field.label || 'field';
         const truncatedLabel = label.length > 30 ? label.substring(0, 30) + '...' : label;
         UIFeedback.showNotification(`Filling ${currentIndex}/${totalFields}: ${truncatedLabel}`, 'info');
         
-        // Resolve element via XPath
+        // Resolve element
         const xpaths = Array.isArray(field.xpaths) ? field.xpaths : [field.xpath];
-        const { element, xpath: resolvedXpath } = XPathResolver.resolveWithFallback(xpaths);
+        const { element } = XPathResolver.resolveWithFallback(xpaths);
         
         if (!element) {
             this.report.recordSkipped(field, 'Element not found via XPath');
             return;
         }
         
-        // Validate element matches specification
+        // Validate element
         const validation = ElementValidator.validate(element, field);
-        
         if (!validation.valid) {
             this.report.recordMismatch(field, 
                 { label: field.label, type: field.field_type },
@@ -1059,71 +1191,82 @@ class FormFiller {
             return;
         }
         
-        // Check idempotency - skip if already has correct value
+        // Idempotency check
         if (IdempotencyChecker.hasCorrectValue(element, field.value, field.field_type)) {
             this.report.recordSkipped(field, 'Already has correct value');
             console.log(`⏭️ Skipped (already filled): ${field.label || field.xpath}`);
             return;
         }
         
-        // Check if free-text field is marked as unsafe (opt-in safety)
-        // Only skip if explicitly marked as unsafe_to_generate: true
+        // Safety check for textareas
         if (field.field_type === 'textarea' && field.unsafe_to_generate === true) {
-            this.report.recordSkipped(field, 'Free-text field marked as unsafe to generate');
+            this.report.recordSkipped(field, 'Free-text field marked as unsafe');
             return;
         }
         
-        // Highlight element
+        // Fill the field
         const originalStyles = UIFeedback.highlightElement(element);
-        await sleep(200);
-        
-        // Fill based on field type
-        let filled = false;
-        const fieldType = (field.field_type || 'text').toLowerCase();
-        const tagName = element.tagName.toLowerCase();
+        await Utils.sleep(200);
         
         try {
-            switch (fieldType) {
-                case 'checkbox':
-                    filled = await FieldFillers.fillCheckbox(element, field.value, this.report, field);
-                    break;
-                    
-                case 'radio':
-                    filled = await FieldFillers.fillRadio(element, field.value, this.report, field);
-                    break;
-                    
-                case 'select':
-                    if (tagName === 'select') {
-                        filled = await FieldFillers.fillSelect(element, field.value, this.report, field);
-                    } else {
-                        filled = await FieldFillers.fillCustomDropdown(element, field.value, this.report, field);
-                    }
-                    break;
-                    
-                case 'file':
-                    filled = await FieldFillers.handleFile(element, field.value, this.report, field);
-                    break;
-                    
-                default:
-                    // Text-like fields
-                    if (tagName === 'select') {
-                        filled = await FieldFillers.fillSelect(element, field.value, this.report, field);
-                    } else {
-                        filled = await FieldFillers.fillText(element, field.value, this.report, field);
-                    }
-            }
+            const filled = await this._executeFill(element, field);
             
             if (filled) {
                 this.report.recordFilled(field, element);
-                element.style.outline = '3px solid #10b981'; // Green success
-                await sleep(300);
+                element.style.outline = '3px solid #10b981';
             } else {
-                element.style.outline = '3px solid #ef4444'; // Red failure
-                await sleep(300);
+                element.style.outline = '3px solid #ef4444';
             }
+            await Utils.sleep(300);
         } finally {
             UIFeedback.removeHighlight(element, originalStyles);
         }
+    }
+    
+    async _executeFill(element, field) {
+        const fieldType = (field.field_type || 'text').toLowerCase();
+        const tagName = element.tagName.toLowerCase();
+        
+        // Auto-detect dropdown (overrides backend field_type if needed)
+        const isDropdown = DropdownDetector.isDropdown(element);
+        const shouldUseDropdownFiller = isDropdown && 
+            !['checkbox', 'radio', 'file'].includes(fieldType);
+        
+        if (shouldUseDropdownFiller && fieldType !== 'select') {
+            console.log(`🔄 Auto-detected dropdown for "${field.label}" (was: ${fieldType})`);
+        }
+        
+        // Route to appropriate filler
+        if (shouldUseDropdownFiller || fieldType === 'select') {
+            return tagName === 'select'
+                ? FieldFillers.fillSelect(element, field.value, this.report, field)
+                : FieldFillers.fillCustomDropdown(element, field.value, this.report, field);
+        }
+        
+        switch (fieldType) {
+            case 'checkbox':
+                return FieldFillers.fillCheckbox(element, field.value, this.report, field);
+            case 'radio':
+                return FieldFillers.fillRadio(element, field.value, this.report, field);
+            case 'file':
+                return FieldFillers.handleFile(element, field.value, this.report, field);
+            default:
+                return tagName === 'select'
+                    ? FieldFillers.fillSelect(element, field.value, this.report, field)
+                    : FieldFillers.fillText(element, field.value, this.report, field);
+        }
+    }
+    
+    _showCompletionSummary(totalFields) {
+        const summary = this.report.getSummary();
+        let message = `🎉 Done! Filled ${summary.filled}/${totalFields} fields.`;
+        
+        if (summary.skipped > 0) message += ` Skipped: ${summary.skipped}.`;
+        if (summary.fileUploads > 0) message += ` 📎 ${summary.fileUploads} file(s) need upload.`;
+        if (summary.mismatches > 0) message += ` ⚠️ ${summary.mismatches} mismatches.`;
+        
+        UIFeedback.showNotification(message, summary.errors.length > 0 ? 'warning' : 'success');
+        console.log('📊 AutoApply Fill Report:', this.report);
     }
 }
 
@@ -1143,10 +1286,10 @@ window.addEventListener('message', (event) => {
     }
 });
 
-// Check for draft ID in URL hash
+// Auto-fill from URL hash
 function checkAndFill() {
     const hash = window.location.hash;
-    if (!hash || !hash.startsWith('#autoapply_id=')) return;
+    if (!hash?.startsWith('#autoapply_id=')) return;
     
     const draftId = hash.replace('#autoapply_id=', '');
     console.log('🚀 AutoApply: Detected Draft ID:', draftId);
@@ -1176,14 +1319,14 @@ function checkAndFill() {
         }
         
         // Wait for dynamic forms to render
-        await sleep(1000);
+        await Utils.sleep(1000);
         
-        // Create filler and execute
+        // Execute fill
         const filler = new FormFiller();
         await filler.fill(draft.form_state);
     });
 }
 
-// Run on load and hash changes
+// Initialize
 checkAndFill();
 window.addEventListener('hashchange', checkAndFill);
