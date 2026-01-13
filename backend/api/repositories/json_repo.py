@@ -29,11 +29,11 @@ class JsonConfigRepository(ConfigRepository):
     def __init__(self):
         self._manager = ConfigManager()
 
-    def get_feeds(self) -> List[str]:
+    def get_feeds(self) -> List[dict]:
         return self._manager.get_feeds()
     
-    def add_feed(self, url: str) -> bool:
-        return self._manager.add_feed(url)
+    def add_feed(self, url: str, name: str) -> bool:
+        return self._manager.add_feed(url, name)
     
     def remove_feed(self, url: str) -> bool:
         return self._manager.remove_feed(url)

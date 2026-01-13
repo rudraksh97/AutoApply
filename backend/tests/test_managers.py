@@ -193,18 +193,28 @@ class TestConfigManager:
         assert feeds == []
     
     def test_add_feed(self, config_manager):
-        """Test adding an RSS feed."""
-        result = config_manager.add_feed("https://example.com/rss")
+        """Test adding an RSS feed with name."""
+        result = config_manager.add_feed("https://example.com/rss", "Example Feed")
         assert result is True
         
         feeds = config_manager.get_feeds()
         assert len(feeds) == 1
-        assert "https://example.com/rss" in feeds
+        assert feeds[0]["url"] == "https://example.com/rss"
+        assert feeds[0]["name"] == "Example Feed"
     
-    def test_add_duplicate_feed(self, config_manager):
-        """Test that duplicate feeds are rejected."""
-        config_manager.add_feed("https://example.com/rss")
-        result = config_manager.add_feed("https://example.com/rss")
+    def test_add_duplicate_feed_url(self, config_manager):
+        """Test that duplicate feed URLs are rejected."""
+        config_manager.add_feed("https://example.com/rss", "Feed 1")
+        result = config_manager.add_feed("https://example.com/rss", "Feed 2")
+        assert result is False
+        
+        feeds = config_manager.get_feeds()
+        assert len(feeds) == 1
+
+    def test_add_duplicate_feed_name(self, config_manager):
+        """Test that duplicate feed names are rejected."""
+        config_manager.add_feed("https://example1.com/rss", "Same Name")
+        result = config_manager.add_feed("https://example2.com/rss", "Same Name")
         assert result is False
         
         feeds = config_manager.get_feeds()
@@ -212,7 +222,7 @@ class TestConfigManager:
     
     def test_remove_feed(self, config_manager):
         """Test removing an RSS feed."""
-        config_manager.add_feed("https://example.com/rss")
+        config_manager.add_feed("https://example.com/rss", "Example Feed")
         
         result = config_manager.remove_feed("https://example.com/rss")
         assert result is True
@@ -227,9 +237,9 @@ class TestConfigManager:
     
     def test_multiple_feeds(self, config_manager):
         """Test managing multiple feeds."""
-        config_manager.add_feed("https://feed1.com/rss")
-        config_manager.add_feed("https://feed2.com/rss")
-        config_manager.add_feed("https://feed3.com/rss")
+        config_manager.add_feed("https://feed1.com/rss", "Feed 1")
+        config_manager.add_feed("https://feed2.com/rss", "Feed 2")
+        config_manager.add_feed("https://feed3.com/rss", "Feed 3")
         
         feeds = config_manager.get_feeds()
         assert len(feeds) == 3
@@ -238,4 +248,5 @@ class TestConfigManager:
         
         feeds = config_manager.get_feeds()
         assert len(feeds) == 2
-        assert "https://feed2.com/rss" not in feeds
+        feed_urls = [f["url"] for f in feeds]
+        assert "https://feed2.com/rss" not in feed_urls

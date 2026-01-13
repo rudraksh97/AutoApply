@@ -26,6 +26,7 @@ def init_db():
             details TEXT,
             error_message TEXT,
             source_feed TEXT,
+            source_feed_name TEXT,
             company_name TEXT,
             job_title TEXT,
             apply_link TEXT
@@ -37,6 +38,10 @@ def init_db():
         cursor.execute("ALTER TABLE jobs ADD COLUMN source_feed TEXT")
     except sqlite3.OperationalError:
         pass  # Column already exists
+    try:
+        cursor.execute("ALTER TABLE jobs ADD COLUMN source_feed_name TEXT")
+    except sqlite3.OperationalError:
+        pass
     try:
         cursor.execute("ALTER TABLE jobs ADD COLUMN company_name TEXT")
     except sqlite3.OperationalError:

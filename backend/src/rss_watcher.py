@@ -24,12 +24,14 @@ class RSSWatcher:
         """
         Executes a single polling cycle across all configured RSS feeds.
         """
-        feeds = self.config_manager.get_feeds()
+        feeds = self.config_manager.get_feeds()  # Returns list of {url, name} objects
         if not feeds:
             logging.info("No RSS feeds configured. Skipping poll.")
             return
 
-        for feed_url in feeds:
+        for feed_obj in feeds:
+            feed_url = feed_obj["url"]
+            feed_name = feed_obj["name"]
             try:
                 # We offload the blocking feedparser.parse to a thread if needed,
                 # but for simple usage, direct is fine or use loop.run_in_executor
@@ -50,7 +52,8 @@ class RSSWatcher:
                         await self.event_publisher.publish("new_job_ingested", {
                             "job_link": job_link,
                             "title": entry.get("title", "Unknown Title"),
-                            "feed_url": feed_url
+                            "feed_url": feed_url,
+                            "feed_name": feed_name
                         })
                         self.deduplicator.mark_seen(job_link)
             except Exception as e:

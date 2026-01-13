@@ -7,7 +7,7 @@ from src.interfaces import EventPublisher, Deduplicator
 
 class MockConfigManager:
     def __init__(self):
-        self.feeds = ["http://feed1.com"]
+        self.feeds = [{"url": "http://feed1.com", "name": "Feed 1"}]
     def get_feeds(self):
         return self.feeds
     def set_feeds(self, feeds):
@@ -52,7 +52,10 @@ async def test_dynamic_feed_loading():
         assert call_args[0][0] == "http://feed1.com"
         
         # 2. Update config dynamically
-        mock_config.set_feeds(["http://feed1.com", "http://feed2.com"])
+        mock_config.set_feeds([
+            {"url": "http://feed1.com", "name": "Feed 1"},
+            {"url": "http://feed2.com", "name": "Feed 2"}
+        ])
         
         # 3. Second poll should pick up both
         mock_client_instance.get.reset_mock()

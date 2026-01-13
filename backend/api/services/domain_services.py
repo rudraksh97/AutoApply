@@ -33,8 +33,8 @@ class FeedService:
     def get_feeds(self):
         return self.repository.get_feeds()
 
-    def add_feed(self, url: str):
-        return self.repository.add_feed(url)
+    def add_feed(self, url: str, name: str):
+        return self.repository.add_feed(url, name)
 
     def remove_feed(self, url: str):
         return self.repository.remove_feed(url)

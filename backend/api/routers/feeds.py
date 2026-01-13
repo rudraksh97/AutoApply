@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException
 from api.services.domain_services import FeedService
 from api.dependencies import get_feed_service
-from api.schemas.models import FeedURL
+from api.schemas.models import FeedURL, FeedURLOnly
 
 from src.rss_watcher import RSSWatcher
 from src.infrastructure import JobManagerEventPublisher, JobManagerDeduplicator
@@ -176,12 +176,12 @@ def get_feeds(service: FeedService = Depends(get_feed_service)):
 
 @router.post("/")
 def add_feed(feed: FeedURL, service: FeedService = Depends(get_feed_service)):
-    if service.add_feed(feed.url):
-        return {"status": "added", "url": feed.url}
-    raise HTTPException(status_code=400, detail="Feed already exists")
+    if service.add_feed(feed.url, feed.name):
+        return {"status": "added", "url": feed.url, "name": feed.name}
+    raise HTTPException(status_code=400, detail="Feed URL or name already exists")
 
 @router.delete("/")
-def remove_feed(feed: FeedURL, service: FeedService = Depends(get_feed_service)):
+def remove_feed(feed: FeedURLOnly, service: FeedService = Depends(get_feed_service)):
     service.remove_feed(feed.url)
     return {"status": "removed", "url": feed.url}
 
@@ -204,10 +204,10 @@ async def poll_feeds_now():
     event_publisher = JobManagerEventPublisher(job_manager)
     deduplicator = JobManagerDeduplicator(job_manager)
     
-    all_feeds = config_manager.get_feeds()
+    all_feeds = config_manager.get_feeds()  # Returns list of {url, name} objects
     # Filter out test feeds
-    feeds_to_poll = [f for f in all_feeds if TEST_FEED_PATTERN not in f]
-    skipped_feeds = [f for f in all_feeds if TEST_FEED_PATTERN in f]
+    feeds_to_poll = [f for f in all_feeds if TEST_FEED_PATTERN not in f["url"]]
+    skipped_feeds = [f for f in all_feeds if TEST_FEED_PATTERN in f["url"]]
     
     if not feeds_to_poll:
         return {
@@ -221,7 +221,9 @@ async def poll_feeds_now():
     jobs_found = 0
     use_llm = False
     
-    for feed_url in feeds_to_poll:
+    for feed_obj in feeds_to_poll:
+        feed_url = feed_obj["url"]
+        feed_name = feed_obj["name"]
         try:
             loop = asyncio.get_event_loop()
             parsed_feed = await loop.run_in_executor(None, feedparser.parse, feed_url)
@@ -261,6 +263,7 @@ async def poll_feeds_now():
                         "job_link": job_link,
                         "title": job_title,
                         "feed_url": feed_url,
+                        "feed_name": feed_name,
                         "company_name": entry_company
                     })
                     deduplicator.mark_seen(job_link)
@@ -271,12 +274,12 @@ async def poll_feeds_now():
     return {
         "status": "success",
         "message": f"Polled {len(feeds_to_poll)} feed(s), found {jobs_found} new job(s)",
-        "feeds_polled": feeds_to_poll,
-        "skipped": skipped_feeds
+        "feeds_polled": [f["url"] for f in feeds_to_poll],
+        "skipped": [f["url"] for f in skipped_feeds]
     }
 
 @router.post("/poll-single")
-async def poll_single_feed(feed: FeedURL):
+async def poll_single_feed(feed: FeedURLOnly):
     """
     Manually trigger an immediate poll of a single RSS feed.
     """
@@ -284,11 +287,23 @@ async def poll_single_feed(feed: FeedURL):
     import asyncio
     
     job_manager = JobManager()
+    config_manager = ConfigManager()
     event_publisher = JobManagerEventPublisher(job_manager)
     deduplicator = JobManagerDeduplicator(job_manager)
     
     feed_url = feed.url
     jobs_found = 0
+    
+    # Look up feed name from config, or use "Test" for test feed
+    feed_name = None
+    if TEST_FEED_PATTERN in feed_url:
+        feed_name = "Test"
+    else:
+        all_feeds = config_manager.get_feeds()
+        for f in all_feeds:
+            if f["url"] == feed_url:
+                feed_name = f["name"]
+                break
     
     try:
         loop = asyncio.get_event_loop()
@@ -339,6 +354,7 @@ async def poll_single_feed(feed: FeedURL):
                     "job_link": job_link,
                     "title": job_title,
                     "feed_url": feed_url,
+                    "feed_name": feed_name,
                     "company_name": entry_company
                 })
                 deduplicator.mark_seen(job_link)

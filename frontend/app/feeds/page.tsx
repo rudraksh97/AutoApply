@@ -11,9 +11,15 @@ import { cn } from "@/lib/utils";
 // Test feed URL - always available, not stored in user feeds
 const TEST_FEED_URL = "http://localhost:8000/test/feed.xml";
 
+interface Feed {
+    url: string;
+    name: string;
+}
+
 export default function FeedsPage() {
-    const [feeds, setFeeds] = useState<string[]>([]);
-    const [newFeed, setNewFeed] = useState("");
+    const [feeds, setFeeds] = useState<Feed[]>([]);
+    const [newFeedUrl, setNewFeedUrl] = useState("");
+    const [newFeedName, setNewFeedName] = useState("");
     const [loading, setLoading] = useState(true);
     const [pollingAll, setPollingAll] = useState(false);
     const [pollingFeed, setPollingFeed] = useState<string | null>(null);
@@ -21,7 +27,7 @@ export default function FeedsPage() {
     const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     
     // Filter out test feed from user feeds (in case it was added before)
-    const userFeeds = feeds.filter(f => !f.includes('/test/feed.xml'));
+    const userFeeds = feeds.filter(f => !f.url.includes('/test/feed.xml'));
 
     const fetchFeeds = async () => {
         setLoading(true);
@@ -41,20 +47,26 @@ export default function FeedsPage() {
     }, []);
 
     const addFeed = async () => {
-        if (!newFeed) return;
+        if (!newFeedUrl || !newFeedName) return;
+        // Check if name already exists
+        if (feeds.some(f => f.name === newFeedName)) {
+            toast.error("A feed with this name already exists");
+            return;
+        }
         try {
-            await axios.post(`${API_URL}/feeds`, { url: newFeed });
-            setNewFeed("");
+            await axios.post(`${API_URL}/feeds`, { url: newFeedUrl, name: newFeedName });
+            setNewFeedUrl("");
+            setNewFeedName("");
             fetchFeeds();
             toast.success("Feed added successfully");
         } catch (e) {
-            toast.error("Failed to add feed");
+            toast.error("Failed to add feed - URL or name may already exist");
         }
     };
 
-    const removeFeed = async (url: string) => {
+    const removeFeed = async (feed: Feed) => {
         try {
-            await axios.delete(`${API_URL}/feeds`, { data: { url } });
+            await axios.delete(`${API_URL}/feeds`, { data: { url: feed.url, name: feed.name } });
             fetchFeeds();
             toast.success("Feed removed");
         } catch (e) {
@@ -133,16 +145,24 @@ export default function FeedsPage() {
                     <CardDescription>Add RSS feed URLs from platforms like Ashby, Greenhouse, or Workable.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6 pt-6">
-                    <div className="flex flex-col sm:flex-row gap-3">
-                        <Input
-                            className="w-full flex-1"
-                            placeholder="https://jobs.ashbyhq.com/company/feed or https://boards.greenhouse.io/company/feed"
-                            value={newFeed}
-                            onChange={(e) => setNewFeed(e.target.value)}
-                        />
-                        <Button onClick={addFeed} disabled={!newFeed}>
-                            <Plus className="h-4 w-4 mr-2" /> Add Feed
-                        </Button>
+                    <div className="flex flex-col gap-3">
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <Input
+                                className="w-full sm:w-48"
+                                placeholder="Feed name (e.g. Stripe)"
+                                value={newFeedName}
+                                onChange={(e) => setNewFeedName(e.target.value)}
+                            />
+                            <Input
+                                className="w-full flex-1"
+                                placeholder="https://jobs.ashbyhq.com/company/feed or https://boards.greenhouse.io/company/feed"
+                                value={newFeedUrl}
+                                onChange={(e) => setNewFeedUrl(e.target.value)}
+                            />
+                            <Button onClick={addFeed} disabled={!newFeedUrl || !newFeedName}>
+                                <Plus className="h-4 w-4 mr-2" /> Add Feed
+                            </Button>
+                        </div>
                     </div>
 
                     {/* Test Feed Section */}
@@ -157,8 +177,8 @@ export default function FeedsPage() {
                                     <FlaskConical className="h-4 w-4 text-violet-600" />
                                 </div>
                                 <div className="overflow-hidden">
-                                    <span className="text-sm font-medium text-violet-900 truncate block">{TEST_FEED_URL}</span>
-                                    <span className="text-xs text-violet-600">Sample jobs for testing the system</span>
+                                    <span className="text-sm font-semibold text-violet-900 block">Test</span>
+                                    <span className="text-xs text-violet-600 truncate block">{TEST_FEED_URL}</span>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0">
@@ -185,22 +205,25 @@ export default function FeedsPage() {
                         <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Active Feeds</h3>
                         <div className="grid gap-3">
                             {userFeeds.map((feed) => (
-                                <div key={feed} className="flex items-center justify-between p-4 border rounded-lg bg-card group hover:shadow-sm transition-shadow">
+                                <div key={feed.url} className="flex items-center justify-between p-4 border rounded-lg bg-card group hover:shadow-sm transition-shadow">
                                     <div className="flex items-center gap-3 overflow-hidden">
                                         <div className="p-2 rounded bg-primary/10">
                                             <Rss className="h-4 w-4 text-primary" />
                                         </div>
-                                        <span className="text-sm font-medium truncate">{feed}</span>
+                                        <div className="overflow-hidden">
+                                            <span className="text-sm font-semibold block">{feed.name}</span>
+                                            <span className="text-xs text-muted-foreground truncate block">{feed.url}</span>
+                                        </div>
                                     </div>
                                     <div className="flex items-center gap-2 flex-shrink-0">
                                         <Button
                                             variant="outline"
                                             size="sm"
                                             className="h-8 px-3 text-xs"
-                                            onClick={() => pollSingleFeed(feed)}
-                                            disabled={pollingFeed === feed || pollingAll}
+                                            onClick={() => pollSingleFeed(feed.url)}
+                                            disabled={pollingFeed === feed.url || pollingAll}
                                         >
-                                            {pollingFeed === feed ? (
+                                            {pollingFeed === feed.url ? (
                                                 <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
                                             ) : (
                                                 <Play className="h-3 w-3 mr-1.5" />

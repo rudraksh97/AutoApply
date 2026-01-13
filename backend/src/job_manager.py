@@ -92,7 +92,7 @@ class JobManager:
             cursor.execute("SELECT 1 FROM jobs WHERE url = ?", (url,))
             return cursor.fetchone() is not None
 
-    def add_job(self, url, status="Pending", source_feed=None, company_name=None, job_title=None):
+    def add_job(self, url, status="Pending", source_feed=None, source_feed_name=None, company_name=None, job_title=None):
         """
         Adds a new job to the database if it doesn't already exist.
 
@@ -100,6 +100,7 @@ class JobManager:
             url (str): Unique URL of the job posting.
             status (str): Initial status of the job.
             source_feed (str, optional): URL of the RSS feed that sourced this job.
+            source_feed_name (str, optional): Name of the RSS feed that sourced this job.
             company_name (str, optional): Name of the company.
             job_title (str, optional): Title of the job role.
 
@@ -112,16 +113,16 @@ class JobManager:
                 cursor = conn.cursor()
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 cursor.execute("""
-                    INSERT INTO jobs (url, status, timestamp, source_feed, company_name, job_title)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (url, status, timestamp, source_feed, company_name, job_title))
+                    INSERT INTO jobs (url, status, timestamp, source_feed, source_feed_name, company_name, job_title)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (url, status, timestamp, source_feed, source_feed_name, company_name, job_title))
                 conn.commit()
                 return True
         except sqlite3.IntegrityError:
             return False
 
     def update_job(self, url, status=None, pdf_path=None, details=None, error_message=None, 
-                   source_feed=None, company_name=None, job_title=None, apply_link=None):
+                   source_feed=None, source_feed_name=None, company_name=None, job_title=None, apply_link=None):
         """
         Updates an existing job's status and metadata.
 
@@ -132,6 +133,7 @@ class JobManager:
             details (str, optional): Extracted job description snippet.
             error_message (str, optional): Error details if processing failed.
             source_feed (str, optional): URL of the RSS feed source.
+            source_feed_name (str, optional): Name of the RSS feed source.
             company_name (str, optional): Name of the company.
             job_title (str, optional): Title of the job role.
             apply_link (str, optional): URL of the application page (if different from job URL).
@@ -158,6 +160,9 @@ class JobManager:
         if source_feed:
             fields.append("source_feed = ?")
             values.append(source_feed)
+        if source_feed_name:
+            fields.append("source_feed_name = ?")
+            values.append(source_feed_name)
         if company_name:
             fields.append("company_name = ?")
             values.append(company_name)

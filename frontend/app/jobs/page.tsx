@@ -17,6 +17,7 @@ interface Job {
     details: string | null;
     error_message?: string | null;
     source_feed?: string | null;
+    source_feed_name?: string | null;
     company_name?: string | null;
     job_title?: string | null;
     apply_link?: string | null;
@@ -318,9 +319,9 @@ export default function JobsPage() {
                                                             {job.company_name && (
                                                                 <span className="font-medium">{job.company_name}</span>
                                                             )}
-                                                            {job.source_feed && (
-                                                                <span className="text-muted-foreground/60" title={job.source_feed}>
-                                                                    via {new URL(job.source_feed).hostname.replace('www.', '')}
+                                                            {(job.source_feed_name || job.source_feed) && (
+                                                                <span className="text-muted-foreground/60" title={job.source_feed || ''}>
+                                                                    via {job.source_feed_name || (job.source_feed ? new URL(job.source_feed).hostname.replace('www.', '') : '')}
                                                                 </span>
                                                             )}
                                                         </div>

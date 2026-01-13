@@ -149,12 +149,14 @@ async def automation_loop():
             # 1. Periodic RSS Poll (Hourly) - skip test feeds
             if now - last_rss_poll > 3600:
                 logging.info("Triggering periodic RSS poll...")
-                all_feeds = config_manager.get_feeds()
-                feeds_to_poll = [f for f in all_feeds if TEST_FEED_PATTERN not in f]
+                all_feeds = config_manager.get_feeds()  # Returns list of {url, name} objects
+                feeds_to_poll = [f for f in all_feeds if TEST_FEED_PATTERN not in f["url"]]
                 
                 if feeds_to_poll:
                     import feedparser
-                    for feed_url in feeds_to_poll:
+                    for feed_obj in feeds_to_poll:
+                        feed_url = feed_obj["url"]
+                        feed_name = feed_obj["name"]
                         try:
                             loop = asyncio.get_event_loop()
                             parsed_feed = await loop.run_in_executor(None, feedparser.parse, feed_url)
@@ -192,6 +194,7 @@ async def automation_loop():
                                         "job_link": job_link,
                                         "title": job_title,
                                         "feed_url": feed_url,
+                                        "feed_name": feed_name,
                                         "company_name": entry_company
                                     })
                                     deduplicator.mark_seen(job_link)

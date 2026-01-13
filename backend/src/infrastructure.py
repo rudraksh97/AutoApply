@@ -20,6 +20,7 @@ class JobManagerEventPublisher(EventPublisher):
             job_link = data["job_link"]
             job_title = data.get("title")
             feed_url = data.get("feed_url")
+            feed_name = data.get("feed_name")
             company_name = data.get("company_name")
             
             # Add job with metadata
@@ -27,6 +28,7 @@ class JobManagerEventPublisher(EventPublisher):
                 job_link, 
                 status="Pending",
                 source_feed=feed_url,
+                source_feed_name=feed_name,
                 company_name=company_name,
                 job_title=job_title
             )

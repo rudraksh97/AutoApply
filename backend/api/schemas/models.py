@@ -10,7 +10,18 @@ class Job(BaseModel):
     error_message: Optional[str] = None
 
 class FeedURL(BaseModel):
+    """Request model for adding a feed - requires both URL and name."""
     url: str
+    name: str  # Mandatory distinct name for the feed
+
+class FeedURLOnly(BaseModel):
+    """Request model when only URL is needed (e.g., for polling or removal)."""
+    url: str
+
+class Feed(BaseModel):
+    """RSS Feed with a mandatory distinct name."""
+    url: str
+    name: str
 
 class ProfileBasics(BaseModel):
     first_name: str

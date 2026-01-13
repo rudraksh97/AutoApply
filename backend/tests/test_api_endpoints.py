@@ -95,24 +95,27 @@ class TestFeedsEndpoints(TestAPIEndpoints):
         assert response.json() == []
     
     def test_add_feed(self, client):
-        """Test adding a new RSS feed."""
-        response = client.post("/feeds/", json={"url": "https://example.com/rss"})
+        """Test adding a new RSS feed with name."""
+        response = client.post("/feeds/", json={"url": "https://example.com/rss", "name": "Example Feed"})
         assert response.status_code == 200
         
         response = client.get("/feeds/")
-        assert "https://example.com/rss" in response.json()
+        feeds = response.json()
+        assert len(feeds) == 1
+        assert feeds[0]["url"] == "https://example.com/rss"
+        assert feeds[0]["name"] == "Example Feed"
     
     def test_delete_feed(self, client):
         """Test removing an RSS feed."""
         # Add first
-        client.post("/feeds/", json={"url": "https://example.com/rss"})
+        client.post("/feeds/", json={"url": "https://example.com/rss", "name": "Example Feed"})
         
         # Delete - use request() for DELETE with body
         response = client.request("DELETE", "/feeds/", json={"url": "https://example.com/rss"})
         assert response.status_code == 200
         
         response = client.get("/feeds/")
-        assert "https://example.com/rss" not in response.json()
+        assert response.json() == []
 
 
 class TestProfileEndpoints(TestAPIEndpoints):

@@ -33,35 +33,50 @@ class ConfigManager:
 
     def get_feeds(self):
         """
-        Retrieves the list of configured RSS feed URLs.
+        Retrieves the list of configured RSS feeds.
 
         Returns:
-            list: A list of strings, each a feed URL.
+            list: A list of feed objects with 'url' and 'name' fields.
+                  For backwards compatibility, string entries are converted to objects.
         """
         with open(CONFIG_FILE, 'r') as f:
             data = json.load(f)
-        return data.get("rss_feeds", [])
+        feeds = data.get("rss_feeds", [])
+        # Handle backwards compatibility: convert old string entries to objects
+        normalized = []
+        for feed in feeds:
+            if isinstance(feed, str):
+                # Old format - user will need to re-add with a name
+                normalized.append({"url": feed, "name": ""})
+            else:
+                normalized.append(feed)
+        return normalized
 
-    def add_feed(self, url):
+    def add_feed(self, url, name):
         """
-        Adds a new RSS feed URL to the configuration.
+        Adds a new RSS feed to the configuration.
 
         Args:
             url (str): The URL of the RSS feed to add.
+            name (str): The distinct name for this feed.
 
         Returns:
-            bool: True if the feed was added, False if it was already present.
+            bool: True if the feed was added, False if URL or name already exists.
         """
         feeds = self.get_feeds()
-        if url not in feeds:
-            feeds.append(url)
-            self._save_feeds(feeds)
-            return True
-        return False
+        # Check for duplicate URL or name
+        for feed in feeds:
+            if feed["url"] == url:
+                return False  # URL already exists
+            if feed["name"] == name:
+                return False  # Name already exists
+        feeds.append({"url": url, "name": name})
+        self._save_feeds(feeds)
+        return True
 
     def remove_feed(self, url):
         """
-        Removes an RSS feed URL from the configuration.
+        Removes an RSS feed from the configuration by URL.
 
         Args:
             url (str): The URL of the RSS feed to remove.
@@ -70,10 +85,11 @@ class ConfigManager:
             bool: True if the feed was removed, False if it was not found.
         """
         feeds = self.get_feeds()
-        if url in feeds:
-            feeds.remove(url)
-            self._save_feeds(feeds)
-            return True
+        for i, feed in enumerate(feeds):
+            if feed["url"] == url:
+                feeds.pop(i)
+                self._save_feeds(feeds)
+                return True
         return False
 
     def _save_feeds(self, feeds):

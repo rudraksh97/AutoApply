@@ -15,10 +15,12 @@ class JobRepository(Protocol):
         ...
 
 class ConfigRepository(Protocol):
-    def get_feeds(self) -> List[str]:
+    def get_feeds(self) -> List[dict]:
+        """Returns list of feed objects with 'url' and 'name' fields."""
         ...
     
-    def add_feed(self, url: str) -> bool:
+    def add_feed(self, url: str, name: str) -> bool:
+        """Adds a feed with distinct name. Returns False if url or name already exists."""
         ...
     
     def remove_feed(self, url: str) -> bool:
