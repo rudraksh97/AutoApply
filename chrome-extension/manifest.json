@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
     "name": "AutoApply Helper",
-    "version": "1.2",
-    "description": "Automatically fills job applications from AutoApply drafts",
+    "version": "1.3",
+    "description": "Automatically fills job applications from AutoApply drafts. Click the icon to fill the current page.",
     "permissions": [
         "activeTab",
         "scripting"
@@ -11,6 +11,10 @@
         "http://localhost:8000/*",
         "<all_urls>"
     ],
+    "action": {
+        "default_icon": "icon.png",
+        "default_title": "AutoApply - Click to fill form"
+    },
     "background": {
         "service_worker": "background.js"
     },
