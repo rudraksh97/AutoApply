@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Optional, List
 
 from src.database import init_db, get_connection
+from src.url_utils import normalize_job_url
 from api.schemas.form_state import (
     ApplicationDraft, 
     FormState, 
@@ -53,6 +54,8 @@ class DraftManager:
         Returns:
             The draft ID (UUID string)
         """
+        job_url = normalize_job_url(job_url)
+
         draft = ApplicationDraft(
             job_url=job_url,
             apply_link=apply_link,
@@ -117,6 +120,8 @@ class DraftManager:
         Returns:
             The ApplicationDraft if found, None otherwise
         """
+        job_url = normalize_job_url(job_url)
+
         with get_connection() as conn:
             conn.row_factory = lambda c, r: dict(zip([col[0] for col in c.description], r))
             cursor = conn.cursor()
@@ -290,6 +295,8 @@ class DraftManager:
         Returns:
             True if deleted, False if not found
         """
+        job_url = normalize_job_url(job_url)
+
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM drafts WHERE job_url = ?", (job_url,))
@@ -306,6 +313,8 @@ class DraftManager:
         Returns:
             True if a draft exists, False otherwise
         """
+        job_url = normalize_job_url(job_url)
+
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT 1 FROM drafts WHERE job_url = ?", (job_url,))

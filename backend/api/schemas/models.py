@@ -55,6 +55,7 @@ class ProfileData(BaseModel):
     work_auth: ProfileWorkAuth
     education: List[ProfileEducation]
     experience: List[ProfileExperience]
+    skills: str = ""
     great_fit_pitch: str = ""
     cover_letter_template: str = ""
     why_us: str = ""

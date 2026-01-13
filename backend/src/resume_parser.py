@@ -28,6 +28,8 @@ class ResumeParser:
         text = self._extract_text(file_path)
              
         data = await self._parse_text_with_llm(text)
+        if "skills" not in data:
+            data["skills"] = []
         return data
 
     def _extract_text(self, file_path: str) -> str:
@@ -73,6 +75,7 @@ class ResumeParser:
             "demographics": {
                 "gender": "", "race": "", "nationality": "", "veteran": "", "disability": ""
             },
+            "skills": ["skill1", "skill2"],
              "education": [
                 {"degree": "", "university": "", "field_of_study": "", "graduation_year": ""}
              ],

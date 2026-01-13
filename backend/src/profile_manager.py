@@ -37,6 +37,7 @@ DEFAULT_PROFILE = {
     },
     "education": [],
     "experience": [],
+    "skills": "",
     "great_fit_pitch": "",
     "cover_letter_template": "",
     "why_us": "",
@@ -143,6 +144,13 @@ class ProfileManager:
             profile["education"] = parsed_data["education"]
         if parsed_data.get("experience"):
             profile["experience"] = parsed_data["experience"]
+        if parsed_data.get("skills"):
+            skills_value = parsed_data["skills"]
+            # Normalize list of skills into comma-separated string for storage
+            if isinstance(skills_value, list):
+                profile["skills"] = ", ".join(skills_value)
+            else:
+                profile["skills"] = str(skills_value)
             
         if resume_path:
             profile["uploaded_resume_path"] = resume_path
@@ -199,6 +207,9 @@ disability_status: {p['demographics']['disability']}
 === WORK AUTHORIZATION ===
 authorized_to_work: {'Yes' if p['work_auth']['authorized_in_us'] else 'No'}
 requires_sponsorship: {'Yes' if p['work_auth']['requires_sponsorship'] else 'No'}
+
+=== SKILLS ===
+skills: {p.get('skills', '(Not provided)')}
 
 === EXPERIENCE ===
 {exp_text}

@@ -10,6 +10,7 @@ import os
 import sqlite3
 from datetime import datetime
 from src.database import init_db, get_connection
+from src.url_utils import normalize_job_url
 
 class JobManager:
     """
@@ -85,6 +86,7 @@ class JobManager:
 
     def job_exists(self, url):
         """Checks if a job with the given URL already exists in the database."""
+        url = normalize_job_url(url)
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT 1 FROM jobs WHERE url = ?", (url,))
@@ -104,6 +106,7 @@ class JobManager:
         Returns:
             bool: True if added, False if it already existed.
         """
+        url = normalize_job_url(url)
         try:
             with get_connection() as conn:
                 cursor = conn.cursor()
@@ -136,6 +139,9 @@ class JobManager:
         Returns:
             bool: True if the job was found and updated, False otherwise.
         """
+        # Normalize URL before lookup/update
+        url = normalize_job_url(url)
+
         # build update query dynamically
         fields = []
         values = []
@@ -194,6 +200,8 @@ class JobManager:
         Returns:
             bool: True if the job was found and deleted, False otherwise.
         """
+        url = normalize_job_url(url)
+
         from src.draft_manager import DraftManager
         DraftManager().delete_draft_by_url(url)
         

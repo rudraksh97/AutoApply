@@ -39,6 +39,7 @@
       "description": ""
     }
   ],
+  "skills": "",
   "great_fit_pitch": "",
   "cover_letter_template": "Dear Hiring Manager,\n\nI am excited to apply for the position at {{company}}...",
   "why_us": "",

@@ -174,6 +174,7 @@ export default function JobsPage() {
 
         // Special handling for Ashby: user should open on /application URL
         let targetUrl = jobUrl;
+
         if (targetUrl.includes("jobs.ashbyhq.com") && !targetUrl.includes("/application")) {
             // Remove trailing slash if present then append /application
             targetUrl = targetUrl.replace(/\/$/, "") + "/application";

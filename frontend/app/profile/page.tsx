@@ -209,7 +209,12 @@ export default function ProfilePage() {
                                                 basics: { ...prev.basics, ...parsed.basics },
                                                 urls: { ...prev.urls, ...parsed.urls },
                                                 education: parsed.education || prev.education,
-                                                experience: parsed.experience || prev.experience
+                                                experience: parsed.experience || prev.experience,
+                                                skills: parsed.skills
+                                                    ? Array.isArray(parsed.skills)
+                                                        ? parsed.skills.join(", ")
+                                                        : parsed.skills
+                                                    : prev.skills
                                             }));
 
                                             toast.success("Profile auto-filled from resume! Please review changes.");
@@ -337,7 +342,12 @@ export default function ProfilePage() {
                                                     basics: { ...prev.basics, ...parsed.basics },
                                                     urls: { ...prev.urls, ...parsed.urls },
                                                     education: parsed.education || prev.education,
-                                                    experience: parsed.experience || prev.experience
+                                                    experience: parsed.experience || prev.experience,
+                                                    skills: parsed.skills
+                                                        ? Array.isArray(parsed.skills)
+                                                            ? parsed.skills.join(", ")
+                                                            : parsed.skills
+                                                        : prev.skills
                                                 }));
                                                 toast.success("Profile auto-filled from template! Please review changes.");
                                             } catch (err) {
@@ -497,6 +507,24 @@ export default function ProfilePage() {
                                 />
                                 <Label htmlFor="req_sponsorship" className="text-sm font-medium cursor-pointer">Requires Sponsorship</Label>
                             </div>
+                        </CardContent>
+                    </Card>
+                </section>
+
+                {/* Skills Section */}
+                <section className="space-y-6">
+                    <div className="flex flex-col gap-1">
+                        <h2 className="text-xl font-semibold text-foreground">Skills</h2>
+                        <p className="text-sm text-muted-foreground">List your key technical and professional skills.</p>
+                    </div>
+                    <Card className="shadow-sm border-border/60">
+                        <CardContent className="p-8 space-y-4">
+                            <textarea
+                                className="flex min-h-[140px] w-full rounded-md border border-input bg-muted/20 px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                placeholder="JavaScript, TypeScript, React, Python, SQL, cloud..."
+                                value={profile.skills || ""}
+                                onChange={(e) => handleChange('root', 'skills', e.target.value)}
+                            />
                         </CardContent>
                     </Card>
                 </section>

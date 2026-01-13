@@ -16,6 +16,8 @@ AVAILABLE_MODELS = [
     {"id": "anthropic/claude-sonnet-4", "name": "Claude Sonnet 4", "provider": "Anthropic", "description": "Latest Claude model, excellent for complex tasks"},
     {"id": "anthropic/claude-3.5-sonnet", "name": "Claude 3.5 Sonnet", "provider": "Anthropic", "description": "Fast and capable, great balance of speed and quality"},
     {"id": "anthropic/claude-3-haiku", "name": "Claude 3 Haiku", "provider": "Anthropic", "description": "Fastest Claude model, ideal for simple tasks"},
+    {"id": "anthropic/claude-haiku-4.5", "name": "Claude Haiku 4.5", "provider": "Anthropic", "description": "Latest Haiku, optimized for speed and low cost"},
+    {"id": "anthropic/claude-opus-4.5", "name": "Claude Opus 4.5", "provider": "Anthropic", "description": "Newest Opus with top-tier reasoning and quality"},
     {"id": "openai/gpt-4o", "name": "GPT-4o", "provider": "OpenAI", "description": "OpenAI's flagship multimodal model"},
     {"id": "openai/gpt-4o-mini", "name": "GPT-4o Mini", "provider": "OpenAI", "description": "Smaller, faster, more affordable GPT-4o"},
     {"id": "google/gemini-2.0-flash-001", "name": "Gemini 2.0 Flash", "provider": "Google", "description": "Google's fast and efficient model"},
