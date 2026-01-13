@@ -9,6 +9,7 @@ for later manual submission by the user.
 """
 
 import json
+import re
 from browser_use import Agent, Browser
 from browser_use.llm.openrouter.chat import ChatOpenRouter
 import os
@@ -172,18 +173,43 @@ class BrowserAgent:
             # Re-raise to be handled by the caller (service layer)
             raise e
 
-    async def scrape_job_details(self, job_link: str) -> str:
+    async def scrape_job_details(self, job_link: str) -> dict:
         """
-        Opens a job link and extracts the full description.
+        Opens a job link and extracts the job description and apply link.
 
         Args:
             job_link: The URL of the job posting.
 
         Returns:
-            Extracted text describing the job.
+            Dict with keys: job_description, apply_link, company_name, job_title, location
         """
         task = self._create_scrape_task(job_link)
-        return await self._run_agent(task)
+        result = await self._run_agent(task)
+        
+        # Try to parse as JSON
+        try:
+            # Look for JSON in the response
+            json_match = re.search(r'\{.*\}', result, re.DOTALL)
+            if json_match:
+                parsed = json.loads(json_match.group())
+                return {
+                    "job_description": parsed.get("job_description", result),
+                    "apply_link": parsed.get("apply_link"),
+                    "company_name": parsed.get("company_name"),
+                    "job_title": parsed.get("job_title"),
+                    "location": parsed.get("location")
+                }
+        except (json.JSONDecodeError, AttributeError):
+            pass
+        
+        # Fallback: return raw text as job_description
+        return {
+            "job_description": result,
+            "apply_link": None,
+            "company_name": None,
+            "job_title": None,
+            "location": None
+        }
 
     async def extract_form(self, job_link: str) -> dict:
         """

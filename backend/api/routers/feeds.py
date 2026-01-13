@@ -1,4 +1,7 @@
 import re
+import os
+import json
+import logging
 from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException
 from api.services.domain_services import FeedService
@@ -9,8 +12,123 @@ from src.rss_watcher import RSSWatcher
 from src.infrastructure import JobManagerEventPublisher, JobManagerDeduplicator
 from src.job_manager import JobManager
 from src.config import ConfigManager
+from src.prompts import EXTRACT_JOB_LINK_FROM_RSS_PROMPT
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/feeds", tags=["Feeds"])
+
+
+# =============================================================================
+# LLM-BASED JOB LINK EXTRACTION
+# =============================================================================
+# Some RSS feeds (like HN "Who is hiring") link to comments/posts rather than
+# actual job application pages. We use LLM to extract the real job URL.
+
+# Patterns that indicate we need LLM extraction (feed links to aggregator, not jobs)
+AGGREGATOR_FEED_PATTERNS = [
+    "hnrss.org",
+    "news.ycombinator.com",
+    "reddit.com",
+    "lobste.rs",
+]
+
+
+def _needs_llm_extraction(feed_url: str) -> bool:
+    """Check if this feed needs LLM-based job link extraction."""
+    return any(pattern in feed_url.lower() for pattern in AGGREGATOR_FEED_PATTERNS)
+
+
+async def _extract_job_link_with_llm(entry: dict) -> dict:
+    """
+    Use LLM to extract the actual job application URL from an RSS entry.
+    
+    Returns dict with: job_url, company_name, job_title, location, confidence
+    """
+    from langchain_openai import ChatOpenAI
+    
+    # Get entry content
+    entry_title = entry.get("title", "")
+    entry_link = entry.get("link", "")
+    
+    # Get description - try multiple fields
+    entry_description = entry.get("description", "") or entry.get("summary", "")
+    
+    # Try content array if no description
+    if not entry_description and entry.get("content"):
+        content_list = entry.get("content", [])
+        if content_list and len(content_list) > 0:
+            entry_description = content_list[0].get("value", "")
+    
+    logger.debug(f"Entry title: {entry_title[:80]}")
+    logger.debug(f"Entry description length: {len(entry_description)} chars")
+    
+    # Build prompt
+    prompt = EXTRACT_JOB_LINK_FROM_RSS_PROMPT.format(
+        entry_title=entry_title,
+        entry_description=entry_description[:3000],  # Limit size
+        entry_link=entry_link
+    )
+    
+    try:
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            logger.warning("No OPENROUTER_API_KEY set, falling back to entry link")
+            return {
+                "job_url": entry_link,
+                "company_name": None,
+                "job_title": entry_title,
+                "location": None,
+                "confidence": 0.0,
+                "notes": "No API key for LLM extraction"
+            }
+        
+        llm = ChatOpenAI(
+            model="google/gemini-2.0-flash-001",
+            openai_api_key=api_key,
+            openai_api_base="https://openrouter.ai/api/v1",
+            temperature=0.1
+        )
+        
+        response = await llm.ainvoke(prompt)
+        response_text = response.content
+        
+        logger.debug(f"LLM raw response: {response_text[:500]}")
+        
+        # Parse JSON response
+        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+        if json_match:
+            result = json.loads(json_match.group())
+            job_url = result.get('job_url')
+            confidence = result.get('confidence', 0)
+            notes = result.get('notes', '')
+            
+            if job_url:
+                logger.info(f"✅ LLM extracted job URL: {job_url} (confidence: {confidence})")
+            else:
+                logger.info(f"⚠️ LLM found no job URL. Notes: {notes}")
+            
+            return result
+        else:
+            logger.warning(f"Could not parse LLM response: {response_text[:300]}")
+            return {
+                "job_url": None,
+                "company_name": None,
+                "job_title": entry_title,
+                "location": None,
+                "confidence": 0.0,
+                "notes": "Failed to parse LLM response"
+            }
+            
+    except Exception as e:
+        logger.error(f"LLM extraction failed: {e}")
+        return {
+            "job_url": None,
+            "company_name": None,
+            "job_title": entry_title,
+            "location": None,
+            "confidence": 0.0,
+            "notes": f"LLM error: {str(e)}"
+        }
 
 
 def _extract_company_from_feed(feed_url: str, feed_title: str) -> str:
@@ -101,25 +219,44 @@ async def poll_feeds_now():
     
     # Poll each feed manually (instead of using watcher.poll_once which polls all)
     jobs_found = 0
+    use_llm = False
+    
     for feed_url in feeds_to_poll:
         try:
             loop = asyncio.get_event_loop()
             parsed_feed = await loop.run_in_executor(None, feedparser.parse, feed_url)
+            
+            # Check if this feed needs LLM-based extraction
+            use_llm = _needs_llm_extraction(feed_url)
             
             # Try to extract company name from feed title or URL
             feed_title = parsed_feed.feed.get("title", "")
             company_name = _extract_company_from_feed(feed_url, feed_title)
             
             for entry in parsed_feed.entries:
-                job_link = entry.get("link")
-                if not job_link:
+                original_link = entry.get("link")
+                if not original_link:
                     continue
                 
-                if deduplicator.is_new(job_link):
-                    # Extract job title and company from entry
+                # Use LLM to extract actual job URL if needed
+                if use_llm:
+                    extraction = await _extract_job_link_with_llm(entry)
+                    job_link = extraction.get("job_url")
+                    
+                    # Skip if no valid job URL found
+                    if not job_link:
+                        logger.info(f"Skipping entry - no job URL extracted: {entry.get('title', '')[:50]}")
+                        continue
+                    
+                    # Use extracted metadata
+                    job_title = extraction.get("job_title") or entry.get("title", "Unknown Title")
+                    entry_company = extraction.get("company_name") or company_name
+                else:
+                    job_link = original_link
                     job_title = entry.get("title", "Unknown Title")
                     entry_company = entry.get("author") or entry.get("dc_creator") or company_name
-                    
+                
+                if deduplicator.is_new(job_link):
                     await event_publisher.publish("new_job_ingested", {
                         "job_link": job_link,
                         "title": job_title,
@@ -129,7 +266,7 @@ async def poll_feeds_now():
                     deduplicator.mark_seen(job_link)
                     jobs_found += 1
         except Exception as e:
-            print(f"Error polling feed {feed_url}: {e}")
+            logger.error(f"Error polling feed {feed_url}: {e}")
     
     return {
         "status": "success",
@@ -165,19 +302,39 @@ async def poll_single_feed(feed: FeedURL):
                 "jobs_found": 0
             }
         
+        # Check if this feed needs LLM-based extraction
+        use_llm = _needs_llm_extraction(feed_url)
+        
         # Extract company name from feed
         feed_title = parsed_feed.feed.get("title", "")
         company_name = _extract_company_from_feed(feed_url, feed_title)
         
+        skipped_entries = 0
         for entry in parsed_feed.entries:
-            job_link = entry.get("link")
-            if not job_link:
+            original_link = entry.get("link")
+            if not original_link:
                 continue
             
-            if deduplicator.is_new(job_link):
+            # Use LLM to extract actual job URL if needed
+            if use_llm:
+                extraction = await _extract_job_link_with_llm(entry)
+                job_link = extraction.get("job_url")
+                
+                # Skip if no valid job URL found
+                if not job_link:
+                    logger.info(f"Skipping entry - no job URL extracted: {entry.get('title', '')[:50]}")
+                    skipped_entries += 1
+                    continue
+                
+                # Use extracted metadata
+                job_title = extraction.get("job_title") or entry.get("title", "Unknown Title")
+                entry_company = extraction.get("company_name") or company_name
+            else:
+                job_link = original_link
                 job_title = entry.get("title", "Unknown Title")
                 entry_company = entry.get("author") or entry.get("dc_creator") or company_name
-                
+            
+            if deduplicator.is_new(job_link):
                 await event_publisher.publish("new_job_ingested", {
                     "job_link": job_link,
                     "title": job_title,
@@ -187,11 +344,17 @@ async def poll_single_feed(feed: FeedURL):
                 deduplicator.mark_seen(job_link)
                 jobs_found += 1
         
-        return {
+        result = {
             "status": "success",
             "message": f"Found {jobs_found} new job(s)",
             "feed": feed_url,
-            "jobs_found": jobs_found
+            "jobs_found": jobs_found,
+            "llm_extraction": use_llm
         }
+        if skipped_entries > 0:
+            result["skipped_entries"] = skipped_entries
+            result["message"] += f" (skipped {skipped_entries} without valid job URLs)"
+        
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to poll feed: {str(e)}")

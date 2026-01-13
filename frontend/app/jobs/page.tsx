@@ -19,11 +19,13 @@ interface Job {
     source_feed?: string | null;
     company_name?: string | null;
     job_title?: string | null;
+    apply_link?: string | null;
 }
 
 interface Draft {
     id: string;
     job_url: string;
+    apply_link?: string | null;
     status: string;
     field_count: number;
     filled_field_count: number;
@@ -32,6 +34,7 @@ interface Draft {
 interface FullDraft {
     id: string;
     job_url: string;
+    apply_link?: string | null;
     status: string;
     form_state: {
         version: string;
@@ -298,9 +301,17 @@ export default function JobsPage() {
                                                                 {job.job_title || 'Untitled Position'}
                                                             </span>
                                                             <a href={job.url} target="_blank" rel="noopener noreferrer"
-                                                                className="text-muted-foreground/60 hover:text-primary transition-colors flex-shrink-0">
-                                                                <ExternalLink className="h-3 w-3" />
+                                                                className="text-muted-foreground/60 hover:text-primary transition-colors flex-shrink-0"
+                                                                title="View Job Description">
+                                                                <FileText className="h-3 w-3" />
                                                             </a>
+                                                            {job.apply_link && job.apply_link !== job.url && (
+                                                                <a href={job.apply_link} target="_blank" rel="noopener noreferrer"
+                                                                    className="text-blue-500 hover:text-blue-700 transition-colors flex-shrink-0"
+                                                                    title="Apply Page">
+                                                                    <ExternalLink className="h-3 w-3" />
+                                                                </a>
+                                                            )}
                                                         </div>
                                                         <div className="flex items-center gap-2 text-xs text-muted-foreground truncate">
                                                             {job.company_name && (
@@ -353,7 +364,7 @@ export default function JobsPage() {
                                                         {isDraftReady && draft && (
                                                             <Button
                                                                 size="sm"
-                                                                onClick={() => openDraft(draft.id, job.url)}
+                                                                onClick={() => openDraft(draft.id, job.apply_link || job.url)}
                                                                 disabled={openingDraft === draft.id}
                                                                 className="h-7 px-2 bg-blue-600 hover:bg-blue-700 text-white text-xs"
                                                             >

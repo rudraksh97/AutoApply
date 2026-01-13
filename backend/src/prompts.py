@@ -96,11 +96,35 @@ FORM_FILLING_CONTEXT = FORM_EXTRACTION_CONTEXT
 
 SCRAPE_JOB_TASK_TEMPLATE = """
 Go to {job_link}.
-Extract the full job description, responsibilities, and requirements.
-Return the result as a structured string.
+
+TASK 1: Extract the full job description, responsibilities, and requirements.
+
+TASK 2: Find and extract the "Apply" or "Apply Now" button/link URL.
+- Look for buttons or links containing: "Apply", "Apply Now", "Apply for this job", "Submit Application"
+- The apply link is often a different URL from the current page
+- Common patterns: /apply, /application, ?apply=true, or links to external ATS systems
+- For Ashby jobs (jobs.ashbyhq.com), the apply page is usually the same URL + "/application"
+- For Lever jobs (jobs.lever.co), look for "Apply for this job" button
+- For Greenhouse jobs (boards.greenhouse.io), look for "Apply" button
+
+Return a JSON object with this structure:
+{{
+  "job_description": "<full job description text including title, responsibilities, requirements>",
+  "apply_link": "<URL of the apply/application page, or null if same page or not found>",
+  "company_name": "<company name if visible>",
+  "job_title": "<job title>",
+  "location": "<job location if visible>"
+}}
+
+IMPORTANT:
+- If the apply form is on the SAME page (embedded form), set apply_link to null
+- If there's a separate application page, extract that URL
+- The job_description should be comprehensive text, not JSON
 """
 
 EXTRACT_FORM_TASK_TEMPLATE = """
+🚀 FIRST ACTION: Navigate to {job_link} immediately. Do not wait - navigate now!
+
 You are a DETERMINISTIC form EXTRACTION engine. DO NOT FILL ANY FIELDS.
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -116,9 +140,9 @@ TASK: Extract form structure from {job_link}
 EXECUTION STEPS
 ═══════════════════════════════════════════════════════════════════════════════
 
-STEP 1 — NAVIGATE
-  • Go to {job_link}
-  • Wait for page to fully load
+STEP 1 — NAVIGATE (DO THIS FIRST!)
+  • Navigate to {job_link} using the navigate action
+  • Wait 5 seconds for page to fully load
   • Dismiss any cookie/popup dialogs (click X or "Accept")
   • DO NOT interact with form fields
 
@@ -361,4 +385,80 @@ Return a JSON object with a single key:
 - skills_list: A list of the top 10-15 most relevant keywords/skills found in the description.
 
 Do not manufacture skills that are completely unrelated to software engineering, but prioritize matching the JD hard skills.
+"""
+
+
+# =============================================================================
+# RSS FEED JOB LINK EXTRACTION
+# =============================================================================
+# Used to extract actual job application URLs from RSS entries that link to
+# aggregator pages (like HN "Who is hiring" comments) rather than direct job pages.
+
+EXTRACT_JOB_LINK_FROM_RSS_PROMPT = """
+You are a job link extraction assistant. Your task is to extract the actual job application URL from an RSS feed entry.
+
+═══════════════════════════════════════════════════════════════════════════════
+RSS ENTRY CONTENT
+═══════════════════════════════════════════════════════════════════════════════
+Title: {entry_title}
+
+Description/Content:
+{entry_description}
+
+Original Link: {entry_link}
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK
+═══════════════════════════════════════════════════════════════════════════════
+Extract the ACTUAL job application URL from the description content.
+
+PRIORITY ORDER for URL selection:
+1. Direct job board URLs (jobs.ashbyhq.com, jobs.lever.co, greenhouse.io, workable.com, etc.)
+2. Company careers page URLs (*/careers/*, */jobs/*)
+3. Application form URLs
+4. LinkedIn job posting URLs (linkedin.com/jobs/*)
+5. Company website with job info
+6. Email application (return null, we can't automate email)
+
+IGNORE these URLs:
+- LinkedIn profile URLs (linkedin.com/in/*)
+- GitHub profile URLs (github.com/username without /jobs)
+- Twitter/X URLs
+- Generic company homepages without job path
+- The original RSS entry link if it's just a comment/forum link
+
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════════════════════════════════════════
+Return a JSON object:
+
+{{
+  "job_url": "<extracted job application URL or null if not found>",
+  "company_name": "<company name extracted from content>",
+  "job_title": "<job title extracted from content>",
+  "location": "<job location if mentioned>",
+  "confidence": <0.0-1.0 how confident you are this is the right URL>,
+  "notes": "<any relevant notes about extraction>"
+}}
+
+RULES:
+- Return the FIRST best matching job URL
+- If multiple job URLs exist, pick the most direct application link
+- If only email application is available, set job_url to null
+- Extract company name and job title from the content
+- Set confidence based on how clear the URL extraction was
+
+EXAMPLE INPUT:
+Title: "New comment by acme_hiring in Ask HN: Who is hiring?"
+Description: "Acme Corp | Senior Engineer | SF | https://jobs.ashbyhq.com/acme/12345"
+
+EXAMPLE OUTPUT:
+{{
+  "job_url": "https://jobs.ashbyhq.com/acme/12345",
+  "company_name": "Acme Corp",
+  "job_title": "Senior Engineer",
+  "location": "SF",
+  "confidence": 1.0,
+  "notes": "Direct Ashby job link found"
+}}
 """

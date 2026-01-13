@@ -27,7 +27,8 @@ def init_db():
             error_message TEXT,
             source_feed TEXT,
             company_name TEXT,
-            job_title TEXT
+            job_title TEXT,
+            apply_link TEXT
         )
     """)
     
@@ -44,6 +45,10 @@ def init_db():
         cursor.execute("ALTER TABLE jobs ADD COLUMN job_title TEXT")
     except sqlite3.OperationalError:
         pass
+    try:
+        cursor.execute("ALTER TABLE jobs ADD COLUMN apply_link TEXT")
+    except sqlite3.OperationalError:
+        pass
     
     # Create drafts table for draft-first workflow
     cursor.execute("""
@@ -54,10 +59,17 @@ def init_db():
             form_state_json TEXT,
             resume_path TEXT,
             job_details TEXT,
+            apply_link TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )
     """)
+    
+    # Migration: Add apply_link to drafts if it doesn't exist
+    try:
+        cursor.execute("ALTER TABLE drafts ADD COLUMN apply_link TEXT")
+    except sqlite3.OperationalError:
+        pass
     
     conn.commit()
     conn.close()

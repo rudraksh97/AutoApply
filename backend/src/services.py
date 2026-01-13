@@ -17,6 +17,7 @@ import json
 import logging
 from typing import Callable, Optional, List
 from datetime import datetime
+from urllib.parse import urljoin, urlparse
 from src.interfaces import JobManagerProtocol, BrowserAgentProtocol, ResumeBuilderProtocol
 from src.draft_manager import DraftManager
 from api.schemas.form_state import FormState, FieldState, FieldType, DraftStatus
@@ -182,18 +183,40 @@ class DraftPreparationService:
         self.job_manager.update_job(job_link, status="Running - Scraping")
         
         try:
-            # Step 1: Scrape Job Details
-            log_callback("🔍 Scraping job details...")
-            job_description = await self.browser_agent.scrape_job_details(job_link)
+            # Step 1: Scrape Job Details AND Apply Link
+            log_callback("🔍 Scraping job details and apply link...")
+            scrape_result = await self.browser_agent.scrape_job_details(job_link)
+            
+            job_description = scrape_result.get("job_description", "")
+            apply_link = scrape_result.get("apply_link")
+            extracted_company = scrape_result.get("company_name")
+            extracted_title = scrape_result.get("job_title")
+            
+            # Convert relative apply_link to absolute URL, default to job_link if not present
+            if apply_link:
+                if not urlparse(apply_link).scheme:
+                    apply_link = urljoin(job_link, apply_link)
+            else:
+                apply_link = job_link
             
             # Update draft with job details
             self.draft_manager.update_draft(
                 draft_id,
                 status=DraftStatus.EXTRACTED,
-                job_details=job_description[:2000] if job_description else None
+                job_details=job_description[:2000] if job_description else None,
+                apply_link=apply_link
             )
-            self.job_manager.update_job(job_link, details=job_description[:500] + "...") 
-            log_callback("✅ Job details extracted")
+            # Store apply_link in job manager for reference
+            self.job_manager.update_job(
+                job_link, 
+                details=job_description[:500] + "..." if job_description else None,
+                apply_link=apply_link
+            ) 
+            
+            if apply_link:
+                log_callback(f"✅ Job details extracted. Apply link found: {apply_link}")
+            else:
+                log_callback("✅ Job details extracted (no separate apply link found)")
 
             # Step 2: Resume Preparation
             from src.profile_manager import ProfileManager
@@ -222,11 +245,20 @@ class DraftPreparationService:
             # Step 3: Extract Form Structure (NO FILLING)
             log_callback("🔍 Extracting form structure...")
             
-            # Special handling for Ashby: extract from /application URL
+            # Determine which URL to use for form extraction
+            # Priority: 1) Extracted apply_link, 2) Ashby special handling, 3) Original job_link
             extract_link = job_link
-            if "jobs.ashbyhq.com" in job_link and "/application" not in job_link:
-                 extract_link = job_link.rstrip("/") + "/application"
-                 log_callback(f"ℹ️ Ashby link detected. Extracting from: {extract_link}")
+            
+            if apply_link:
+                # Use the apply link extracted by the agent
+                extract_link = apply_link
+                log_callback(f"📋 Using extracted apply link: {extract_link}")
+            elif "jobs.ashbyhq.com" in job_link and "/application" not in job_link:
+                # Fallback: Ashby special handling
+                extract_link = job_link.rstrip("/") + "/application"
+                log_callback(f"ℹ️ Ashby link detected. Extracting from: {extract_link}")
+            else:
+                log_callback(f"📋 Extracting form from: {extract_link}")
 
             extraction_result = await self.browser_agent.extract_form(extract_link)
             

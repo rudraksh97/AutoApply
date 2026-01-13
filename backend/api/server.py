@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import asyncio
 import logging
 from contextlib import asynccontextmanager
@@ -22,6 +23,7 @@ from src.config import ConfigManager
 from src.services import JobApplicationService, get_user_profile_text
 from src.agent import BrowserAgent
 from src.resume_builder import ResumeBuilder
+from src.prompts import EXTRACT_JOB_LINK_FROM_RSS_PROMPT
 
 # Routers
 from api.routers import feeds, jobs, profile, drafts, settings, test_feed
@@ -29,6 +31,60 @@ from api.routers import feeds, jobs, profile, drafts, settings, test_feed
 
 # Test feed pattern to skip during automatic polling
 TEST_FEED_PATTERN = "/test/feed.xml"
+
+# Aggregator feeds that need LLM extraction
+AGGREGATOR_FEED_PATTERNS = [
+    "hnrss.org",
+    "news.ycombinator.com",
+    "reddit.com",
+    "lobste.rs",
+]
+
+def _needs_llm_extraction(feed_url: str) -> bool:
+    """Check if this feed needs LLM-based job link extraction."""
+    return any(pattern in feed_url.lower() for pattern in AGGREGATOR_FEED_PATTERNS)
+
+async def _extract_job_link_with_llm(entry: dict) -> dict:
+    """Use LLM to extract the actual job application URL from an RSS entry."""
+    from langchain_openai import ChatOpenAI
+    
+    entry_title = entry.get("title", "")
+    entry_link = entry.get("link", "")
+    entry_description = entry.get("description", "") or entry.get("summary", "")
+    
+    if not entry_description and entry.get("content"):
+        content_list = entry.get("content", [])
+        if content_list and len(content_list) > 0:
+            entry_description = content_list[0].get("value", "")
+    
+    prompt = EXTRACT_JOB_LINK_FROM_RSS_PROMPT.format(
+        entry_title=entry_title,
+        entry_description=entry_description[:3000],
+        entry_link=entry_link
+    )
+    
+    try:
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            return {"job_url": entry_link, "company_name": None, "job_title": entry_title}
+        
+        llm = ChatOpenAI(
+            model="google/gemini-2.0-flash-001",
+            openai_api_key=api_key,
+            openai_api_base="https://openrouter.ai/api/v1",
+            temperature=0.1
+        )
+        
+        response = await llm.ainvoke(prompt)
+        response_text = response.content
+        
+        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group())
+    except Exception as e:
+        logging.error(f"LLM extraction failed: {e}")
+    
+    return {"job_url": None, "company_name": None, "job_title": entry_title}
 
 
 def _extract_company_from_feed(feed_url: str, feed_title: str) -> str:
@@ -103,18 +159,35 @@ async def automation_loop():
                             loop = asyncio.get_event_loop()
                             parsed_feed = await loop.run_in_executor(None, feedparser.parse, feed_url)
                             
+                            # Check if this feed needs LLM-based extraction
+                            use_llm = _needs_llm_extraction(feed_url)
+                            
                             # Extract company name from feed
                             feed_title = parsed_feed.feed.get("title", "")
                             company_name = _extract_company_from_feed(feed_url, feed_title)
                             
                             for entry in parsed_feed.entries:
-                                job_link = entry.get("link")
-                                if not job_link:
+                                original_link = entry.get("link")
+                                if not original_link:
                                     continue
-                                if deduplicator.is_new(job_link):
+                                
+                                # Use LLM to extract actual job URL if needed
+                                if use_llm:
+                                    extraction = await _extract_job_link_with_llm(entry)
+                                    job_link = extraction.get("job_url")
+                                    
+                                    if not job_link:
+                                        logging.debug(f"Skipping entry - no job URL: {entry.get('title', '')[:50]}")
+                                        continue
+                                    
+                                    job_title = extraction.get("job_title") or entry.get("title", "Unknown Title")
+                                    entry_company = extraction.get("company_name") or company_name
+                                else:
+                                    job_link = original_link
                                     job_title = entry.get("title", "Unknown Title")
                                     entry_company = entry.get("author") or entry.get("dc_creator") or company_name
-                                    
+                                
+                                if deduplicator.is_new(job_link):
                                     await event_publisher.publish("new_job_ingested", {
                                         "job_link": job_link,
                                         "title": job_title,

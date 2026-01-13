@@ -123,7 +123,8 @@ class ApplicationDraft(BaseModel):
     
     Attributes:
         id: Unique identifier (UUID)
-        job_url: URL of the job posting
+        job_url: URL of the job posting (JD page)
+        apply_link: URL of the actual application form (if different from job_url)
         status: Current lifecycle status
         form_state: Complete form state (None before prefill)
         resume_path: Path to the resume file used
@@ -133,6 +134,7 @@ class ApplicationDraft(BaseModel):
     """
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     job_url: str
+    apply_link: Optional[str] = None
     status: DraftStatus = DraftStatus.JOB_FOUND
     form_state: Optional[FormState] = None
     resume_path: Optional[str] = None
@@ -158,6 +160,7 @@ class DraftSummary(BaseModel):
     """
     id: str
     job_url: str
+    apply_link: Optional[str] = None
     status: DraftStatus
     job_details: Optional[str] = None
     created_at: datetime

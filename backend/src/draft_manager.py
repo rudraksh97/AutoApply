@@ -36,23 +36,26 @@ class DraftManager:
         status: DraftStatus = DraftStatus.JOB_FOUND,
         form_state: Optional[FormState] = None,
         resume_path: Optional[str] = None,
-        job_details: Optional[str] = None
+        job_details: Optional[str] = None,
+        apply_link: Optional[str] = None
     ) -> str:
         """
         Create a new application draft.
         
         Args:
-            job_url: URL of the job posting
+            job_url: URL of the job posting (JD page)
             status: Initial lifecycle status
             form_state: Form state if already captured
             resume_path: Path to the resume file
             job_details: Extracted job description
+            apply_link: URL of the application form (if different from job_url)
             
         Returns:
             The draft ID (UUID string)
         """
         draft = ApplicationDraft(
             job_url=job_url,
+            apply_link=apply_link,
             status=status,
             form_state=form_state,
             resume_path=resume_path,
@@ -66,11 +69,12 @@ class DraftManager:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT OR REPLACE INTO drafts 
-                (id, job_url, status, form_state_json, resume_path, job_details, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (id, job_url, apply_link, status, form_state_json, resume_path, job_details, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 draft.id,
                 job_url,
+                apply_link,
                 status.value,
                 form_state_json,
                 resume_path,
@@ -153,7 +157,7 @@ class DraftManager:
             conn.row_factory = lambda c, r: dict(zip([col[0] for col in c.description], r))
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT id, job_url, status, job_details, created_at, updated_at, form_state_json 
+                SELECT id, job_url, apply_link, status, job_details, created_at, updated_at, form_state_json 
                 FROM drafts ORDER BY updated_at DESC
             """)
             rows = cursor.fetchall()
@@ -175,6 +179,7 @@ class DraftManager:
             summaries.append(DraftSummary(
                 id=row['id'],
                 job_url=row['job_url'],
+                apply_link=row.get('apply_link'),
                 status=DraftStatus(row['status']),
                 job_details=row['job_details'][:200] + "..." if row['job_details'] and len(row['job_details']) > 200 else row['job_details'],
                 created_at=datetime.fromisoformat(row['created_at']),
@@ -191,7 +196,8 @@ class DraftManager:
         status: Optional[DraftStatus] = None,
         form_state: Optional[FormState] = None,
         resume_path: Optional[str] = None,
-        job_details: Optional[str] = None
+        job_details: Optional[str] = None,
+        apply_link: Optional[str] = None
     ) -> bool:
         """
         Update an existing draft.
@@ -202,6 +208,7 @@ class DraftManager:
             form_state: New form state (optional)
             resume_path: New resume path (optional)
             job_details: New job details (optional)
+            apply_link: URL of the application page (optional)
             
         Returns:
             True if the draft was found and updated, False otherwise
@@ -224,6 +231,10 @@ class DraftManager:
         if job_details is not None:
             updates.append("job_details = ?")
             values.append(job_details)
+        
+        if apply_link is not None:
+            updates.append("apply_link = ?")
+            values.append(apply_link)
         
         if not updates:
             return True  # Nothing to update
@@ -320,6 +331,7 @@ class DraftManager:
         return ApplicationDraft(
             id=row['id'],
             job_url=row['job_url'],
+            apply_link=row.get('apply_link'),
             status=DraftStatus(row['status']),
             form_state=form_state,
             resume_path=row['resume_path'],

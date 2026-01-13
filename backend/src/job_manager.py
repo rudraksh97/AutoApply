@@ -118,7 +118,7 @@ class JobManager:
             return False
 
     def update_job(self, url, status=None, pdf_path=None, details=None, error_message=None, 
-                   source_feed=None, company_name=None, job_title=None):
+                   source_feed=None, company_name=None, job_title=None, apply_link=None):
         """
         Updates an existing job's status and metadata.
 
@@ -131,6 +131,7 @@ class JobManager:
             source_feed (str, optional): URL of the RSS feed source.
             company_name (str, optional): Name of the company.
             job_title (str, optional): Title of the job role.
+            apply_link (str, optional): URL of the application page (if different from job URL).
 
         Returns:
             bool: True if the job was found and updated, False otherwise.
@@ -157,6 +158,9 @@ class JobManager:
         if job_title:
             fields.append("job_title = ?")
             values.append(job_title)
+        if apply_link:
+            fields.append("apply_link = ?")
+            values.append(apply_link)
         
         # Always update error message if provided (even if None/empty to clear it)
         if error_message is not None:
