@@ -18,10 +18,20 @@ class JobManagerEventPublisher(EventPublisher):
     async def publish(self, event_type: str, data: dict[str, Any]) -> None:
         if event_type == "new_job_ingested":
             job_link = data["job_link"]
-            # Replicate legacy behavior: add as Pending
-            self.job_manager.add_job(job_link, status="Pending")
+            job_title = data.get("title")
+            feed_url = data.get("feed_url")
+            company_name = data.get("company_name")
+            
+            # Add job with metadata
+            self.job_manager.add_job(
+                job_link, 
+                status="Pending",
+                source_feed=feed_url,
+                company_name=company_name,
+                job_title=job_title
+            )
             if self.log_callback:
-                self.log_callback(f"[RSS] Found new job: {job_link}")
+                self.log_callback(f"[RSS] Found new job: {job_title or job_link}")
 
 class JobManagerDeduplicator(Deduplicator):
     """

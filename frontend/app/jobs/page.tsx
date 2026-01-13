@@ -16,6 +16,9 @@ interface Job {
     timestamp: string;
     details: string | null;
     error_message?: string | null;
+    source_feed?: string | null;
+    company_name?: string | null;
+    job_title?: string | null;
 }
 
 interface Draft {
@@ -254,28 +257,27 @@ export default function JobsPage() {
                     <CardTitle className="text-xl font-semibold">Application Drafts</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left">
-                            <thead className="bg-[#fdfdfd] text-muted-foreground uppercase text-[10px] tracking-widest font-bold border-b">
-                                <tr>
-                                    <th className="px-6 py-4 font-bold">Date</th>
-                                    <th className="px-6 py-4 font-bold">Status</th>
-                                    <th className="px-6 py-4 font-bold">Fields</th>
-                                    <th className="px-6 py-4 font-bold">Job URL</th>
-                                    <th className="px-6 py-4 font-bold text-right">Actions</th>
-                                </tr>
-                            </thead>
+                    <table className="w-full text-sm text-left table-fixed">
+                        <thead className="bg-[#fdfdfd] text-muted-foreground uppercase text-[10px] tracking-widest font-bold border-b">
+                            <tr>
+                                <th className="px-4 py-3 font-bold w-[90px]">Date</th>
+                                <th className="px-4 py-3 font-bold">Job</th>
+                                <th className="px-4 py-3 font-bold w-[120px]">Status</th>
+                                <th className="px-4 py-3 font-bold w-[60px]">Fields</th>
+                                <th className="px-4 py-3 font-bold text-right w-[200px]">Actions</th>
+                            </tr>
+                        </thead>
                             <tbody className="divide-y divide-border/40">
                                 {loading && jobs.length === 0 ? (
                                     <tr>
                                         <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground italic">
-                                            Scanning for jobs...
+                                            Loading jobs...
                                         </td>
                                     </tr>
                                 ) : jobs.length === 0 ? (
                                     <tr>
                                         <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
-                                            No applications found yet.
+                                            No applications found yet. Add a job URL or configure RSS feeds to get started.
                                         </td>
                                     </tr>
                                 ) : (
@@ -286,58 +288,65 @@ export default function JobsPage() {
 
                                         return (
                                             <tr key={i} className="group hover:bg-muted/30 transition-colors">
-                                                <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">
+                                                <td className="px-4 py-3 text-muted-foreground text-xs">
                                                     {new Date(job.timestamp).toLocaleDateString()}
                                                 </td>
-                                                <td className="px-6 py-4">
+                                                <td className="px-4 py-3">
+                                                    <div className="flex flex-col gap-0.5 min-w-0">
+                                                        <div className="flex items-center gap-2 min-w-0">
+                                                            <span className="font-medium text-foreground truncate" title={job.job_title || job.url}>
+                                                                {job.job_title || 'Untitled Position'}
+                                                            </span>
+                                                            <a href={job.url} target="_blank" rel="noopener noreferrer"
+                                                                className="text-muted-foreground/60 hover:text-primary transition-colors flex-shrink-0">
+                                                                <ExternalLink className="h-3 w-3" />
+                                                            </a>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+                                                            {job.company_name && (
+                                                                <span className="font-medium">{job.company_name}</span>
+                                                            )}
+                                                            {job.source_feed && (
+                                                                <span className="text-muted-foreground/60" title={job.source_feed}>
+                                                                    via {new URL(job.source_feed).hostname.replace('www.', '')}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3">
                                                     <span className={cn(
-                                                        "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border shadow-sm gap-1.5",
+                                                        "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border gap-1",
                                                         getStatusColor(displayStatus)
                                                     )}>
                                                         {displayStatus.includes('Running') && (
-                                                            <span className="relative flex h-2 w-2">
+                                                            <span className="relative flex h-1.5 w-1.5">
                                                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
                                                             </span>
                                                         )}
-                                                        {displayStatus}
+                                                        {displayStatus.replace('draft_', '').replace('_', ' ')}
                                                     </span>
-                                                    {draft?.status && draft.status !== job.status && (
-                                                        <div className="text-[10px] text-muted-foreground mt-1">
-                                                            Draft: {draft.status}
-                                                        </div>
-                                                    )}
                                                 </td>
-                                                <td className="px-6 py-4">
+                                                <td className="px-4 py-3 text-center">
                                                     {draft ? (
-                                                        <span className="text-muted-foreground">
-                                                            {draft.filled_field_count} filled
+                                                        <span className="text-muted-foreground text-xs">
+                                                            {draft.filled_field_count}
                                                         </span>
                                                     ) : (
                                                         <span className="text-muted-foreground">-</span>
                                                     )}
                                                 </td>
-                                                <td className="px-6 py-4 max-w-[300px]">
-                                                    <div className="flex items-center gap-2">
-                                                        <a href={job.url} target="_blank" rel="noopener noreferrer"
-                                                            className="text-primary hover:underline font-medium truncate block"
-                                                            title={job.url}>
-                                                            {job.url.replace(/^https?:\/\/(www\.)?/, '').split('/')[0]}...
-                                                        </a>
-                                                        <ExternalLink className="h-3 w-3 text-muted-foreground/60 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <div className="flex items-center justify-end gap-2">
+                                                <td className="px-4 py-3 text-right">
+                                                    <div className="flex items-center justify-end gap-1">
                                                         {draft && (
                                                             <Button
                                                                 size="sm"
-                                                                variant="outline"
+                                                                variant="ghost"
                                                                 onClick={() => viewDraft(draft.id)}
-                                                                className="h-8 shadow-sm"
+                                                                className="h-7 px-2 text-xs"
                                                             >
-                                                                <Code className="h-3 w-3 mr-1" />
-                                                                View JSON
+                                                                <Code className="h-3 w-3" />
                                                             </Button>
                                                         )}
 
@@ -346,34 +355,34 @@ export default function JobsPage() {
                                                                 size="sm"
                                                                 onClick={() => openDraft(draft.id, job.url)}
                                                                 disabled={openingDraft === draft.id}
-                                                                className="h-8 bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                                                                className="h-7 px-2 bg-blue-600 hover:bg-blue-700 text-white text-xs"
                                                             >
                                                                 {openingDraft === draft.id ? (
-                                                                    <RefreshCw className="h-3 w-3 animate-spin mr-1" />
+                                                                    <RefreshCw className="h-3 w-3 animate-spin" />
                                                                 ) : (
                                                                     <Play className="h-3 w-3 mr-1" />
                                                                 )}
-                                                                Open Draft
+                                                                Open
                                                             </Button>
                                                         )}
 
                                                         {job.pdf_path && (
-                                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-                                                                <Download className="h-4 w-4" />
+                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                                                                <Download className="h-3 w-3" />
                                                             </Button>
                                                         )}
 
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
-                                                            className="h-8 w-8 text-muted-foreground hover:text-red-600 hover:bg-red-50"
+                                                            className="h-7 w-7 text-muted-foreground hover:text-red-600 hover:bg-red-50"
                                                             onClick={() => deleteJob(job.url)}
                                                             disabled={deletingJob === job.url}
                                                         >
                                                             {deletingJob === job.url ? (
-                                                                <RefreshCw className="h-4 w-4 animate-spin" />
+                                                                <RefreshCw className="h-3 w-3 animate-spin" />
                                                             ) : (
-                                                                <Trash2 className="h-4 w-4" />
+                                                                <Trash2 className="h-3 w-3" />
                                                             )}
                                                         </Button>
                                                     </div>
@@ -384,7 +393,6 @@ export default function JobsPage() {
                                 )}
                             </tbody>
                         </table>
-                    </div>
                 </CardContent>
             </Card>
 

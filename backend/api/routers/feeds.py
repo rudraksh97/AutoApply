@@ -1,3 +1,5 @@
+import re
+from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException
 from api.services.domain_services import FeedService
 from api.dependencies import get_feed_service
@@ -9,6 +11,46 @@ from src.job_manager import JobManager
 from src.config import ConfigManager
 
 router = APIRouter(prefix="/feeds", tags=["Feeds"])
+
+
+def _extract_company_from_feed(feed_url: str, feed_title: str) -> str:
+    """Extract company name from feed URL or title."""
+    # Try from feed title first
+    if feed_title:
+        # Remove common suffixes like "Jobs", "Careers", "RSS"
+        company = re.sub(r'\s*(Jobs|Careers|RSS|Feed|Openings).*$', '', feed_title, flags=re.IGNORECASE).strip()
+        if company:
+            return company
+    
+    # Try from URL
+    parsed = urlparse(feed_url)
+    domain = parsed.netloc.lower()
+    
+    # Extract from common job board patterns
+    if "greenhouse.io" in domain:
+        # boards.greenhouse.io/companyname
+        match = re.search(r'greenhouse\.io/(\w+)', feed_url)
+        if match:
+            return match.group(1).replace('-', ' ').title()
+    elif "ashbyhq.com" in domain:
+        # jobs.ashbyhq.com/companyname
+        match = re.search(r'ashbyhq\.com/([^/]+)', feed_url)
+        if match:
+            return match.group(1).replace('-', ' ').title()
+    elif "lever.co" in domain:
+        # jobs.lever.co/companyname
+        match = re.search(r'lever\.co/([^/]+)', feed_url)
+        if match:
+            return match.group(1).replace('-', ' ').title()
+    elif "workable.com" in domain:
+        match = re.search(r'apply\.workable\.com/([^/]+)', feed_url)
+        if match:
+            return match.group(1).replace('-', ' ').title()
+    
+    # Fallback: use domain without common prefixes
+    domain = re.sub(r'^(www\.|jobs\.|careers\.|boards\.)', '', domain)
+    domain = domain.split('.')[0]
+    return domain.replace('-', ' ').title() if domain else None
 
 @router.get("/")
 def get_feeds(service: FeedService = Depends(get_feed_service)):
@@ -64,16 +106,25 @@ async def poll_feeds_now():
             loop = asyncio.get_event_loop()
             parsed_feed = await loop.run_in_executor(None, feedparser.parse, feed_url)
             
+            # Try to extract company name from feed title or URL
+            feed_title = parsed_feed.feed.get("title", "")
+            company_name = _extract_company_from_feed(feed_url, feed_title)
+            
             for entry in parsed_feed.entries:
                 job_link = entry.get("link")
                 if not job_link:
                     continue
                 
                 if deduplicator.is_new(job_link):
+                    # Extract job title and company from entry
+                    job_title = entry.get("title", "Unknown Title")
+                    entry_company = entry.get("author") or entry.get("dc_creator") or company_name
+                    
                     await event_publisher.publish("new_job_ingested", {
                         "job_link": job_link,
-                        "title": entry.get("title", "Unknown Title"),
-                        "feed_url": feed_url
+                        "title": job_title,
+                        "feed_url": feed_url,
+                        "company_name": entry_company
                     })
                     deduplicator.mark_seen(job_link)
                     jobs_found += 1
@@ -114,16 +165,24 @@ async def poll_single_feed(feed: FeedURL):
                 "jobs_found": 0
             }
         
+        # Extract company name from feed
+        feed_title = parsed_feed.feed.get("title", "")
+        company_name = _extract_company_from_feed(feed_url, feed_title)
+        
         for entry in parsed_feed.entries:
             job_link = entry.get("link")
             if not job_link:
                 continue
             
             if deduplicator.is_new(job_link):
+                job_title = entry.get("title", "Unknown Title")
+                entry_company = entry.get("author") or entry.get("dc_creator") or company_name
+                
                 await event_publisher.publish("new_job_ingested", {
                     "job_link": job_link,
-                    "title": entry.get("title", "Unknown Title"),
-                    "feed_url": feed_url
+                    "title": job_title,
+                    "feed_url": feed_url,
+                    "company_name": entry_company
                 })
                 deduplicator.mark_seen(job_link)
                 jobs_found += 1

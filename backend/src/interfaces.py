@@ -43,6 +43,41 @@ class JobManagerProtocol(Protocol):
             A list of job dictionaries containing status and metadata.
         """
         ...
+    
+    def add_job(
+        self,
+        url: str,
+        status: str = "Pending",
+        source_feed: Optional[str] = None,
+        company_name: Optional[str] = None,
+        job_title: Optional[str] = None
+    ) -> bool:
+        """
+        Adds a new job to the persistence layer.
+
+        Args:
+            url: The unique URL of the job posting.
+            status: Initial processing status.
+            source_feed: URL of the RSS feed that sourced this job.
+            company_name: Name of the company.
+            job_title: Title of the job role.
+
+        Returns:
+            True if the job was added, False if it already existed.
+        """
+        ...
+    
+    def job_exists(self, url: str) -> bool:
+        """
+        Checks if a job with the given URL already exists.
+
+        Args:
+            url: The unique URL of the job.
+
+        Returns:
+            True if the job exists, False otherwise.
+        """
+        ...
         
 class BrowserAgentProtocol(Protocol):
     """

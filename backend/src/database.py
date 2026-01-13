@@ -24,9 +24,26 @@ def init_db():
             pdf_path TEXT,
             timestamp TEXT,
             details TEXT,
-            error_message TEXT
+            error_message TEXT,
+            source_feed TEXT,
+            company_name TEXT,
+            job_title TEXT
         )
     """)
+    
+    # Migration: Add new columns if they don't exist
+    try:
+        cursor.execute("ALTER TABLE jobs ADD COLUMN source_feed TEXT")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+    try:
+        cursor.execute("ALTER TABLE jobs ADD COLUMN company_name TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE jobs ADD COLUMN job_title TEXT")
+    except sqlite3.OperationalError:
+        pass
     
     # Create drafts table for draft-first workflow
     cursor.execute("""

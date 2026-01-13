@@ -307,7 +307,15 @@ class DraftManager:
             try:
                 form_state = FormState.model_validate_json(row['form_state_json'])
             except Exception:
-                pass
+                # Try to sanitize the data - convert non-string values to strings
+                try:
+                    data = json.loads(row['form_state_json'])
+                    for field in data.get('fields', []):
+                        if field.get('value') is not None and not isinstance(field.get('value'), str):
+                            field['value'] = str(field['value']).lower() if isinstance(field['value'], bool) else str(field['value'])
+                    form_state = FormState.model_validate(data)
+                except Exception:
+                    pass
         
         return ApplicationDraft(
             id=row['id'],

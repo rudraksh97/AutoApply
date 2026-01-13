@@ -1,7 +1,9 @@
 import os
+import re
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -27,6 +29,42 @@ from api.routers import feeds, jobs, profile, drafts, settings, test_feed
 
 # Test feed pattern to skip during automatic polling
 TEST_FEED_PATTERN = "/test/feed.xml"
+
+
+def _extract_company_from_feed(feed_url: str, feed_title: str) -> str:
+    """Extract company name from feed URL or title."""
+    # Try from feed title first
+    if feed_title:
+        company = re.sub(r'\s*(Jobs|Careers|RSS|Feed|Openings).*$', '', feed_title, flags=re.IGNORECASE).strip()
+        if company:
+            return company
+    
+    # Try from URL
+    parsed = urlparse(feed_url)
+    domain = parsed.netloc.lower()
+    
+    # Extract from common job board patterns
+    if "greenhouse.io" in domain:
+        match = re.search(r'greenhouse\.io/(\w+)', feed_url)
+        if match:
+            return match.group(1).replace('-', ' ').title()
+    elif "ashbyhq.com" in domain:
+        match = re.search(r'ashbyhq\.com/([^/]+)', feed_url)
+        if match:
+            return match.group(1).replace('-', ' ').title()
+    elif "lever.co" in domain:
+        match = re.search(r'lever\.co/([^/]+)', feed_url)
+        if match:
+            return match.group(1).replace('-', ' ').title()
+    elif "workable.com" in domain:
+        match = re.search(r'apply\.workable\.com/([^/]+)', feed_url)
+        if match:
+            return match.group(1).replace('-', ' ').title()
+    
+    # Fallback: use domain without common prefixes
+    domain = re.sub(r'^(www\.|jobs\.|careers\.|boards\.)', '', domain)
+    domain = domain.split('.')[0]
+    return domain.replace('-', ' ').title() if domain else None
 
 # --- Background Tasks ---
 async def automation_loop():
@@ -64,15 +102,24 @@ async def automation_loop():
                         try:
                             loop = asyncio.get_event_loop()
                             parsed_feed = await loop.run_in_executor(None, feedparser.parse, feed_url)
+                            
+                            # Extract company name from feed
+                            feed_title = parsed_feed.feed.get("title", "")
+                            company_name = _extract_company_from_feed(feed_url, feed_title)
+                            
                             for entry in parsed_feed.entries:
                                 job_link = entry.get("link")
                                 if not job_link:
                                     continue
                                 if deduplicator.is_new(job_link):
+                                    job_title = entry.get("title", "Unknown Title")
+                                    entry_company = entry.get("author") or entry.get("dc_creator") or company_name
+                                    
                                     await event_publisher.publish("new_job_ingested", {
                                         "job_link": job_link,
-                                        "title": entry.get("title", "Unknown Title"),
-                                        "feed_url": feed_url
+                                        "title": job_title,
+                                        "feed_url": feed_url,
+                                        "company_name": entry_company
                                     })
                                     deduplicator.mark_seen(job_link)
                         except Exception as e:

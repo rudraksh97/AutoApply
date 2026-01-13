@@ -396,7 +396,14 @@ class DraftPreparationService:
             for field in form_state.fields:
                 if field.xpath in answer_map:
                     answer = answer_map[field.xpath]
-                    field.value = answer.get("value")
+                    # Ensure value is always a string or None
+                    raw_value = answer.get("value")
+                    if raw_value is None:
+                        field.value = None
+                    elif isinstance(raw_value, bool):
+                        field.value = str(raw_value).lower()
+                    else:
+                        field.value = str(raw_value)
                     field.confidence = answer.get("confidence", 0.5)
                     field.skipped = answer.get("skip", False)
                     field.skip_reason = answer.get("skip_reason")
