@@ -49,7 +49,7 @@ TASK: Open {job_link} and fill the form with the previously saved values.
       - select: Find matching option and set el.value
       - checkbox: Set el.checked based on value
       - radio: Find matching radio button in group and set checked
-      - file: Skip (cannot be filled programmatically)
+      - file: Highlight for user (browser extension handles this)
 4. If a field cannot be found, note it but continue with other fields
 5. DO NOT click any submit button
 

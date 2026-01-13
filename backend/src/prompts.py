@@ -336,6 +336,12 @@ FOR CHECKBOX/RADIO FIELDS:
   • Return "true" or "false" for checkboxes
   • Return the option value for radio buttons
 
+FOR FILE UPLOAD FIELDS (field_type = "file"):
+  • DO NOT skip file fields - they will be highlighted for the user
+  • Set value to a descriptive string like "Resume" or "Cover Letter"
+  • The browser extension will highlight the field for manual upload
+  • Set confidence to 0.5 (user action required)
+
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT FORMAT
 ═══════════════════════════════════════════════════════════════════════════════
@@ -364,6 +370,10 @@ SET skip=true FOR:
   • Legal agreements/consent checkboxes
   • Questions requiring information not in profile
   • Ambiguous fields
+
+DO NOT skip=true FOR:
+  • File upload fields (resume, cover letter, documents)
+  • These will be highlighted for user to upload manually
 
 ═══════════════════════════════════════════════════════════════════════════════
 IMPORTANT
