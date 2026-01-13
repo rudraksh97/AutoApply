@@ -12,3 +12,4 @@ websockets
 pytest
 pytest-asyncio
 pypdf
+uv
