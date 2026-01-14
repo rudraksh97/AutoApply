@@ -29,8 +29,8 @@
   "cover_letter_template": "",
   "why_us": "",
   "challenging_project": "",
-  "uploaded_resume_path": "data/resumes/dummy_resume.tex",
-  "uploaded_resume_filename": "dummy_resume.tex",
+  "uploaded_resume_path": "data/resumes/resume_base.tex",
+  "uploaded_resume_filename": "resume_base.tex",
   "use_uploaded_resume": true,
   "custom_template_filename": ""
 }

@@ -1,74 +1,70 @@
 import asyncio
 import os
 import sys
-from browser_use import Browser
+from browser_use import Browser, Agent
 from playwright.async_api import async_playwright
+from langchain_core.messages import AIMessage
+from langchain_core.language_models import BaseChatModel
 
-async def test_playwright_direct():
-    print("\n--- Testing Playwright Direct ---")
-    try:
-        async with async_playwright() as p:
-            print("Playwright initialized.")
-            print(f"Browsers installed at: {p.chromium.executable_path}")
+class MockLLM(BaseChatModel):
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        raise NotImplementedError("Mock LLM")
+    
+    @property
+    def _llm_type(self):
+        return "mock"
+        
+    async def ainvoke(self, *args, **kwargs):
+        return AIMessage(content="{'action': {'done': {'text': 'done'}}}")
+
+async def test_connect_to_existing():
+    print("\n--- Testing Connection to Existing Browser ---")
+    
+    async with async_playwright() as p:
+        # 1. Launch Browser Manually with Debugging Port
+        print("Launching Chrome manually...")
+        browser_app = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--remote-debugging-port=9222" 
+            ]
+        )
+        print("Chrome launched on port 9222.")
+        
+        try:
+            # 2. Initialize Browser-Use with CDP URL
+            cdp_url = "http://localhost:9222"
+            browser = Browser(cdp_url=cdp_url)
+            print(f"Browser-Use object initialized with {cdp_url}")
             
-            browser = await p.chromium.launch(
-                headless=True,
-                args=[
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                ]
+            # 3. Initialize Agent
+            agent = Agent(
+                task="Go to google.com",
+                llm=MockLLM(),
+                browser=browser,
             )
-            print("Chromium launched successfully (direct).")
-            await browser.close()
-            print("Chromium closed (direct).")
-    except Exception as e:
-        print(f"ERROR (Direct Playwright): {e}")
-        import traceback
-        traceback.print_exc()
-
-async def test_browser_use():
-    print("\n--- Testing Browser Use Library ---")
-    browser_config = {
-        "headless": True,
-        "chromium_sandbox": False,
-        "args": [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-        ]
-    }
-    
-    print(f"Config: {browser_config}")
-    
-    try:
-        browser = Browser(**browser_config)
-        print("Browser (browser-use) initialized object.")
-        
-        # This triggers the actual launch usually
-        print("Starting new context...")
-        context = await browser.new_context()
-        print(f"Context created: {context}")
-        
-        print("Getting page...")
-        page = await context.get_page()
-        print("Page opened.")
-        
-        print("Closing browser...")
-        await browser.close()
-        print("Closed.")
-        
-    except Exception as e:
-        print(f"ERROR (browser-use): {e}")
-        import traceback
-        traceback.print_exc()
+            print("Agent initialized.")
+            
+            # 4. Run Agent
+            print("Running agent...")
+            await agent.run()
+            print("Agent run finished successfully!")
+            
+        except Exception as e:
+            print(f"ERROR: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            await browser_app.close()
+            print("Manual browser closed.")
 
 async def main():
     print(f"Python: {sys.version}")
-    await test_playwright_direct()
-    await test_browser_use()
+    await test_connect_to_existing()
 
 if __name__ == "__main__":
     asyncio.run(main())

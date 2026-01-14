@@ -203,7 +203,7 @@ class ResumeBuilder:
 if __name__ == "__main__":
     # Test stub
     builder = ResumeBuilder()
-    # Dummy data
+    # Base data
     try:
         # Check if pdflatex exists
         subprocess.run(["pdflatex", "--version"], check=True, stdout=subprocess.PIPE)

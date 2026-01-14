@@ -1,6 +1,9 @@
 venv/
 .venv/
+*.env
 __pycache__/
 *.pyc
 *.pdf
 .DS_Store
+data/*
+ATS/*

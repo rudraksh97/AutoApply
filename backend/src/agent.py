@@ -148,57 +148,61 @@ class BrowserAgent:
         Raises:
             Exception: If the browser-use internal logic or LLM call fails.
         """
-        # Create a fresh browser instance for each task to avoid CDP issues
-        # The browser-use library doesn't handle browser reuse well after session cleanup
-        # Add Docker-specific browser arguments to prevent CDP initialization failures
-        browser_config = {
-            "headless": self.headless,
-            "chromium_sandbox": False,  # Disable sandbox for Docker
-            "args": [
+        # 1. Launch Browser Manually via Playwright
+        # This decouples launch from browser-use library to avoid Docker timeouts
+        from playwright.async_api import async_playwright
+        
+        playwright = await async_playwright().start()
+        browser_app = None
+        
+        try:
+            chrome_args = [
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
+                "--remote-debugging-port=9222",
+                "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             ]
-        }
-        
-        browser = Browser(**browser_config)
-        
-        # Explicitly create context to bypass Agent's internal launch logic
-        # This uses the proven launch method from our test script
-        # context = await browser.new_context() 
-        # UPDATE: The above line caused issues with latest browser-use version. 
-        # Letting Agent handle context creation.
-        
-        try:
-            # Pass browser instance AND the pre-initialized context
-            # Fixed: Remove manual browser.new_context() which was causing 'BrowserSession object has no attribute new_context'
-            # The Agent class can handle context creation if passed the browser object.
-            agent = Agent(
-                task=task,
-                llm=self.llm,
-                browser=browser,
-                # browser_context=context, # Removed manual context
-                use_vision=False,
-                max_actions_per_step=5,
-                max_failures=10,
-                max_steps=50,
-                extend_system_message=FORM_EXTRACTION_CONTEXT,
-                available_file_paths=self.available_file_paths,
+            
+            # Launch the browser instance directly
+            browser_app = await playwright.chromium.launch(
+                headless=self.headless,
+                args=chrome_args
             )
-            result = await agent.run()
-            return result.final_result()
+            
+            try:
+                # 2. Connect browser-use to the existing instance
+                cdp_url = "http://localhost:9222"
+                # Initialize Browser with CDP URL to connect to our manually launched instance
+                browser = Browser(cdp_url=cdp_url)
+                
+                # 3. Initialize Agent with connected browser
+                agent = Agent(
+                    task=task,
+                    llm=self.llm,
+                    browser=browser,
+                    use_vision=False,  # DOM-only mode more reliable for form filling
+                    max_actions_per_step=5,  # Allow more actions per reasoning step
+                    max_failures=10,  # Keep trying on errors - don't give up easily
+                    max_steps=50,  # Allow more steps to complete complex forms
+                    extend_system_message=FORM_EXTRACTION_CONTEXT,  # Inject form extraction guidance
+                    available_file_paths=self.available_file_paths,  # Allow file uploads
+                )
+                
+                result = await agent.run()
+                return result.final_result()
+                
+            finally:
+                # Ensure browser app is closed
+                if browser_app:
+                    await browser_app.close()
+                # browser object doesn't have close() when connected via CDP, so we skip it
+                    
         except Exception as e:
-            # Re-raise to be handled by the caller (service layer)
             raise e
         finally:
-            # Ensure browser and context are properly closed
-            try:
-                # if context:
-                #     await context.close()
-                await browser.close()
-            except Exception:
-                pass  # Ignore cleanup errors
+            await playwright.stop()
 
     async def scrape_job_details(self, job_link: str) -> dict:
         """
