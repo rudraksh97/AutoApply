@@ -294,6 +294,34 @@ class XPathResolver {
 
         return { element: null, xpath: null };
     }
+
+    /**
+     * Resolve XPath with retry - waits for element to appear (for dynamically loaded forms)
+     * @param {string|string[]} xpaths - XPath(s) to resolve
+     * @param {number} maxWaitMs - Maximum time to wait in milliseconds (default: 3000)
+     * @param {number} retryIntervalMs - Time between retries in milliseconds (default: 200)
+     * @returns {Promise<{element: Element|null, xpath: string|null}>}
+     */
+    static async resolveWithWait(xpaths, maxWaitMs = 3000, retryIntervalMs = 200) {
+        const xpathList = Array.isArray(xpaths) ? xpaths : [xpaths];
+        const startTime = Date.now();
+
+        while (Date.now() - startTime < maxWaitMs) {
+            for (const xpath of xpathList) {
+                if (!xpath) continue;
+                const element = this.resolve(xpath);
+                if (element) {
+                    console.log(`✅ Element found after ${Date.now() - startTime}ms: ${xpath}`);
+                    return { element, xpath };
+                }
+            }
+
+            await Utils.sleep(retryIntervalMs);
+        }
+
+        console.warn(`⚠️ Element not found after ${maxWaitMs}ms: ${xpathList.join(', ')}`);
+        return { element: null, xpath: null };
+    }
 }
 
 // ============================================================================
@@ -334,11 +362,18 @@ class ElementValidator {
             confidence -= 0.3;
         }
 
-        // Label validation
-        const labelValidation = this.validateLabel(element, fieldSpec);
-        if (!labelValidation.valid) {
-            issues.push(labelValidation.issue);
-            confidence -= 0.2;
+        // Label validation (skip if XPath is specific enough - @id= or @name= are reliable)
+        const hasSpecificXPath = fieldSpec.xpath && (
+            fieldSpec.xpath.includes('@id=') || 
+            fieldSpec.xpath.includes('@name=')
+        );
+
+        if (!hasSpecificXPath) {
+            const labelValidation = this.validateLabel(element, fieldSpec);
+            if (!labelValidation.valid) {
+                issues.push(labelValidation.issue);
+                confidence -= 0.2;
+            }
         }
 
         // Section validation (soft)
@@ -373,8 +408,8 @@ class ElementValidator {
         const expectedTags = {
             'select': ['select', 'div', 'input', 'span', 'button'], // Custom dropdowns
             'textarea': ['textarea'],
-            'checkbox': ['input'],
-            'radio': ['input'],
+            'checkbox': ['input', 'button', 'div', 'span', 'label'], // Custom checkboxes (Yes/No buttons)
+            'radio': ['input', 'button', 'div', 'span', 'label'],    // Custom radio (Yes/No buttons)
             'file': ['input'],
             'text': ['input', 'textarea'],
             'email': ['input'],
@@ -395,8 +430,15 @@ class ElementValidator {
     }
 
     static validateInputType(element, fieldSpec) {
+        const tagName = element.tagName.toLowerCase();
         const elType = (element.type || '').toLowerCase();
         const fieldType = (fieldSpec.field_type || '').toLowerCase();
+
+        // Skip input type validation for non-input elements (buttons, divs, etc.)
+        // These are valid for custom radio/checkbox implementations
+        if (tagName !== 'input') {
+            return { valid: true };
+        }
 
         const typeMap = {
             'text': ['text', 'search', ''],
@@ -454,10 +496,39 @@ class ElementValidator {
             if (labelEl) return labelEl.textContent?.trim() || '';
         }
 
-        // 4. Placeholder
+        // 4. For buttons/divs in Yes/No groups, look in parent container for label
+        const tagName = element.tagName.toLowerCase();
+        if (tagName === 'button' || tagName === 'div' || tagName === 'span') {
+            // Look for field entry container (common in Ashby, Greenhouse, etc.)
+            const fieldContainer = element.closest('[class*="field"], [class*="entry"], [class*="question"], [class*="form-group"]');
+            if (fieldContainer) {
+                // Find label or heading within the container
+                const containerLabel = fieldContainer.querySelector('label, [class*="heading"], [class*="title"], [class*="question"]');
+                if (containerLabel && containerLabel !== element && !containerLabel.contains(element)) {
+                    return containerLabel.textContent?.trim() || '';
+                }
+            }
+            
+            // Also try looking at previous sibling label
+            const parent = element.parentElement;
+            if (parent) {
+                const siblingLabel = parent.previousElementSibling;
+                if (siblingLabel && siblingLabel.tagName.toLowerCase() === 'label') {
+                    return siblingLabel.textContent?.trim() || '';
+                }
+                // Or label as sibling within same parent
+                const parentParent = parent.parentElement;
+                if (parentParent) {
+                    const label = parentParent.querySelector(':scope > label');
+                    if (label) return label.textContent?.trim() || '';
+                }
+            }
+        }
+
+        // 5. Placeholder
         if (element.placeholder) return element.placeholder;
 
-        // 5. Name attribute
+        // 6. Name attribute
         if (element.name) return element.name.replace(/[_-]/g, ' ');
 
         return '';
@@ -805,17 +876,34 @@ class IdempotencyChecker {
 
         const type = (fieldType || '').toLowerCase();
         const intended = String(intendedValue).toLowerCase();
+        const tagName = element.tagName.toLowerCase();
+        const inputType = (element.type || '').toLowerCase();
+
+        // Check for custom binary choice elements first
+        if (this._isCustomBinaryElement(element, type)) {
+            return this._hasCorrectCustomBinaryValue(element, intended);
+        }
 
         switch (type) {
             case 'checkbox':
                 const shouldBeChecked = ['true', '1', 'yes', 'on'].includes(intended);
-                return element.checked === shouldBeChecked;
+                // Native checkbox
+                if (tagName === 'input' && inputType === 'checkbox') {
+                    return element.checked === shouldBeChecked;
+                }
+                // Custom checkbox - check aria-checked
+                return this._hasCorrectCustomBinaryValue(element, intended);
 
             case 'radio':
-                return element.checked && (
-                    element.value?.toLowerCase() === intended ||
-                    this.getRadioLabel(element).toLowerCase().includes(intended)
-                );
+                // Native radio
+                if (tagName === 'input' && inputType === 'radio') {
+                    return element.checked && (
+                        element.value?.toLowerCase() === intended ||
+                        this.getRadioLabel(element).toLowerCase().includes(intended)
+                    );
+                }
+                // Custom radio - check aria-checked or selected state
+                return this._hasCorrectCustomBinaryValue(element, intended);
 
             case 'select':
                 const selectedText = element.options?.[element.selectedIndex]?.text || '';
@@ -832,6 +920,54 @@ class IdempotencyChecker {
                 const intendedNorm = Utils.normalizeText(intendedValue);
                 return currentValue === intendedNorm || currentValue.includes(intendedNorm);
         }
+    }
+
+    /**
+     * Check if element is a custom binary choice (not native input)
+     */
+    static _isCustomBinaryElement(element, fieldType) {
+        const tagName = element.tagName.toLowerCase();
+        const inputType = (element.type || '').toLowerCase();
+        const role = element.getAttribute('role');
+
+        // Native inputs are NOT custom
+        if (tagName === 'input' && (inputType === 'radio' || inputType === 'checkbox')) {
+            return false;
+        }
+
+        // Check for custom indicators
+        return role === 'radiogroup' ||
+               role === 'radio' ||
+               role === 'checkbox' ||
+               element.hasAttribute('aria-checked') ||
+               element.closest('[role="radiogroup"]') !== null;
+    }
+
+    /**
+     * Check if custom binary choice has correct value selected
+     */
+    static _hasCorrectCustomBinaryValue(element, intended) {
+        // Check aria-checked on element itself
+        if (element.getAttribute('aria-checked') === 'true') {
+            const optText = Utils.normalizeText(element.textContent);
+            if (optText.includes(intended) || intended.includes(optText)) {
+                return true;
+            }
+        }
+
+        // Check for selected option in container
+        const container = element.closest('[role="radiogroup"]') || element.parentElement;
+        if (container) {
+            const selectedOption = container.querySelector('[aria-checked="true"], .selected, .active');
+            if (selectedOption) {
+                const selectedText = Utils.normalizeText(selectedOption.textContent);
+                if (selectedText.includes(intended) || intended.includes(selectedText)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     static getRadioLabel(radio) {
@@ -1460,6 +1596,201 @@ class FieldFillers {
     }
 
     // -------------------------------------------------------------------------
+    // Custom Binary Choice (Yes/No buttons, styled radio groups)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Fill custom Yes/No or binary choice elements that use styled buttons
+     * instead of native radio inputs.
+     * 
+     * Handles:
+     * - Elements with role="radio" or role="checkbox"
+     * - Button groups inside role="radiogroup" containers
+     * - Styled div/button elements with Yes/No text
+     */
+    static async fillCustomBinaryChoice(element, value, report, field) {
+        const normalizedValue = Utils.normalizeText(value);
+        const tagName = element.tagName.toLowerCase();
+        console.log(`🔘 Filling custom binary choice "${field.label}" with value "${value}"`);
+
+        // Strategy 0: If element itself is a button/option that matches the value, click it directly
+        if (tagName === 'button' || element.getAttribute('role') === 'radio' || element.getAttribute('role') === 'option') {
+            const elemText = Utils.normalizeText(element.textContent);
+            const elemMatches = elemText === normalizedValue ||
+                               elemText.includes(normalizedValue) ||
+                               (normalizedValue === 'yes' && elemText === 'yes') ||
+                               (normalizedValue === 'no' && elemText === 'no');
+            
+            if (elemMatches) {
+                console.log(`✅ Element itself matches value, clicking directly: "${element.textContent?.trim()}"`);
+                element.scrollIntoView({ block: 'nearest' });
+                await Utils.sleep(50);
+                EventDispatcher.dispatchClickSequence(element);
+                await Utils.sleep(200);
+                EventDispatcher.dispatchReactHandlers(element, ['onChange', 'onClick']);
+                
+                // Also check for sibling hidden input and update it
+                const parent = element.parentElement;
+                if (parent) {
+                    const hiddenInput = parent.querySelector('input[type="checkbox"], input[type="radio"]');
+                    if (hiddenInput) {
+                        hiddenInput.value = value;
+                        EventDispatcher.dispatchInputEvents(hiddenInput, ['input', 'change']);
+                    }
+                }
+                return true;
+            }
+        }
+
+        // Strategy 1: Find the container (look for yesno, radiogroup, or button-group containers)
+        let container = element;
+        if (element.getAttribute('role') !== 'radiogroup') {
+            container = element.closest('[role="radiogroup"]') || 
+                        element.closest('[class*="yesno"]') ||      // Ashby-style
+                        element.closest('[class*="yes-no"]') ||
+                        element.closest('[class*="radio-group"]') ||
+                        element.closest('[class*="button-group"]') ||
+                        element.closest('[class*="choice"]') ||
+                        element.closest('[class*="toggle"]') ||
+                        element.parentElement;
+        }
+
+        // Find all clickable options in the container
+        const optionSelectors = [
+            '[role="radio"]',
+            '[role="option"]',
+            '[role="checkbox"]',
+            '[aria-checked]',
+            'button:not([type="submit"]):not([class*="toggle"])',  // Exclude toggle buttons that aren't options
+            '[class*="_option"]',  // Ashby-style option classes
+            '[class*="option"]:not([class*="options"])',
+            '[class*="choice"]',
+            'label:has(input[type="radio"])',
+            'label:has(input[type="checkbox"])'
+        ];
+
+        let options = [];
+        for (const selector of optionSelectors) {
+            try {
+                const found = Array.from(container.querySelectorAll(selector));
+                // Filter to only visible elements, and exclude the hidden input
+                const visible = found.filter(opt => 
+                    this._isVisible(opt) && 
+                    !(opt.tagName === 'INPUT' && opt.type === 'checkbox' && opt.tabIndex === -1)
+                );
+                if (visible.length > 0 && visible.length <= 10) {
+                    options = visible;
+                    console.log(`📋 Found ${options.length} options with selector: ${selector}`);
+                    break;
+                }
+            } catch (e) { }
+        }
+
+        // Strategy 2: If no options found in container, element itself might be one option
+        // Try to find siblings that are also options (buttons)
+        if (options.length === 0) {
+            const parent = element.parentElement;
+            if (parent) {
+                const siblings = Array.from(parent.children).filter(child => {
+                    return (child.getAttribute('role') === 'radio' ||
+                           child.getAttribute('role') === 'checkbox' ||
+                           child.hasAttribute('aria-checked') ||
+                           (child.tagName === 'BUTTON' && child.type !== 'submit')) &&
+                           this._isVisible(child);
+                });
+                if (siblings.length > 0 && siblings.length <= 10) {
+                    options = siblings;
+                    console.log(`📋 Found ${options.length} sibling button options`);
+                }
+            }
+        }
+
+        if (options.length === 0) {
+            console.warn(`❌ No custom binary options found for "${field.label}"`);
+            report.recordMismatch(field, value, 'No custom binary choice options found');
+            return false;
+        }
+
+        // Log available options
+        const optionTexts = options.map(o => o.textContent?.trim()).filter(Boolean);
+        console.log(`📋 Available options: ${optionTexts.join(', ')}`);
+
+        // Find the matching option
+        for (const option of options) {
+            const optText = Utils.normalizeText(option.textContent);
+            const ariaLabel = Utils.normalizeText(option.getAttribute('aria-label') || '');
+            const dataValue = Utils.normalizeText(option.getAttribute('data-value') || '');
+            const optValue = Utils.normalizeText(option.getAttribute('value') || '');
+
+            // Check for match
+            const isMatch = 
+                optText === normalizedValue ||
+                optText.includes(normalizedValue) ||
+                normalizedValue.includes(optText) ||
+                ariaLabel === normalizedValue ||
+                dataValue === normalizedValue ||
+                optValue === normalizedValue ||
+                // Handle Yes/No variations
+                (normalizedValue === 'yes' && (optText.includes('yes') || optText === 'y')) ||
+                (normalizedValue === 'no' && (optText.includes('no') || optText === 'n')) ||
+                (normalizedValue === 'true' && optText.includes('yes')) ||
+                (normalizedValue === 'false' && optText.includes('no'));
+
+            if (isMatch) {
+                console.log(`✅ Clicking matching option: "${option.textContent?.trim()}"`);
+                
+                // Check if already selected
+                const isSelected = option.getAttribute('aria-checked') === 'true' ||
+                                   option.classList.contains('selected') ||
+                                   option.classList.contains('active');
+                
+                if (isSelected) {
+                    console.log(`⏭️ Option already selected`);
+                    return true;
+                }
+
+                // Click the option
+                option.scrollIntoView({ block: 'nearest' });
+                await Utils.sleep(50);
+                
+                EventDispatcher.dispatchClickSequence(option);
+                
+                // Also try clicking any nested input
+                const nestedInput = option.querySelector('input[type="radio"], input[type="checkbox"]');
+                if (nestedInput && !nestedInput.checked) {
+                    EventDispatcher.dispatchCheckableSequence(nestedInput, true);
+                }
+                
+                // For Ashby-style Yes/No: update the sibling hidden input if it exists
+                // The hidden input stores the actual form value
+                const siblingContainer = option.parentElement;
+                if (siblingContainer) {
+                    const hiddenInput = siblingContainer.querySelector('input[type="checkbox"][tabindex="-1"], input[type="radio"][tabindex="-1"]');
+                    if (hiddenInput) {
+                        console.log(`📝 Updating sibling hidden input value to "${value}"`);
+                        const optionText = option.textContent?.trim() || value;
+                        hiddenInput.value = optionText;
+                        if (hiddenInput.type === 'checkbox') {
+                            hiddenInput.checked = normalizedValue === 'yes' || normalizedValue === 'true';
+                        }
+                        EventDispatcher.dispatchInputEvents(hiddenInput, ['input', 'change']);
+                    }
+                }
+                
+                await Utils.sleep(200);
+                
+                // Dispatch React handlers
+                EventDispatcher.dispatchReactHandlers(option, ['onChange', 'onClick']);
+                
+                return true;
+            }
+        }
+
+        report.recordMismatch(field, value, `No matching option. Available: ${optionTexts.join(', ')}`);
+        return false;
+    }
+
+    // -------------------------------------------------------------------------
     // File Upload (highlight for user)
     // -------------------------------------------------------------------------
 
@@ -1673,12 +2004,13 @@ class FormFiller {
         const truncatedLabel = label.length > 30 ? label.substring(0, 30) + '...' : label;
         UIFeedback.showNotification(`Filling ${currentIndex}/${totalFields}: ${truncatedLabel}`, 'info');
 
-        // Resolve element
+        // Resolve element with retry (waits for dynamically loaded elements)
         const xpaths = Array.isArray(field.xpaths) ? field.xpaths : [field.xpath];
-        const { element } = XPathResolver.resolveWithFallback(xpaths);
+        const { element } = await XPathResolver.resolveWithWait(xpaths, 3000, 200);
 
         if (!element) {
-            this.report.recordSkipped(field, 'Element not found via XPath');
+            console.warn(`❌ Element not found for "${field.label}" after waiting: ${xpaths.join(', ')}`);
+            this.report.recordSkipped(field, 'Element not found via XPath (after retry)');
             return;
         }
 
@@ -1728,6 +2060,7 @@ class FormFiller {
     async _executeFill(element, field) {
         const fieldType = (field.field_type || 'text').toLowerCase();
         const tagName = element.tagName.toLowerCase();
+        const inputType = (element.type || '').toLowerCase();
 
         // Auto-detect dropdown (overrides backend field_type if needed)
         const isDropdown = DropdownDetector.isDropdown(element);
@@ -1736,6 +2069,14 @@ class FormFiller {
 
         if (shouldUseDropdownFiller && fieldType !== 'select') {
             console.log(`🔄 Auto-detected dropdown for "${field.label}" (was: ${fieldType})`);
+        }
+
+        // Detect custom binary choice elements (Yes/No buttons, styled radio groups)
+        const isCustomBinaryChoice = this._isCustomBinaryChoice(element, fieldType);
+        
+        if (isCustomBinaryChoice) {
+            console.log(`🔘 Detected custom binary choice for "${field.label}"`);
+            return FieldFillers.fillCustomBinaryChoice(element, field.value, this.report, field);
         }
 
         // Route to appropriate filler
@@ -1747,9 +2088,21 @@ class FormFiller {
 
         switch (fieldType) {
             case 'checkbox':
-                return FieldFillers.fillCheckbox(element, field.value, this.report, field);
+                // Native checkbox input
+                if (tagName === 'input' && inputType === 'checkbox') {
+                    return FieldFillers.fillCheckbox(element, field.value, this.report, field);
+                }
+                // Custom checkbox (role="checkbox" or styled element)
+                return FieldFillers.fillCustomBinaryChoice(element, field.value, this.report, field);
+                
             case 'radio':
-                return FieldFillers.fillRadio(element, field.value, this.report, field);
+                // Native radio input
+                if (tagName === 'input' && inputType === 'radio') {
+                    return FieldFillers.fillRadio(element, field.value, this.report, field);
+                }
+                // Custom radio/binary choice (role="radio", button groups, etc.)
+                return FieldFillers.fillCustomBinaryChoice(element, field.value, this.report, field);
+                
             case 'file':
                 return FieldFillers.handleFile(element, field.value, this.report, field);
             default:
@@ -1757,6 +2110,67 @@ class FormFiller {
                     ? FieldFillers.fillSelect(element, field.value, this.report, field)
                     : FieldFillers.fillText(element, field.value, this.report, field);
         }
+    }
+
+    /**
+     * Detect if an element is a custom binary choice component (Yes/No buttons, 
+     * styled radio groups) rather than a native input.
+     */
+    _isCustomBinaryChoice(element, fieldType) {
+        const tagName = element.tagName.toLowerCase();
+        const inputType = (element.type || '').toLowerCase();
+        const role = element.getAttribute('role');
+
+        // If it's a native input radio/checkbox, it's NOT a custom binary choice
+        if (tagName === 'input' && (inputType === 'radio' || inputType === 'checkbox')) {
+            return false;
+        }
+
+        // EXCLUDE dropdowns/comboboxes - these are NOT binary choices!
+        if (role === 'combobox' || role === 'listbox' || role === 'option' || role === 'menuitem') {
+            return false;
+        }
+        // Also exclude inputs with combobox-like attributes
+        if (element.getAttribute('aria-haspopup') === 'listbox' || 
+            element.getAttribute('aria-autocomplete')) {
+            return false;
+        }
+
+        // Only consider as binary choice if fieldType explicitly says so
+        if (fieldType !== 'radio' && fieldType !== 'checkbox') {
+            return false;
+        }
+
+        // Check for custom binary choice indicators
+        const isCustomByRole = role === 'radiogroup' || 
+                               role === 'radio' || 
+                               role === 'checkbox';
+        
+        const hasAriaChecked = element.hasAttribute('aria-checked');
+        
+        const isInRadioGroup = element.closest('[role="radiogroup"]') !== null;
+        
+        // Check for button-style Yes/No (must be a button AND field type is radio/checkbox)
+        const isYesNoButton = tagName === 'button' && 
+                              /yes|no|true|false/i.test(element.textContent || '');
+
+        // Check if element has yesno or similar class (specific patterns for Yes/No)
+        const hasYesNoClass = /yesno|yes-no|binary|toggle-group/i.test(
+            element.className || ''
+        );
+
+        // If fieldType is radio/checkbox but element is not a native input,
+        // AND it's inside a container that looks like a choice group
+        const isNonInputRadioCheckbox = tagName !== 'input' && tagName !== 'select';
+        const parentHasChoiceIndicator = element.parentElement && 
+            /yesno|yes-no|radio|choice|toggle/i.test(element.parentElement.className || '');
+
+        return isCustomByRole || 
+               hasAriaChecked || 
+               isInRadioGroup || 
+               isYesNoButton || 
+               hasYesNoClass ||
+               (isNonInputRadioCheckbox && parentHasChoiceIndicator);
     }
 
     _showCompletionSummary(totalFields) {

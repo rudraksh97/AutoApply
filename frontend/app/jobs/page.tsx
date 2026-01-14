@@ -307,7 +307,7 @@ export default function JobsPage() {
                                                                 title="View Job Description">
                                                                 <FileText className="h-3 w-3" />
                                                             </a>
-                                                            {job.apply_link && job.apply_link !== job.url && (
+                                                            {job.apply_link && (
                                                                 <a href={job.apply_link} target="_blank" rel="noopener noreferrer"
                                                                     className="text-blue-500 hover:text-blue-700 transition-colors flex-shrink-0"
                                                                     title="Apply Page">
