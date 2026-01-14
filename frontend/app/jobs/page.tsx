@@ -362,6 +362,19 @@ export default function JobsPage() {
                                                                 <Code className="h-3 w-3" />
                                                             </Button>
                                                         )}
+                                                        
+                                                        {(displayStatus === 'Failed' || displayStatus === 'Draft Failed') && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={() => retryJob(job.url)}
+                                                                className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                                title="Retry Job"
+                                                            >
+                                                                <RefreshCw className="h-3 w-3 mr-1" />
+                                                                Retry
+                                                            </Button>
+                                                        )}
 
                                                         {isDraftReady && draft && (
                                                             <Button

@@ -106,8 +106,6 @@ class BrowserAgent:
             model=self.DEFAULT_MODEL,
             api_key=api_key,
         )
-        # Initialize reusable browser instance
-        self.browser = Browser(headless=self.headless)
         # File paths available for upload (set per-task)
         self.available_file_paths = []
 
@@ -152,26 +150,55 @@ class BrowserAgent:
         """
         # Create a fresh browser instance for each task to avoid CDP issues
         # The browser-use library doesn't handle browser reuse well after session cleanup
-        browser = Browser(headless=self.headless)
+        # Add Docker-specific browser arguments to prevent CDP initialization failures
+        browser_config = {
+            "headless": self.headless,
+            "chromium_sandbox": False,  # Disable sandbox for Docker
+            "args": [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ]
+        }
+        
+        browser = Browser(**browser_config)
+        
+        # Explicitly create context to bypass Agent's internal launch logic
+        # This uses the proven launch method from our test script
+        # context = await browser.new_context() 
+        # UPDATE: The above line caused issues with latest browser-use version. 
+        # Letting Agent handle context creation.
         
         try:
-            # Pass browser instance with enhanced configuration
+            # Pass browser instance AND the pre-initialized context
+            # Fixed: Remove manual browser.new_context() which was causing 'BrowserSession object has no attribute new_context'
+            # The Agent class can handle context creation if passed the browser object.
             agent = Agent(
                 task=task,
                 llm=self.llm,
                 browser=browser,
-                use_vision=False,  # DOM-only mode more reliable for form filling
-                max_actions_per_step=5,  # Allow more actions per reasoning step
-                max_failures=10,  # Keep trying on errors - don't give up easily
-                max_steps=50,  # Allow more steps to complete complex forms
-                extend_system_message=FORM_EXTRACTION_CONTEXT,  # Inject form extraction guidance
-                available_file_paths=self.available_file_paths,  # Allow file uploads
+                # browser_context=context, # Removed manual context
+                use_vision=False,
+                max_actions_per_step=5,
+                max_failures=10,
+                max_steps=50,
+                extend_system_message=FORM_EXTRACTION_CONTEXT,
+                available_file_paths=self.available_file_paths,
             )
             result = await agent.run()
             return result.final_result()
         except Exception as e:
             # Re-raise to be handled by the caller (service layer)
             raise e
+        finally:
+            # Ensure browser and context are properly closed
+            try:
+                # if context:
+                #     await context.close()
+                await browser.close()
+            except Exception:
+                pass  # Ignore cleanup errors
 
     async def scrape_job_details(self, job_link: str) -> dict:
         """

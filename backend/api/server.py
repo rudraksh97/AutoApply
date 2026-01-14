@@ -263,6 +263,8 @@ app.include_router(test_feed.router)
 # Static Files
 if not os.path.exists("data"):
     os.makedirs("data")
+if not os.path.exists("data/resumes"):
+    os.makedirs("data/resumes")
 app.mount("/data", StaticFiles(directory="data"), name="data")
 
 # --- Specialized Endpoints (Upload, Control, Websockets) ---
@@ -297,24 +299,30 @@ async def upload_resume(file: UploadFile = File(...)):
     
     # Preserve extension
     ext = ".tex" if file.filename.endswith(".tex") else ".pdf"
-    save_path = f"data/uploaded_resume{ext}"
+    
+    # NEW LOGIC: Save to data/resumes/ with the original filename (sanitized if needed, but keeping simple for now)
+    # This allows host machine to find it easily
+    file_name = file.filename
+    save_dir = "data/resumes"
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+        
+    save_path = f"{save_dir}/{file_name}"
     content = await file.read()
     
     with open(save_path, "wb") as f:
         f.write(content)
         
-    # Update profile with path
+    # Update profile with relative path
     from src.profile_manager import ProfileManager
     pm = ProfileManager()
     profile = pm.get_profile()
-    profile["uploaded_resume_path"] = os.path.abspath(save_path)
+    
+    # Store relative path so both Docker (mapped to /app/data) and Host (mapped to ./data) can resolve it
+    # For the profile manager, we just store the string.
+    profile["uploaded_resume_path"] = save_path
     profile["uploaded_resume_filename"] = file.filename
-    # Default to enabling it upon upload ONLY if it is a specific resume type
-    # For now we enable it, but JobApplicationService handles fallback if PDF is missing.
-    # Note: If .tex is uploaded, we can't use it directly for application "resume_path" unless we compile it.
-    # The user asked for "profile creation using tex", so we focus on parsing.
-    # If they want to use it for applications, they really should upload PDF.
-    # But let's allow saving it.
+    # Default to enabling it upon upload
     profile["use_uploaded_resume"] = True
     pm.save_profile(profile)
     

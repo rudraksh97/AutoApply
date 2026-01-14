@@ -8,12 +8,13 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - autoapply_data:/app/data
+      - ./data:/app/data
     env_file:
       - .env
     environment:
       - HEADLESS=true
       - PYTHONUNBUFFERED=1
+    shm_size: '4gb' # Required for Chromium browser automation in Docker
 
   frontend:
     build:
@@ -25,6 +26,3 @@ services:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
       - backend
-
-volumes:
-  autoapply_data:
