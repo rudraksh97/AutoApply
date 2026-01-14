@@ -23,6 +23,18 @@ TEST_JOBS = [
         "company": "Pear VC",
         "description": "Join Pear VC, a leading early-stage venture capital firm.",
     },
+    {
+        "title": "Role at Flowdesk",
+        "link": "https://apply.workable.com/flowdesk/j/8677555DB1/",
+        "company": "Flowdesk",
+        "description": "Join Flowdesk, a leading crypto market maker and trading technology company.",
+    },
+    {
+        "title": "Software Engineer at Warp",
+        "link": "https://job-boards.greenhouse.io/warp/jobs/4324888004",
+        "company": "Warp",
+        "description": "Join Warp, building the platform for Agentic Development. Work on reimagining the terminal to make it more usable and powerful for developers.",
+    },
 ]
 
 
