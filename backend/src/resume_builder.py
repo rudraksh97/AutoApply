@@ -35,7 +35,7 @@ class ResumeBuilder:
     uses Jinja2 to render a LaTeX template with those skills, finally
     compiling it with pdflatex.
     """
-    def __init__(self, base_template_path="data/tex_resumes/resume_base.tex", output_dir="data/generated_resumes"):
+    def __init__(self, base_template_path="data/resumes/templates/resume_base.tex", output_dir="data/generated_resumes"):
         """
         Initializes the resume builder with template and output paths.
 
@@ -87,15 +87,13 @@ class ResumeBuilder:
     def tailor_latex(self, latex_template: str, job_description: str, user_profile_text: str, custom_prompt: str = None):
         """
         Tailors the entire LaTeX template using an LLM.
-        This follows the 'ATS folder flow' logic.
+        Returns a dict: {"latex": str, "keywords": str, "summary": str}
         """
         if not custom_prompt:
-            # Fallback to a default if not passed (though services.py should pass it)
-            custom_prompt = (
-                "You are a professional career assistant and LaTeX expert. "
-                "Rewrite the provided LaTeX template COMPLETELY to be optimized for the Job Description. "
-                "Keep the EXACT LaTeX structure and packages. Return ONLY raw LaTeX code."
-            )
+            from src.config import ConfigManager
+            config_manager = ConfigManager()
+            prompts = config_manager.get_ats_prompts()
+            custom_prompt = prompts.get("tailor_resume")
 
         system_prompt = f"""
 {custom_prompt}
@@ -115,7 +113,6 @@ Optimize this LaTeX template for the following Job Description:
         from langchain_core.messages import SystemMessage, HumanMessage
         from langchain_core.output_parsers import StrOutputParser
         
-        # Use StrOutputParser for raw LaTeX
         chain = self.llm | StrOutputParser()
         
         response = chain.invoke([
@@ -123,13 +120,33 @@ Optimize this LaTeX template for the following Job Description:
             HumanMessage(content=user_prompt)
         ])
         
-        # Strip potential markdown code blocks if the LLM ignored instructions
-        if "```latex" in response:
-            response = response.split("```latex")[1].split("```")[0].strip()
-        elif "```" in response:
-            response = response.split("```")[1].split("```")[0].strip()
+        # Parse sections
+        keywords = ""
+        summary = ""
+        latex = response
+        
+        if "--- KEYWORDS ---" in response and "--- LATEX ---" in response:
+            try:
+                parts = response.split("--- KEYWORDS ---")[1].split("--- SUMMARY ---")
+                keywords = parts[0].strip()
+                sub_parts = parts[1].split("--- LATEX ---")
+                summary = sub_parts[0].strip()
+                latex = sub_parts[1].strip()
+            except Exception:
+                # Fallback if structure is slightly off
+                pass
+        
+        # Strip potential markdown code blocks
+        if "```latex" in latex:
+            latex = latex.split("```latex")[1].split("```")[0].strip()
+        elif "```" in latex:
+            latex = latex.split("```")[1].split("```")[0].strip()
             
-        return response.strip()
+        return {
+            "latex": latex.strip(),
+            "keywords": keywords,
+            "summary": summary
+        }
 
     def render_tex(self, context, filename, template_path=None, raw_latex=None):
         """
@@ -170,35 +187,43 @@ Optimize this LaTeX template for the following Job Description:
         except (FileNotFoundError, subprocess.CalledProcessError) as e:
             raise RuntimeError("pdflatex is not available. Please install a TeX distribution.") from e
         
-        # Run pdflatex
-        tex_dir = os.path.abspath(os.path.dirname(tex_path))
-        tex_filename = os.path.basename(tex_path)
-        
-        result = subprocess.run(
+        try:
+            # Run pdflatex
+            tex_dir = os.path.abspath(os.path.dirname(tex_path))
+            tex_filename = os.path.basename(tex_path)
+            
+            result = subprocess.run(
             ["pdflatex", "-interaction=nonstopmode", "-output-directory", tex_dir, tex_filename],
             cwd=tex_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"pdflatex compilation failed: {e.stderr.decode('utf-8')}")
         
-        # Check for compilation errors
-        pdf_path = os.path.join(tex_dir, tex_filename.replace('.tex', '.pdf'))
-        log_path = os.path.join(tex_dir, tex_filename.replace('.tex', '.log'))
-        
-        if not os.path.exists(pdf_path):
-            log_content = "No log file found."
-            if os.path.exists(log_path):
-                with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    log_content = f.read()[-2000:]
-            raise RuntimeError(f"LaTeX compilation failed (no PDF). Log excerpt:\n{log_content}")
+        try:
+            # Check for compilation errors
+            pdf_path = os.path.join(tex_dir, tex_filename.replace('.tex', '.pdf'))
+            log_path = os.path.join(tex_dir, tex_filename.replace('.tex', '.log'))
             
-        # Clean up auxiliary files ONLY if it succeeded
-        for ext in ['.aux', '.log', '.out']:
-            aux_file = os.path.join(tex_dir, tex_filename.replace('.tex', ext))
-            if os.path.exists(aux_file):
-                os.remove(aux_file)
-        
-        return pdf_path
+            if not os.path.exists(pdf_path):
+                log_content = "No log file found."
+                if os.path.exists(log_path):
+                    with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        log_content = f.read()[-2000:]
+                else:
+                    raise RuntimeError(f"LaTeX compilation failed (no PDF). Log excerpt:\n{log_content}")
+            
+            # Clean up auxiliary files
+            for ext in ['.aux', '.log', '.out']:
+                aux_file = os.path.join(tex_dir, tex_filename.replace('.tex', ext))
+                if os.path.exists(aux_file):
+                    os.remove(aux_file)
+            
+            return pdf_path
+        except Exception as e:
+            print(f"pdflatex module compilation error: {e}")
+            raise
 
     def calculate_ats_score(self, job_description: str, resume_text: str):
         """
@@ -227,86 +252,99 @@ Optimize this LaTeX template for the following Job Description:
             print(f"Error calculating ATS score: {e}")
             return {"score": 0, "justification": f"Error: {e}"}
 
-    def build(self, job_description, user_profile_text, job_id, template_path=None, tailoring_prompt=None, version="v1"):
+    def build(self, job_description, user_profile_text, job_id, template_path=None, tailoring_prompt=None, version="v1", version_id=None, draft_manager=None):
         """
-        Orchestrates the tailoring and compilation of a resume with versioning.
+        Orchestrates the tailoring. If draft_manager and version_id are provided, 
+        both tailoring and compilation happen in a separate thread.
+        Returns (pdf_path, tex_path, keywords_added, changes_summary)
         """
-        # Create versioned directories
+        # Create versioned directories paths
         gen_dir = os.path.join("data", "generated_resumes", str(job_id), version)
         tex_dir = os.path.join("data", "tex_resumes", str(job_id), version)
         
-        os.makedirs(gen_dir, exist_ok=True)
-        os.makedirs(tex_dir, exist_ok=True)
-        
         filename = f"Resume_{job_id}_{version}"
+        tex_path = os.path.join(tex_dir, f"{filename}.tex")
+        pdf_path = os.path.join(gen_dir, f"{filename}.pdf")
         
-        # Use deep tailoring if prompt provided
-        if tailoring_prompt:
-            print(f"Applying deep LaTeX tailoring for Job {job_id} {version}...")
-            # Load template content
-            target_template = template_path if template_path else self.base_template_path
-            with open(target_template, 'r', encoding='utf-8') as f:
-                template_content = f.read()
-            
-            tailored_latex = self.tailor_latex(template_content, job_description, user_profile_text, custom_prompt=tailoring_prompt)
-            
-            # Save tex in tex_dir
-            tex_path = os.path.join(tex_dir, f"{filename}.tex")
-            with open(tex_path, 'w', encoding='utf-8') as f:
-                f.write(tailored_latex)
-        else:
-            # Fallback to legacy
-            print(f"Extracting keywords for Job {job_id} {version}...")
-            extracted_data = self.generate_resume_content(job_description, user_profile_text)
-            context = {
-                "skills_list": extracted_data.get("skills_list", []),
-                "summary": "Tailored Professional",
-                "experience": "Detailed Experience",
-                "education": "University Degree"
-            }
-            # render_tex saves in self.output_dir by default, let's override logic here for versioning
-            target_template = template_path if template_path else self.base_template_path
-            with open(target_template, 'r', encoding='utf-8') as f:
-                template_content = f.read()
-            template = self.env.from_string(template_content)
-            rendered = template.render(**context)
-            
-            tex_path = os.path.join(tex_dir, f"{filename}.tex")
-            with open(tex_path, 'w', encoding='utf-8') as f:
-                f.write(rendered)
+        # We'll use these potentially updated values in the background
+        result_metadata = {"keywords": "", "summary": ""}
         
-        print(f"Compiling PDF...")
-        # Compile PDF in the gen_dir
-        # We need to temporarily change output_dir or modify compile_pdf
-        # Let's just run pdflatex with -output-directory pointing to gen_dir
-        
-        try:
-            # Run pdflatex
-            abs_tex_path = os.path.abspath(tex_path)
-            abs_gen_dir = os.path.abspath(gen_dir)
-            
-            result = subprocess.run(
-                ["pdflatex", "-interaction=nonstopmode", "-output-directory", abs_gen_dir, abs_tex_path],
-                cwd=os.path.dirname(abs_tex_path),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-            
-            pdf_path = os.path.join(gen_dir, f"{filename}.pdf")
-            if not os.path.exists(pdf_path):
-                raise RuntimeError("LaTeX compilation failed")
-            
-            # Cleanup aux files in gen_dir
-            for ext in ['.aux', '.log', '.out']:
-                aux_file = os.path.join(gen_dir, f"{filename}{ext}")
-                if os.path.exists(aux_file):
-                    os.remove(aux_file)
+        def run_background_process():
+            print(f"Background: Starting process for {filename}...")
+            try:
+                # Ensure directories exist
+                os.makedirs(gen_dir, exist_ok=True)
+                os.makedirs(tex_dir, exist_ok=True)
+                
+                # 1. Tailor LaTeX
+                if tailoring_prompt:
+                    print(f"Background: Applying deep LaTeX tailoring for {filename}...")
+                    target_template = template_path if template_path else self.base_template_path
+                    with open(target_template, 'r', encoding='utf-8') as f:
+                        template_content = f.read()
                     
-            return pdf_path, tex_path
-            
-        except Exception as e:
-            print(f"Compilation error: {e}")
-            raise
+                    tailored_data = self.tailor_latex(template_content, job_description, user_profile_text, custom_prompt=tailoring_prompt)
+                    tailored_latex = tailored_data["latex"]
+                    result_metadata["keywords"] = tailored_data["keywords"]
+                    result_metadata["summary"] = tailored_data["summary"]
+                    
+                    with open(tex_path, 'w', encoding='utf-8') as f:
+                        f.write(tailored_latex)
+                else:
+                    # Fallback to legacy
+                    print(f"Background: Extracting keywords for {filename}...")
+                    extracted_data = self.generate_resume_content(job_description, user_profile_text)
+                    context = {
+                        "skills_list": extracted_data.get("skills_list", []),
+                        "summary": "Tailored Professional",
+                        "experience": "Detailed Experience",
+                        "education": "University Degree"
+                    }
+                    target_template = template_path if template_path else self.base_template_path
+                    with open(target_template, 'r', encoding='utf-8') as f:
+                        template_content = f.read()
+                    template = self.env.from_string(template_content)
+                    rendered = template.render(**context)
+                    
+                    with open(tex_path, 'w', encoding='utf-8') as f:
+                        f.write(rendered)
+
+                # 2. Compile PDF
+                print(f"Background: Compiling PDF for {filename}...")
+                temp_pdf = self.compile_pdf(tex_path)
+                
+                # The pdflatex module might return a path or we derive it
+                # If it's not where we want it, move it
+                if os.path.exists(temp_pdf) and os.path.abspath(temp_pdf) != os.path.abspath(pdf_path):
+                    import shutil
+                    shutil.move(temp_pdf, pdf_path)
+                
+                # 3. Update Database
+                if draft_manager and version_id:
+                    draft_manager.update_resume_version(
+                        version_id, 
+                        status="COMPLETED", 
+                        pdf_path=pdf_path,
+                        keywords_added=result_metadata["keywords"],
+                        changes_summary=result_metadata["summary"]
+                    )
+                    print(f"Background: PDF for {filename} COMPLETED")
+            except Exception as e:
+                print(f"Background: PDF for {filename} FAILED: {e}")
+                if draft_manager and version_id:
+                    draft_manager.update_resume_version(version_id, status="FAILED")
+
+        if draft_manager and version_id:
+            import threading
+            thread = threading.Thread(target=run_background_process)
+            thread.start()
+            # Return immediately with tentative paths and placeholders
+            # The background process will update the DB with actual keywords/summary later
+            return pdf_path, tex_path, "", ""
+        else:
+            # Sync fallback (e.g. for initial CLI-like testing if any)
+            run_background_process()
+            return pdf_path, tex_path, result_metadata["keywords"], result_metadata["summary"]
 
 
 if __name__ == "__main__":

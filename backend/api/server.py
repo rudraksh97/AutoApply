@@ -226,23 +226,17 @@ async def automation_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Migration: consolidate LaTeX templates
-    tex_dir = "data/tex_resumes"
-    if not os.path.exists(tex_dir):
-        os.makedirs(tex_dir)
+    # Consolidate Directories
+    for d in ["data/resumes", "data/resumes/templates", "data/generated_resumes", "data/tex_resumes"]:
+        if not os.path.exists(d):
+            os.makedirs(d)
     
-    # Check common old locations
-    old_locations = ["data/resume_base.tex", "data/resumes/resume_base.tex"]
-    for loc in old_locations:
-        if os.path.exists(loc):
-            import shutil
-            target = os.path.join(tex_dir, "resume_base.tex")
-            if not os.path.exists(target):
-                logging.info(f"Migrating {loc} to {target}")
-                shutil.move(loc, target)
-            else:
-                logging.info(f"Default template already exists in {target}, deleting old {loc}")
-                os.remove(loc)
+    # Simple migration: Move data/ resumes if they exist
+    old_tex = "data/tex_resumes/resume_base.tex"
+    new_tex = "data/resumes/templates/resume_base.tex"
+    if os.path.exists(old_tex) and not os.path.exists(new_tex):
+        import shutil
+        shutil.copy2(old_tex, new_tex)
 
     # Start background task
     task = asyncio.create_task(automation_loop())
@@ -278,14 +272,16 @@ app.include_router(drafts.router)
 app.include_router(settings.router)
 app.include_router(test_feed.router)
 
-# Static Files
-if not os.path.exists("data"):
-    os.makedirs("data")
-if not os.path.exists("data/resumes"):
-    os.makedirs("data/resumes")
-if not os.path.exists("data/tex_resumes"):
-    os.makedirs("data/tex_resumes")
+# Static Files & Storage
+for d in ["data/resumes", "data/generated_resumes", "data/tex_resumes"]:
+    if not os.path.exists(d):
+        os.makedirs(d)
+        
 app.mount("/data", StaticFiles(directory="data"), name="data")
+# Also mount specialized paths if you want direct access without /data/ prefix in frontend
+app.mount("/resumes", StaticFiles(directory="data/resumes"), name="resumes")
+app.mount("/generated_resumes", StaticFiles(directory="data/generated_resumes"), name="generated_resumes")
+app.mount("/tex_resumes", StaticFiles(directory="data/tex_resumes"), name="tex_resumes")
 
 # --- Specialized Endpoints (Upload, Control, Websockets) ---
 
@@ -294,7 +290,7 @@ async def upload_template(file: UploadFile = File(...)):
     if not file.filename.endswith(".tex"):
          raise HTTPException(status_code=400, detail="Only .tex files allowed")
     
-    save_dir = "data/tex_resumes"
+    save_dir = "data/resumes/templates"
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
         
@@ -304,8 +300,6 @@ async def upload_template(file: UploadFile = File(...)):
     with open(save_path, "wb") as f:
         f.write(content)
         
-    # Also keep as base template for the tailoring engine if needed
-    # But primarily we update the profile's tex path
     from src.profile_manager import ProfileManager
     pm = ProfileManager()
     profile = pm.get_profile()
@@ -324,7 +318,7 @@ async def upload_resume(file: UploadFile = File(...)):
     if not (is_pdf or is_tex):
          raise HTTPException(status_code=400, detail="Only .pdf or .tex files allowed")
     
-    save_dir = "data/resumes" if is_pdf else "data/tex_resumes"
+    save_dir = "data/resumes" if is_pdf else "data/resumes/templates"
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
         
@@ -365,7 +359,7 @@ async def parse_resume(source: str = "pdf"):
         file_path = profile.get("uploaded_tex_path")
         if not file_path or not os.path.exists(file_path):
              # Fallback to base template if exists
-             base_path = "data/tex_resumes/resume_base.tex"
+             base_path = "data/resumes/templates/resume_base.tex"
              if os.path.exists(base_path):
                  file_path = base_path
              else:

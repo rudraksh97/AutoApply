@@ -378,8 +378,8 @@ class DraftManager:
                 
             cursor.execute("""
                 INSERT INTO resume_versions 
-                (id, draft_id, version_number, tex_path, pdf_path, ats_score, justification, keywords_added, changes_summary, is_current, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, draft_id, version_number, tex_path, pdf_path, ats_score, justification, keywords_added, changes_summary, status, is_current, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 version.id,
                 version.draft_id,
@@ -390,6 +390,7 @@ class DraftManager:
                 version.justification,
                 version.keywords_added,
                 version.changes_summary,
+                version.status,
                 1 if version.is_current else 0,
                 now
             ))
@@ -426,10 +427,31 @@ class DraftManager:
                 justification=row.get('justification'),
                 keywords_added=row.get('keywords_added'),
                 changes_summary=row.get('changes_summary'),
+                status=row.get('status', 'COMPLETED'),
                 is_current=bool(row['is_current']),
                 created_at=datetime.fromisoformat(row['created_at'])
             ) for row in rows
         ]
+
+    def update_resume_version(self, version_id: str, **kwargs) -> bool:
+        """Update a resume version's details (e.g., status, pdf_path, score)."""
+        updates = []
+        values = []
+        for k, v in kwargs.items():
+            updates.append(f"{k} = ?")
+            values.append(v)
+        
+        if not updates:
+            return True
+            
+        values.append(version_id)
+        query = f"UPDATE resume_versions SET {', '.join(updates)} WHERE id = ?"
+        
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, values)
+            conn.commit()
+            return cursor.rowcount > 0
 
     def set_current_resume_version(self, draft_id: str, version_id: str) -> bool:
         """Set a specific version as current for a draft."""

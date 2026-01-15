@@ -25,6 +25,7 @@ class ResumeVersion(BaseModel):
     justification: Optional[str] = None
     keywords_added: Optional[str] = None
     changes_summary: Optional[str] = None
+    status: str = "COMPLETED"  # "GENERATING", "COMPLETED", "FAILED"
     is_current: bool = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
 

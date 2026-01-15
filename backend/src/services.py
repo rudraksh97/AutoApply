@@ -378,13 +378,19 @@ class DraftPreparationService:
         log_callback(f"  - Initial Score: {initial_score}/100")
 
         # 3. Build version v1
-        pdf_path, tex_path = self.resume_builder.build(
+        # 3. Build version v1
+        import uuid
+        version_id = str(uuid.uuid4())
+        
+        pdf_path, tex_path, keywords, changes = self.resume_builder.build(
             job_description, 
             get_user_profile_text(), 
             job_id=job_id,
             template_path=template_path,
             tailoring_prompt=tailoring_prompt,
-            version="v1"
+            version="v1",
+            version_id=version_id,
+            draft_manager=self.draft_manager
         )
         
         # 4. Calculate FINAL ATS Score for v1
@@ -396,12 +402,16 @@ class DraftPreparationService:
         
         # 5. Store Version 1 in Database
         v1 = ResumeVersion(
+            id=version_id,
             draft_id=draft_id,
             version_number=1,
             tex_path=tex_path,
             pdf_path=pdf_path,
             ats_score=final_score,
             justification=justification,
+            keywords_added=keywords,
+            changes_summary=changes or "Initial tailored version",
+            status="GENERATING", # PDF compilation is backgrounded
             is_current=True
         )
         self.draft_manager.create_resume_version(v1)

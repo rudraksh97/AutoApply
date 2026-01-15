@@ -491,32 +491,73 @@ async def refine_resume(draft_id: str, request: ResumeEditRequest):
     Please incorporate these instructions while maintaining the quality and structure.
     """
     
-    # Generate new version
+    # Create version entry first with GENERATING status
+    import uuid
+    version_id = str(uuid.uuid4())
+    
+    # Generate new version (TeX part is sync, PDF is backgrounded)
     job_id = abs(hash(draft.job_url))
-    pdf_path, tex_path = service.resume_builder.build(
+    pdf_path, tex_path, keywords, changes = service.resume_builder.build(
         draft.job_details,
         "", # profile text
         job_id=job_id,
         template_path=current_version.tex_path, # Refine from previous version's TeX
         tailoring_prompt=refinement_prompt,
-        version=f"v{new_version_num}"
+        version=f"v{new_version_num}",
+        version_id=version_id,
+        draft_manager=draft_manager
     )
     
-    # Score the new version
-    from src.services import get_user_profile_text
-    score_data = service.resume_builder.calculate_ats_score(draft.job_details, get_user_profile_text())
-    
+    # Create the record in DB (status will be GENERATING because PDF is still cooking)
     new_v = ResumeVersion(
+        id=version_id,
         draft_id=draft_id,
         version_number=new_version_num,
         tex_path=tex_path,
         pdf_path=pdf_path,
-        ats_score=score_data.get("score", 0),
-        justification=score_data.get("justification", ""),
-        changes_summary=request.prompt,
+        ats_score=0, # Score can be updated after PDF text extraction if needed
+        justification="Generating...",
+        keywords_added=keywords,
+        changes_summary=changes or request.prompt,
+        status="GENERATING",
         is_current=True
     )
+    draft_manager.create_resume_version(new_v)
+    return new_v
+
+
+@router.post("/{draft_id}/resume/use_original")
+async def use_original_resume(draft_id: str):
+    """Adds the user's original uploaded PDF as a new resume version."""
+    draft = draft_manager.get_draft(draft_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+        
+    from src.profile_manager import ProfileManager
+    pm = ProfileManager()
+    profile = pm.get_profile()
     
+    orig_path = profile.get("uploaded_pdf_path")
+    if not orig_path or not os.path.exists(orig_path):
+        raise HTTPException(status_code=400, detail="No original PDF resume uploaded in profile")
+        
+    versions = draft_manager.get_resume_versions(draft_id)
+    new_version_num = max(v.version_number for v in versions) + 1 if versions else 1
+    
+    # Store as a new version
+    import uuid
+    new_v = ResumeVersion(
+        id=str(uuid.uuid4()),
+        draft_id=draft_id,
+        version_number=new_version_num,
+        tex_path="", # No TeX for original
+        pdf_path=orig_path,
+        ats_score=0, # Could trigger re-calc later
+        justification="User's original upload",
+        changes_summary="Original Un-tailored Resume",
+        status="COMPLETED",
+        is_current=True
+    )
     draft_manager.create_resume_version(new_v)
     return new_v
 

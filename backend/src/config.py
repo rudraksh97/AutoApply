@@ -173,8 +173,14 @@ class ConfigManager:
                 "I will provide a LaTeX template and information from a Resume and LinkedIn Export. "
                 "Your task is to take the provided LaTeX template and rewrite it COMPLETELY to be optimized for the provided Job Description.\n"
                 "Rules:\n1. Keep the EXACT LaTeX structure and packages.\n2. Do NOT change structural layout.\n"
-                "3. Use EXACT keywords from the Job Description.\n4. Preserve existing skills.\n"
-                "5. Return ONLY raw LaTeX code."
+                "3. Use EXACT keywords from the Job Description.\n4. Preserve existing skills.\n\n"
+                "You must return your response in the following format:\n"
+                "--- KEYWORDS ---\n"
+                "[Comma-separated list of keywords added or emphasized]\n"
+                "--- SUMMARY ---\n"
+                "[A brief 1-sentence summary of the major changes made to the resume]\n"
+                "--- LATEX ---\n"
+                "[The complete optimized LaTeX code]"
             )
         }
         return data.get("ats_prompts", defaults)

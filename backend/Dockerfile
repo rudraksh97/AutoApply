@@ -12,9 +12,11 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Install Playwright browsers (Chromium only to save space, with deps)
-# We need to install the python package first to get the CLI
+# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# Install pdflatex module separately to bypass outdated attrs dependency conflict
+RUN pip install --no-cache-dir pdflatex --no-deps
 RUN python -m playwright install --with-deps chromium
 
 # Copy application code

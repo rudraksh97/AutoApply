@@ -61,6 +61,7 @@ def init_db():
             justification TEXT,
             keywords_added TEXT,
             changes_summary TEXT,
+            status TEXT DEFAULT 'COMPLETED',
             is_current INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
             FOREIGN KEY (draft_id) REFERENCES drafts (id)
@@ -68,6 +69,10 @@ def init_db():
     """)
     
     # Migration: Add new columns if they don't exist
+    try:
+        cursor.execute("ALTER TABLE resume_versions ADD COLUMN status TEXT DEFAULT 'COMPLETED'")
+    except sqlite3.OperationalError:
+        pass
     try:
         cursor.execute("ALTER TABLE jobs ADD COLUMN source_feed TEXT")
     except sqlite3.OperationalError:

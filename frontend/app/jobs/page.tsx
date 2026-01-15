@@ -274,10 +274,10 @@ export default function JobsPage() {
                         <thead className="bg-[#fdfdfd] text-muted-foreground uppercase text-[10px] tracking-widest font-bold border-b">
                             <tr>
                                 <th className="px-4 py-3 font-bold w-[90px]">Date</th>
-                                <th className="px-4 py-3 font-bold">Job</th>
-                                <th className="px-4 py-3 font-bold w-[120px]">Status</th>
-                                <th className="px-4 py-3 font-bold w-[60px]">Fields</th>
-                                <th className="px-4 py-3 font-bold text-right w-[200px]">Actions</th>
+                                <th className="px-4 py-3 font-bold w-[250px]">Job</th>
+                                <th className="px-4 py-3 font-bold w-[80px]">Status</th>
+                                <th className="px-4 py-3 font-bold w-[100px]">Fields</th>
+                                <th className="px-4 py-3 font-bold text-right w-[300px]">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border/40">
