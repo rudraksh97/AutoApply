@@ -5,13 +5,15 @@ This router provides endpoints for managing application drafts in the
 draft-first workflow. Users can list, view, and open drafts for manual completion.
 """
 
-import json
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi.responses import FileResponse
 from typing import List, Optional
 from pydantic import BaseModel
+import os
+import json
 
 from src.draft_manager import DraftManager
-from api.schemas.form_state import ApplicationDraft, DraftSummary, DraftStatus
+from api.schemas.form_state import ApplicationDraft, DraftSummary, DraftStatus, ResumeVersion
 
 router = APIRouter(prefix="/drafts", tags=["Drafts"])
 
@@ -441,4 +443,114 @@ async def get_fill_script(draft_id: str):
             "5. Review the form and submit manually"
         ]
     }
+class ResumeEditRequest(BaseModel):
+    """Request body for refining a resume."""
+    prompt: str
 
+
+@router.get("/{draft_id}/resume/versions", response_model=List[ResumeVersion])
+async def get_resume_versions(draft_id: str):
+    """Get all resume versions for a draft."""
+    return draft_manager.get_resume_versions(draft_id)
+
+
+@router.post("/{draft_id}/resume/versions")
+async def refine_resume(draft_id: str, request: ResumeEditRequest):
+    """
+    Generate a new version of the resume based on user prompt.
+    """
+    from src.services import DraftPreparationService
+    from src.job_manager import JobManager
+    from src.resume_builder import ResumeBuilder
+    from src.agent import BrowserAgent
+    
+    draft = draft_manager.get_draft(draft_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+        
+    versions = draft_manager.get_resume_versions(draft_id)
+    if not versions:
+        raise HTTPException(status_code=400, detail="No base version found to refine")
+        
+    # Get the latest/current version to refine from
+    current_version = next((v for v in versions if v.is_current), versions[0])
+    new_version_num = max(v.version_number for v in versions) + 1
+    
+    # Initialize service
+    service = DraftPreparationService(
+        job_manager=JobManager(),
+        browser_agent=BrowserAgent(),
+        resume_builder=ResumeBuilder(),
+        draft_manager=draft_manager
+    )
+    
+    refinement_prompt = f"""
+    USER REFINEMENT INSTRUCTIONS:
+    {request.prompt}
+    
+    Please incorporate these instructions while maintaining the quality and structure.
+    """
+    
+    # Generate new version
+    job_id = abs(hash(draft.job_url))
+    pdf_path, tex_path = service.resume_builder.build(
+        draft.job_details,
+        "", # profile text
+        job_id=job_id,
+        template_path=current_version.tex_path, # Refine from previous version's TeX
+        tailoring_prompt=refinement_prompt,
+        version=f"v{new_version_num}"
+    )
+    
+    # Score the new version
+    from src.services import get_user_profile_text
+    score_data = service.resume_builder.calculate_ats_score(draft.job_details, get_user_profile_text())
+    
+    new_v = ResumeVersion(
+        draft_id=draft_id,
+        version_number=new_version_num,
+        tex_path=tex_path,
+        pdf_path=pdf_path,
+        ats_score=score_data.get("score", 0),
+        justification=score_data.get("justification", ""),
+        changes_summary=request.prompt,
+        is_current=True
+    )
+    
+    draft_manager.create_resume_version(new_v)
+    return new_v
+
+
+@router.post("/{draft_id}/resume/versions/{version_id}/select")
+async def select_resume_version(draft_id: str, version_id: str):
+    """Set a specific version as current."""
+    success = draft_manager.set_current_resume_version(draft_id, version_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Version not found")
+    return {"status": "success"}
+
+
+@router.get("/{draft_id}/resume/preview")
+async def preview_resume(draft_id: str, version_id: Optional[str] = None):
+    """
+    Stream the PDF for preview.
+    If version_id is not provided, use the current version.
+    """
+    if version_id:
+        versions = draft_manager.get_resume_versions(draft_id)
+        version = next((v for v in versions if v.id == version_id), None)
+    else:
+        versions = draft_manager.get_resume_versions(draft_id)
+        version = next((v for v in versions if v.is_current), None)
+        
+    if not version or not version.pdf_path:
+        # Fallback to draft.resume_path
+        draft = draft_manager.get_draft(draft_id)
+        if draft and draft.resume_path and os.path.exists(draft.resume_path):
+            return FileResponse(draft.resume_path, media_type="application/pdf")
+        raise HTTPException(status_code=404, detail="Resume not found")
+        
+    if not os.path.exists(version.pdf_path):
+        raise HTTPException(status_code=404, detail=f"PDF file not found at {version.pdf_path}")
+        
+    return FileResponse(version.pdf_path, media_type="application/pdf")

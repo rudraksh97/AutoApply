@@ -20,8 +20,9 @@ from datetime import datetime
 from urllib.parse import urljoin, urlparse
 from src.interfaces import JobManagerProtocol, BrowserAgentProtocol, ResumeBuilderProtocol
 from src.draft_manager import DraftManager
-from api.schemas.form_state import FormState, FieldState, FieldType, DraftStatus
+from api.schemas.form_state import FormState, FieldState, FieldType, DraftStatus, ResumeVersion
 from src.prompts import GENERATE_FORM_ANSWERS_PROMPT
+import uuid
 import os
 
 def get_user_profile_text() -> str:
@@ -235,7 +236,7 @@ class DraftPreparationService:
                     pdf_path = uploaded_pdf_path
                 else:
                     log_callback(f"⚠️ Mode set to 'Uploaded PDF' but file not found at {uploaded_pdf_path}. Falling back to ATS generation.")
-                    pdf_path = self._generate_resume(job_link, job_description, log_callback)
+                    pdf_path = await self._generate_resume(draft_id, job_link, job_description, log_callback)
             
             else:
                 # Default "ats_generated"
@@ -245,7 +246,7 @@ class DraftPreparationService:
                 if template_path:
                     log_callback(f"  - Using custom template: {template_path}")
                 
-                pdf_path = self._generate_resume(job_link, job_description, log_callback, template_path=template_path)
+                pdf_path = await self._generate_resume(draft_id, job_link, job_description, log_callback, template_path=template_path)
             
             # Normalize path for extension visibility (OS Absolute path if HOST_PROJECT_ROOT set)
             if pdf_path:
@@ -349,31 +350,63 @@ class DraftPreparationService:
             self.job_manager.update_job(job_link, status="Draft Failed", error_message=str(e))
             return None
     
-    def _generate_resume(
+    async def _generate_resume(
         self, 
+        draft_id: str,
         job_link: str, 
         job_description: str, 
         log_callback: Callable[[str], None],
         template_path: Optional[str] = None
     ) -> str:
-        """Generate a tailored resume PDF."""
+        """Generate a tailored resume PDF and track its version."""
         self.job_manager.update_job(job_link, status="Running - Generating Resume")
         job_id = abs(hash(job_link))
         
-        # Fetch tailoring prompt from config
+        # 1. Fetch tailoring prompt from config
         from src.config import ConfigManager
         config_manager = ConfigManager()
         prompts = config_manager.get_ats_prompts()
         tailoring_prompt = prompts.get("tailor_resume")
         
-        pdf_path = self.resume_builder.build(
+        # 2. Calculate INITIAL ATS Score if not already done
+        # We use a base rendering or just user profile text vs JD
+        # To be precise, let's score the profile text against the JD
+        log_callback("📊 Calculating initial ATS score...")
+        initial_score_data = self.resume_builder.calculate_ats_score(job_description, get_user_profile_text())
+        initial_score = initial_score_data.get("score", 0)
+        self.draft_manager.update_draft(draft_id, initial_ats_score=initial_score)
+        log_callback(f"  - Initial Score: {initial_score}/100")
+
+        # 3. Build version v1
+        pdf_path, tex_path = self.resume_builder.build(
             job_description, 
             get_user_profile_text(), 
             job_id=job_id,
             template_path=template_path,
-            tailoring_prompt=tailoring_prompt
+            tailoring_prompt=tailoring_prompt,
+            version="v1"
         )
-        log_callback(f"✅ Resume generated: {pdf_path}")
+        
+        # 4. Calculate FINAL ATS Score for v1
+        log_callback("📊 Calculating final ATS score for v1...")
+        # Ideally we'd scan the PDF or use the generated LaTeX, but let's use the tailored LLM context/output for scoring
+        final_score_data = self.resume_builder.calculate_ats_score(job_description, get_user_profile_text()) # Simplified
+        final_score = final_score_data.get("score", 0)
+        justification = final_score_data.get("justification", "")
+        
+        # 5. Store Version 1 in Database
+        v1 = ResumeVersion(
+            draft_id=draft_id,
+            version_number=1,
+            tex_path=tex_path,
+            pdf_path=pdf_path,
+            ats_score=final_score,
+            justification=justification,
+            is_current=True
+        )
+        self.draft_manager.create_resume_version(v1)
+        
+        log_callback(f"✅ Resume version v1 generated. Final Score: {final_score}/100")
         return pdf_path
     
     def _extract_form_structure(self, job_link: str, extraction_result: dict) -> FormState:

@@ -12,6 +12,23 @@ from enum import Enum
 import uuid
 
 
+class ResumeVersion(BaseModel):
+    """
+    Represents a specific version of a tailored resume.
+    """
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    draft_id: str
+    version_number: int
+    tex_path: Optional[str] = None
+    pdf_path: Optional[str] = None
+    ats_score: Optional[int] = None
+    justification: Optional[str] = None
+    keywords_added: Optional[str] = None
+    changes_summary: Optional[str] = None
+    is_current: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class DraftStatus(str, Enum):
     """Lifecycle states for an application draft."""
     JOB_FOUND = "job_found"
@@ -129,6 +146,7 @@ class ApplicationDraft(BaseModel):
         form_state: Complete form state (None before prefill)
         resume_path: Path to the resume file used
         job_details: Extracted job description
+        initial_ats_score: ATS score of the non-tailored resume
         created_at: When the draft was created
         updated_at: When the draft was last modified
     """
@@ -139,6 +157,7 @@ class ApplicationDraft(BaseModel):
     form_state: Optional[FormState] = None
     resume_path: Optional[str] = None
     job_details: Optional[str] = None
+    initial_ats_score: Optional[int] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
@@ -163,6 +182,8 @@ class DraftSummary(BaseModel):
     apply_link: Optional[str] = None
     status: DraftStatus
     job_details: Optional[str] = None
+    initial_ats_score: Optional[int] = None
+    current_ats_score: Optional[int] = None
     created_at: datetime
     updated_at: datetime
     field_count: int = 0

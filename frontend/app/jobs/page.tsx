@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { RefreshCw, Download, FileText, AlertTriangle, ExternalLink, Play, Trash2, Plus, Code, Copy, Check } from 'lucide-react';
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { ResumePreviewPopup } from "@/components/ResumePreviewPopup";
 
 interface Job {
     url: string;
@@ -30,6 +31,8 @@ interface Draft {
     status: string;
     field_count: number;
     filled_field_count: number;
+    initial_ats_score?: number | null;
+    current_ats_score?: number | null;
 }
 
 interface FullDraft {
@@ -57,6 +60,8 @@ interface FullDraft {
     };
     resume_path: string | null;
     job_details: string | null;
+    initial_ats_score: number | null;
+    current_ats_score?: number | null;
     created_at: string;
     updated_at: string;
 }
@@ -74,6 +79,9 @@ export default function JobsPage() {
     const [selectedDraft, setSelectedDraft] = useState<FullDraft | null>(null);
     const [loadingDraft, setLoadingDraft] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [previewOpen, setPreviewOpen] = useState(false);
+    const [previewDraftId, setPreviewDraftId] = useState<string | null>(null);
+    const [previewJobUrl, setPreviewJobUrl] = useState<string>("");
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -272,87 +280,93 @@ export default function JobsPage() {
                                 <th className="px-4 py-3 font-bold text-right w-[200px]">Actions</th>
                             </tr>
                         </thead>
-                            <tbody className="divide-y divide-border/40">
-                                {loading && jobs.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground italic">
-                                            Loading jobs...
-                                        </td>
-                                    </tr>
-                                ) : jobs.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
-                                            No applications found yet. Add a job URL or configure RSS feeds to get started.
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    jobs.map((job, i) => {
-                                        const draft = getDraftForJob(job.url);
-                                        const displayStatus = draft?.status || job.status;
-                                        const isDraftReady = displayStatus === 'draft_saved' || displayStatus === 'user_opened';
+                        <tbody className="divide-y divide-border/40">
+                            {loading && jobs.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground italic">
+                                        Loading jobs...
+                                    </td>
+                                </tr>
+                            ) : jobs.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
+                                        No applications found yet. Add a job URL or configure RSS feeds to get started.
+                                    </td>
+                                </tr>
+                            ) : (
+                                jobs.map((job, i) => {
+                                    const draft = getDraftForJob(job.url);
+                                    const displayStatus = draft?.status || job.status;
+                                    const isDraftReady = displayStatus === 'draft_saved' || displayStatus === 'user_opened';
 
-                                        return (
-                                            <tr key={i} className="group hover:bg-muted/30 transition-colors">
-                                                <td className="px-4 py-3 text-muted-foreground text-xs">
-                                                    {new Date(job.timestamp).toLocaleDateString()}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <div className="flex flex-col gap-0.5 min-w-0">
-                                                        <div className="flex items-center gap-2 min-w-0">
-                                                            <span className="font-medium text-foreground truncate" title={job.job_title || job.url}>
-                                                                {job.job_title || 'Untitled Position'}
-                                                            </span>
-                                                            <a href={job.url} target="_blank" rel="noopener noreferrer"
-                                                                className="text-muted-foreground/60 hover:text-primary transition-colors flex-shrink-0"
-                                                                title="View Job Description">
-                                                                <FileText className="h-3 w-3" />
+                                    return (
+                                        <tr key={i} className="group hover:bg-muted/30 transition-colors">
+                                            <td className="px-4 py-3 text-muted-foreground text-xs">
+                                                {new Date(job.timestamp).toLocaleDateString()}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex flex-col gap-0.5 min-w-0">
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <span className="font-medium text-foreground truncate" title={job.job_title || job.url}>
+                                                            {job.job_title || 'Untitled Position'}
+                                                        </span>
+                                                        <a href={job.url} target="_blank" rel="noopener noreferrer"
+                                                            className="text-muted-foreground/60 hover:text-primary transition-colors flex-shrink-0"
+                                                            title="View Job Description">
+                                                            <FileText className="h-3 w-3" />
+                                                        </a>
+                                                        {job.apply_link && (
+                                                            <a href={job.apply_link} target="_blank" rel="noopener noreferrer"
+                                                                className="text-blue-500 hover:text-blue-700 transition-colors flex-shrink-0"
+                                                                title="Apply Page">
+                                                                <ExternalLink className="h-3 w-3" />
                                                             </a>
-                                                            {job.apply_link && (
-                                                                <a href={job.apply_link} target="_blank" rel="noopener noreferrer"
-                                                                    className="text-blue-500 hover:text-blue-700 transition-colors flex-shrink-0"
-                                                                    title="Apply Page">
-                                                                    <ExternalLink className="h-3 w-3" />
-                                                                </a>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex items-center gap-2 text-xs text-muted-foreground truncate">
-                                                            {job.company_name && (
-                                                                <span className="font-medium">{job.company_name}</span>
-                                                            )}
-                                                            {(job.source_feed_name || job.source_feed) && (
-                                                                <span className="text-muted-foreground/60" title={job.source_feed || ''}>
-                                                                    via {job.source_feed_name || (job.source_feed ? new URL(job.source_feed).hostname.replace('www.', '') : '')}
-                                                                </span>
-                                                            )}
-                                                        </div>
+                                                        )}
                                                     </div>
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <span className={cn(
-                                                        "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border gap-1",
-                                                        getStatusColor(displayStatus)
-                                                    )}>
-                                                        {displayStatus.includes('Running') && (
-                                                            <span className="relative flex h-1.5 w-1.5">
-                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                                                    <div className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+                                                        {job.company_name && (
+                                                            <span className="font-medium">{job.company_name}</span>
+                                                        )}
+                                                        {(job.source_feed_name || job.source_feed) && (
+                                                            <span className="text-muted-foreground/60" title={job.source_feed || ''}>
+                                                                via {job.source_feed_name || (job.source_feed ? new URL(job.source_feed).hostname.replace('www.', '') : '')}
                                                             </span>
                                                         )}
-                                                        {displayStatus.replace('draft_', '').replace('_', ' ')}
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3 text-center">
-                                                    {draft ? (
-                                                        <span className="text-muted-foreground text-xs">
-                                                            {draft.filled_field_count}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className={cn(
+                                                    "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border gap-1",
+                                                    getStatusColor(displayStatus)
+                                                )}>
+                                                    {displayStatus.includes('Running') && (
+                                                        <span className="relative flex h-1.5 w-1.5">
+                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
                                                         </span>
-                                                    ) : (
-                                                        <span className="text-muted-foreground">-</span>
                                                     )}
-                                                </td>
-                                                <td className="px-4 py-3 text-right">
-                                                    <div className="flex items-center justify-end gap-1">
-                                                        {draft && (
+                                                    {displayStatus.replace('draft_', '').replace('_', ' ')}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 whitespace-nowrap">
+                                                {draft && (
+                                                    <div className="flex flex-col gap-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[10px] font-bold text-muted-foreground w-12 uppercase">Initial:</span>
+                                                            <span className="text-sm font-semibold">{draft.initial_ats_score || '--'}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[10px] font-bold text-muted-foreground w-12 uppercase">Final:</span>
+                                                            <span className="text-sm font-semibold text-emerald-600 font-bold">{draft.current_ats_score || '--'}</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3 text-right whitespace-nowrap">
+                                                <div className="flex items-center justify-end gap-1">
+                                                    {draft && (
+                                                        <>
                                                             <Button
                                                                 size="sm"
                                                                 variant="ghost"
@@ -361,64 +375,78 @@ export default function JobsPage() {
                                                             >
                                                                 <Code className="h-3 w-3" />
                                                             </Button>
-                                                        )}
-                                                        
-                                                        {(displayStatus === 'Failed' || displayStatus === 'Draft Failed') && (
                                                             <Button
+                                                                variant="outline"
                                                                 size="sm"
-                                                                variant="ghost"
-                                                                onClick={() => retryJob(job.url)}
-                                                                className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
-                                                                title="Retry Job"
+                                                                className="h-7 px-2 text-xs"
+                                                                onClick={() => {
+                                                                    setPreviewDraftId(draft.id);
+                                                                    setPreviewJobUrl(job.url);
+                                                                    setPreviewOpen(true);
+                                                                }}
                                                             >
-                                                                <RefreshCw className="h-3 w-3 mr-1" />
-                                                                Retry
+                                                                <FileText className="h-3 w-3 mr-1" />
+                                                                Preview
                                                             </Button>
-                                                        )}
+                                                        </>
+                                                    )}
 
-                                                        {isDraftReady && draft && (
-                                                            <Button
-                                                                size="sm"
-                                                                onClick={() => openDraft(draft.id, job.apply_link || job.url)}
-                                                                disabled={openingDraft === draft.id}
-                                                                className="h-7 px-2 bg-blue-600 hover:bg-blue-700 text-white text-xs"
-                                                            >
-                                                                {openingDraft === draft.id ? (
-                                                                    <RefreshCw className="h-3 w-3 animate-spin" />
-                                                                ) : (
-                                                                    <Play className="h-3 w-3 mr-1" />
-                                                                )}
-                                                                Open
-                                                            </Button>
-                                                        )}
-
-                                                        {job.pdf_path && (
-                                                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                                                                <Download className="h-3 w-3" />
-                                                            </Button>
-                                                        )}
-
+                                                    {(displayStatus === 'Failed' || displayStatus === 'Draft Failed') && (
                                                         <Button
+                                                            size="sm"
                                                             variant="ghost"
-                                                            size="icon"
-                                                            className="h-7 w-7 text-muted-foreground hover:text-red-600 hover:bg-red-50"
-                                                            onClick={() => deleteJob(job.url)}
-                                                            disabled={deletingJob === job.url}
+                                                            onClick={() => retryJob(job.url)}
+                                                            className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                            title="Retry Job"
                                                         >
-                                                            {deletingJob === job.url ? (
+                                                            <RefreshCw className="h-3 w-3 mr-1" />
+                                                            Retry
+                                                        </Button>
+                                                    )}
+
+                                                    {isDraftReady && draft && (
+                                                        <Button
+                                                            size="sm"
+                                                            onClick={() => openDraft(draft.id, job.apply_link || job.url)}
+                                                            disabled={openingDraft === draft.id}
+                                                            className="h-7 px-2 bg-blue-600 hover:bg-blue-700 text-white text-xs"
+                                                        >
+                                                            {openingDraft === draft.id ? (
                                                                 <RefreshCw className="h-3 w-3 animate-spin" />
                                                             ) : (
-                                                                <Trash2 className="h-3 w-3" />
+                                                                <Play className="h-3 w-3 mr-1" />
                                                             )}
+                                                            Open
                                                         </Button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })
-                                )}
-                            </tbody>
-                        </table>
+                                                    )}
+
+                                                    {job.pdf_path && (
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                                                            <Download className="h-3 w-3" />
+                                                        </Button>
+                                                    )}
+
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-7 w-7 text-muted-foreground hover:text-red-600 hover:bg-red-50"
+                                                        onClick={() => deleteJob(job.url)}
+                                                        disabled={deletingJob === job.url}
+                                                    >
+                                                        {deletingJob === job.url ? (
+                                                            <RefreshCw className="h-3 w-3 animate-spin" />
+                                                        ) : (
+                                                            <Trash2 className="h-3 w-3" />
+                                                        )}
+                                                    </Button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
                 </CardContent>
             </Card>
 
@@ -431,7 +459,7 @@ export default function JobsPage() {
                             Draft State JSON
                         </DialogTitle>
                     </DialogHeader>
-                    
+
                     {loadingDraft ? (
                         <div className="flex items-center justify-center py-12">
                             <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -532,6 +560,13 @@ export default function JobsPage() {
                     )}
                 </DialogContent>
             </Dialog>
+
+            <ResumePreviewPopup
+                isOpen={previewOpen}
+                onClose={() => setPreviewOpen(false)}
+                draftId={previewDraftId || ""}
+                jobUrl={previewJobUrl}
+            />
         </div>
     );
 }

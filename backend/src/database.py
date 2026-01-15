@@ -33,6 +33,40 @@ def init_db():
         )
     """)
     
+    # Create drafts table for draft-first workflow
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS drafts (
+            id TEXT PRIMARY KEY,
+            job_url TEXT UNIQUE,
+            status TEXT NOT NULL,
+            form_state_json TEXT,
+            resume_path TEXT,
+            job_details TEXT,
+            apply_link TEXT,
+            initial_ats_score INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+    
+    # Create resume_versions table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS resume_versions (
+            id TEXT PRIMARY KEY,
+            draft_id TEXT NOT NULL,
+            version_number INTEGER NOT NULL,
+            tex_path TEXT,
+            pdf_path TEXT,
+            ats_score INTEGER,
+            justification TEXT,
+            keywords_added TEXT,
+            changes_summary TEXT,
+            is_current INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (draft_id) REFERENCES drafts (id)
+        )
+    """)
+    
     # Migration: Add new columns if they don't exist
     try:
         cursor.execute("ALTER TABLE jobs ADD COLUMN source_feed TEXT")
@@ -55,24 +89,14 @@ def init_db():
     except sqlite3.OperationalError:
         pass
     
-    # Create drafts table for draft-first workflow
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS drafts (
-            id TEXT PRIMARY KEY,
-            job_url TEXT UNIQUE,
-            status TEXT NOT NULL,
-            form_state_json TEXT,
-            resume_path TEXT,
-            job_details TEXT,
-            apply_link TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )
-    """)
-    
     # Migration: Add apply_link to drafts if it doesn't exist
     try:
         cursor.execute("ALTER TABLE drafts ADD COLUMN apply_link TEXT")
+    except sqlite3.OperationalError:
+        pass
+    
+    try:
+        cursor.execute("ALTER TABLE drafts ADD COLUMN initial_ats_score INTEGER")
     except sqlite3.OperationalError:
         pass
 

@@ -200,25 +200,63 @@ Optimize this LaTeX template for the following Job Description:
         
         return pdf_path
 
-    def build(self, job_description, user_profile_text, job_id, template_path=None, tailoring_prompt=None):
+    def calculate_ats_score(self, job_description: str, resume_text: str):
         """
-        Orchestrates the tailoring and compilation of a resume.
+        Calculates an ATS score for a resume against a job description.
         """
-        filename = f"Resume_{job_id}"
+        from src.config import ConfigManager
+        config_manager = ConfigManager()
+        prompts = config_manager.get_ats_prompts()
+        score_prompt = prompts.get("calculate_score")
+
+        system_prompt = score_prompt
+        user_prompt = f"--- JOB DESCRIPTION ---\n{job_description}\n\n--- RESUME TEXT ---\n{resume_text}"
+
+        from langchain_core.messages import SystemMessage, HumanMessage
+        from langchain_core.output_parsers import JsonOutputParser
+
+        chain = self.llm | JsonOutputParser()
+        
+        try:
+            result = chain.invoke([
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ])
+            return result # Expected: {"score": 85, "justification": "..."}
+        except Exception as e:
+            print(f"Error calculating ATS score: {e}")
+            return {"score": 0, "justification": f"Error: {e}"}
+
+    def build(self, job_description, user_profile_text, job_id, template_path=None, tailoring_prompt=None, version="v1"):
+        """
+        Orchestrates the tailoring and compilation of a resume with versioning.
+        """
+        # Create versioned directories
+        gen_dir = os.path.join("data", "generated_resumes", str(job_id), version)
+        tex_dir = os.path.join("data", "tex_resumes", str(job_id), version)
+        
+        os.makedirs(gen_dir, exist_ok=True)
+        os.makedirs(tex_dir, exist_ok=True)
+        
+        filename = f"Resume_{job_id}_{version}"
         
         # Use deep tailoring if prompt provided
         if tailoring_prompt:
-            print(f"Applying deep LaTeX tailoring for Job {job_id}...")
+            print(f"Applying deep LaTeX tailoring for Job {job_id} {version}...")
             # Load template content
             target_template = template_path if template_path else self.base_template_path
             with open(target_template, 'r', encoding='utf-8') as f:
                 template_content = f.read()
             
             tailored_latex = self.tailor_latex(template_content, job_description, user_profile_text, custom_prompt=tailoring_prompt)
-            tex_path = self.render_tex({}, filename, raw_latex=tailored_latex)
+            
+            # Save tex in tex_dir
+            tex_path = os.path.join(tex_dir, f"{filename}.tex")
+            with open(tex_path, 'w', encoding='utf-8') as f:
+                f.write(tailored_latex)
         else:
-            # Fallback to legacy skills_list injection
-            print(f"Extracting keywords for Job {job_id}...")
+            # Fallback to legacy
+            print(f"Extracting keywords for Job {job_id} {version}...")
             extracted_data = self.generate_resume_content(job_description, user_profile_text)
             context = {
                 "skills_list": extracted_data.get("skills_list", []),
@@ -226,12 +264,49 @@ Optimize this LaTeX template for the following Job Description:
                 "experience": "Detailed Experience",
                 "education": "University Degree"
             }
-            tex_path = self.render_tex(context, filename, template_path=template_path)
+            # render_tex saves in self.output_dir by default, let's override logic here for versioning
+            target_template = template_path if template_path else self.base_template_path
+            with open(target_template, 'r', encoding='utf-8') as f:
+                template_content = f.read()
+            template = self.env.from_string(template_content)
+            rendered = template.render(**context)
+            
+            tex_path = os.path.join(tex_dir, f"{filename}.tex")
+            with open(tex_path, 'w', encoding='utf-8') as f:
+                f.write(rendered)
         
         print(f"Compiling PDF...")
-        pdf_path = self.compile_pdf(tex_path)
+        # Compile PDF in the gen_dir
+        # We need to temporarily change output_dir or modify compile_pdf
+        # Let's just run pdflatex with -output-directory pointing to gen_dir
         
-        return pdf_path
+        try:
+            # Run pdflatex
+            abs_tex_path = os.path.abspath(tex_path)
+            abs_gen_dir = os.path.abspath(gen_dir)
+            
+            result = subprocess.run(
+                ["pdflatex", "-interaction=nonstopmode", "-output-directory", abs_gen_dir, abs_tex_path],
+                cwd=os.path.dirname(abs_tex_path),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            
+            pdf_path = os.path.join(gen_dir, f"{filename}.pdf")
+            if not os.path.exists(pdf_path):
+                raise RuntimeError("LaTeX compilation failed")
+            
+            # Cleanup aux files in gen_dir
+            for ext in ['.aux', '.log', '.out']:
+                aux_file = os.path.join(gen_dir, f"{filename}{ext}")
+                if os.path.exists(aux_file):
+                    os.remove(aux_file)
+                    
+            return pdf_path, tex_path
+            
+        except Exception as e:
+            print(f"Compilation error: {e}")
+            raise
 
 
 if __name__ == "__main__":

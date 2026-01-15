@@ -75,7 +75,7 @@
   "uploaded_pdf_filename": "Bhuvan_Thirwani_Software_Engineer_2026.pdf",
   "uploaded_tex_path": "data/tex_resumes/resume_base.tex",
   "uploaded_tex_filename": "resume_base.tex",
-  "resume_generation_mode": "uploaded_pdf",
+  "resume_generation_mode": "ats_generated",
   "use_uploaded_resume": true,
   "custom_template_filename": "Bhuvan_Thirwani.tex",
   "uploaded_resume_path": "data/resumes/Bhuvan_Thirwani_Software_Engineer_2026.pdf",
