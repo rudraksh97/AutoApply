@@ -20,8 +20,9 @@ from datetime import datetime
 from urllib.parse import urljoin, urlparse
 from src.interfaces import JobManagerProtocol, BrowserAgentProtocol, ResumeBuilderProtocol
 from src.draft_manager import DraftManager
-from api.schemas.form_state import FormState, FieldState, FieldType, DraftStatus
+from api.schemas.form_state import FormState, FieldState, FieldType, DraftStatus, ResumeVersion
 from src.prompts import GENERATE_FORM_ANSWERS_PROMPT
+import uuid
 import os
 
 def get_user_profile_text() -> str:
@@ -223,23 +224,64 @@ class DraftPreparationService:
             profile_manager = ProfileManager()
             profile = profile_manager.get_profile()
             
-            use_uploaded = profile.get("use_uploaded_resume", False)
-            uploaded_path = profile.get("uploaded_resume_path", "")
+            mode = profile.get("resume_generation_mode", "ats_generated")
+            uploaded_pdf_path = profile.get("uploaded_pdf_path", "")
+            uploaded_tex_path = profile.get("uploaded_tex_path", "")
             
             pdf_path = None
+            relative_resume_path: Optional[str] = None
             
-            if use_uploaded and uploaded_path:
-                if os.path.exists(uploaded_path):
-                    log_callback(f"📄 Using uploaded resume: {uploaded_path}")
-                    pdf_path = uploaded_path
+            if mode == "uploaded_pdf" and uploaded_pdf_path:
+                if os.path.exists(uploaded_pdf_path):
+                    log_callback(f"📄 Using uploaded resume: {uploaded_pdf_path}")
+                    pdf_path = uploaded_pdf_path
                 else:
-                    log_callback(f"⚠️ Uploaded resume not found. Generating new one...")
-                    pdf_path = self._generate_resume(job_link, job_description, log_callback)
-            else:
-                log_callback("📄 Generating tailored resume...")
-                pdf_path = self._generate_resume(job_link, job_description, log_callback)
+                    log_callback(f"⚠️ Mode set to 'Uploaded PDF' but file not found at {uploaded_pdf_path}. Falling back to ATS generation.")
+                    pdf_path = await self._generate_resume(draft_id, job_link, job_description, log_callback)
             
-            self.draft_manager.update_draft(draft_id, resume_path=pdf_path)
+            else:
+                # Default "ats_generated"
+                log_callback("📄 Generating tailored resume using ATS workflow...")
+                # If they have a custom template uploaded, use it
+                template_path = uploaded_tex_path if uploaded_tex_path and os.path.exists(uploaded_tex_path) else None
+                if template_path:
+                    log_callback(f"  - Using custom template: {template_path}")
+                
+                pdf_path = await self._generate_resume(draft_id, job_link, job_description, log_callback, template_path=template_path)
+            
+            # Derive a project-relative path for API/static serving and a host-visible path
+            # for legacy flows that need direct filesystem access.
+            if pdf_path:
+                host_root = os.getenv("HOST_PROJECT_ROOT")
+
+                # Compute a project-relative path (e.g. "data/generated_resumes/Resume_123.pdf")
+                rel_path_for_static = pdf_path
+                if os.path.isabs(pdf_path):
+                    # Container images typically mount the project at /app
+                    rel_path_for_static = os.path.relpath(pdf_path, "/app")
+
+                # Normalise to forward slashes for URLs/JSON
+                rel_path_for_static = rel_path_for_static.replace("\\", "/")
+                relative_resume_path = rel_path_for_static
+
+                # Preserve existing behaviour for host-visible absolute paths
+                if host_root:
+                    pdf_host_path = os.path.join(host_root, rel_path_for_static).replace("\\", "/")
+                    pdf_path = pdf_host_path
+                else:
+                    # Fallback to project-relative with forward slashes
+                    pdf_path = rel_path_for_static
+            
+            # Step 2.1: Inject resume path into form fields if they are of type FILE
+            # This ensures the extension knows WHERE the file is on the host
+            # We do this AFTER Step 5 (LLM generation) but we need to track it.
+            # Actually, let's do it after the form structure is extraction and LLM answers are generated.
+            # For now, store it in the draft's resume_path.
+            
+            self.draft_manager.update_draft(
+                draft_id, 
+                resume_path=pdf_path
+            )
             self.job_manager.update_job(job_link, pdf_path=pdf_path, status="Running - Extracting Form")
             
             # Step 3: Extract Form Structure (NO FILLING)
@@ -276,6 +318,23 @@ class DraftPreparationService:
                 log_callback
             )
             
+            # Step 5.1: Automatically inject resume path into fields of type FILE
+            # if they look like a resume/CV field.
+            if pdf_path:
+                for field in form_state.fields:
+                    if field.field_type == FieldType.FILE:
+                        label = (field.label or "").lower()
+                        if not label or any(kw in label for kw in ["resume", "cv", "document", "upload"]):
+                            log_callback(f"🔗 Injecting resume path into field: {field.label or field.xpath}")
+                            field.value = pdf_path
+                            field.skipped = False # Force fill
+            
+            # Step 5.2: Expose project-relative resume path for the browser extension.
+            # This lets the extension download the resume via the API and synthesize
+            # a File object without needing direct filesystem access.
+            if relative_resume_path:
+                form_state.relative_resume_path = relative_resume_path
+            
             # Step 6: Save final draft
             self.draft_manager.update_draft(
                 draft_id,
@@ -298,21 +357,78 @@ class DraftPreparationService:
 
         except Exception as e:
             log_callback(f"❌ Error preparing draft: {e}")
-            self.draft_manager.update_status(draft_id, DraftStatus.EXTRACTED)  # Partial state
+            self.draft_manager.update_status(draft_id, DraftStatus.FAILED)
             self.job_manager.update_job(job_link, status="Draft Failed", error_message=str(e))
             return None
     
-    def _generate_resume(
+    async def _generate_resume(
         self, 
+        draft_id: str,
         job_link: str, 
         job_description: str, 
-        log_callback: Callable[[str], None]
+        log_callback: Callable[[str], None],
+        template_path: Optional[str] = None
     ) -> str:
-        """Generate a tailored resume PDF."""
+        """Generate a tailored resume PDF and track its version."""
         self.job_manager.update_job(job_link, status="Running - Generating Resume")
-        job_id = abs(hash(job_link))
-        pdf_path = self.resume_builder.build(job_description, get_user_profile_text(), job_id=job_id)
-        log_callback(f"✅ Resume generated: {pdf_path}")
+        
+        # Use a stable hash for the job_id to ensure consistent filesystem paths across restarts
+        from src.url_utils import get_stable_job_id
+        job_id = get_stable_job_id(job_link)
+        
+        # 1. Fetch tailoring prompt from config
+        from src.config import ConfigManager
+        config_manager = ConfigManager()
+        prompts = config_manager.get_ats_prompts()
+        tailoring_prompt = prompts.get("tailor_resume")
+        
+        # 2. Calculate INITIAL ATS Score if not already done
+        # We use a base rendering or just user profile text vs JD
+        # To be precise, let's score the profile text against the JD
+        log_callback("📊 Calculating initial ATS score...")
+        initial_score_data = await self.resume_builder.calculate_ats_score(job_description, get_user_profile_text())
+        initial_score = initial_score_data.get("score", 0)
+        
+        self.draft_manager.update_draft(draft_id, initial_ats_score=initial_score)
+        log_callback(f"  - Initial Score: {initial_score}/100")
+
+        # 3. Create initial ResumeVersion entry (before async build to avoid race condition)
+        import uuid
+        version_id = str(uuid.uuid4())
+        
+        v1 = ResumeVersion(
+            id=version_id,
+            draft_id=draft_id,
+            version_number=1,
+            tex_path=f"data/tex_resumes/{job_id}/v1/Resume_{job_id}_v1.tex", # Predicted path
+            pdf_path=f"data/generated_resumes/{job_id}/v1/Resume_{job_id}_v1.pdf", # Predicted path
+            ats_score=0, # Will be updated by background process
+            justification="Generating...",
+            keywords_added="",
+            changes_summary="Initial tailored version",
+            status="GENERATING",
+            is_current=True
+        )
+        self.draft_manager.create_resume_version(v1)
+
+        # 4. Synchronously Build version v1
+        # The builder will update the DB entry with actual score, keywords, and status="COMPLETED"
+        pdf_path, tex_path, keywords, changes = await self.resume_builder.build(
+            job_description, 
+            get_user_profile_text(), 
+            job_id=job_id,
+            template_path=template_path,
+            tailoring_prompt=tailoring_prompt,
+            version="v1",
+            version_id=version_id,
+            draft_id=draft_id,
+            draft_manager=self.draft_manager,
+            ats_context=initial_score_data,
+            job_manager=self.job_manager,
+            job_url=job_link
+        )
+        
+        log_callback(f"✅ Resume generation completed for v1")
         return pdf_path
     
     def _extract_form_structure(self, job_link: str, extraction_result: dict) -> FormState:

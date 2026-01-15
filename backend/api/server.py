@@ -226,6 +226,18 @@ async def automation_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Consolidate Directories
+    for d in ["data/resumes", "data/resumes/templates", "data/generated_resumes", "data/tex_resumes"]:
+        if not os.path.exists(d):
+            os.makedirs(d)
+    
+    # Simple migration: Move data/ resumes if they exist
+    old_tex = "data/tex_resumes/resume_base.tex"
+    new_tex = "data/resumes/templates/resume_base.tex"
+    if os.path.exists(old_tex) and not os.path.exists(new_tex):
+        import shutil
+        shutil.copy2(old_tex, new_tex)
+
     # Start background task
     task = asyncio.create_task(automation_loop())
     yield
@@ -260,10 +272,16 @@ app.include_router(drafts.router)
 app.include_router(settings.router)
 app.include_router(test_feed.router)
 
-# Static Files
-if not os.path.exists("data"):
-    os.makedirs("data")
+# Static Files & Storage
+for d in ["data/resumes", "data/generated_resumes", "data/tex_resumes"]:
+    if not os.path.exists(d):
+        os.makedirs(d)
+        
 app.mount("/data", StaticFiles(directory="data"), name="data")
+# Also mount specialized paths if you want direct access without /data/ prefix in frontend
+app.mount("/resumes", StaticFiles(directory="data/resumes"), name="resumes")
+app.mount("/generated_resumes", StaticFiles(directory="data/generated_resumes"), name="generated_resumes")
+app.mount("/tex_resumes", StaticFiles(directory="data/tex_resumes"), name="tex_resumes")
 
 # --- Specialized Endpoints (Upload, Control, Websockets) ---
 
@@ -272,12 +290,41 @@ async def upload_template(file: UploadFile = File(...)):
     if not file.filename.endswith(".tex"):
          raise HTTPException(status_code=400, detail="Only .tex files allowed")
     
-    save_path = "data/resume_base.tex"
+    save_dir = "data/resumes/templates"
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+        
+    save_path = f"{save_dir}/{file.filename}"
     content = await file.read()
     
-    if b"\\VAR{skills_list}" not in content:
-        raise HTTPException(status_code=400, detail="Template must contain \\VAR{skills_list}")
+    with open(save_path, "wb") as f:
+        f.write(content)
+        
+    from src.profile_manager import ProfileManager
+    pm = ProfileManager()
+    profile = pm.get_profile()
+    profile["uploaded_tex_path"] = save_path
+    profile["uploaded_tex_filename"] = file.filename
+    profile["custom_template_filename"] = file.filename
+    pm.save_profile(profile)
+    
+    return {"status": "uploaded", "filename": file.filename, "path": save_path}
 
+@app.post("/upload-resume", tags=["Settings"])
+async def upload_resume(file: UploadFile = File(...)):
+    is_pdf = file.filename.endswith(".pdf")
+    is_tex = file.filename.endswith(".tex")
+    
+    if not (is_pdf or is_tex):
+         raise HTTPException(status_code=400, detail="Only .pdf or .tex files allowed")
+    
+    save_dir = "data/resumes" if is_pdf else "data/resumes/templates"
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+        
+    save_path = f"{save_dir}/{file.filename}"
+    content = await file.read()
+    
     with open(save_path, "wb") as f:
         f.write(content)
         
@@ -285,62 +332,43 @@ async def upload_template(file: UploadFile = File(...)):
     from src.profile_manager import ProfileManager
     pm = ProfileManager()
     profile = pm.get_profile()
-    profile["custom_template_filename"] = file.filename
-    pm.save_profile(profile)
     
-    return {"status": "uploaded", "filename": file.filename}
-
-@app.post("/upload-resume", tags=["Settings"])
-async def upload_resume(file: UploadFile = File(...)):
-    if not (file.filename.endswith(".pdf") or file.filename.endswith(".tex")):
-         raise HTTPException(status_code=400, detail="Only .pdf or .tex files allowed")
+    if is_pdf:
+        profile["uploaded_pdf_path"] = save_path
+        profile["uploaded_pdf_filename"] = file.filename
+        profile["resume_generation_mode"] = "uploaded_pdf"
+    else:
+        profile["uploaded_tex_path"] = save_path
+        profile["uploaded_tex_filename"] = file.filename
+        profile["resume_generation_mode"] = "ats_generated"
+        profile["custom_template_filename"] = file.filename
     
-    # Preserve extension
-    ext = ".tex" if file.filename.endswith(".tex") else ".pdf"
-    save_path = f"data/uploaded_resume{ext}"
-    content = await file.read()
-    
-    with open(save_path, "wb") as f:
-        f.write(content)
-        
-    # Update profile with path
-    from src.profile_manager import ProfileManager
-    pm = ProfileManager()
-    profile = pm.get_profile()
-    profile["uploaded_resume_path"] = os.path.abspath(save_path)
-    profile["uploaded_resume_filename"] = file.filename
-    # Default to enabling it upon upload ONLY if it is a specific resume type
-    # For now we enable it, but JobApplicationService handles fallback if PDF is missing.
-    # Note: If .tex is uploaded, we can't use it directly for application "resume_path" unless we compile it.
-    # The user asked for "profile creation using tex", so we focus on parsing.
-    # If they want to use it for applications, they really should upload PDF.
-    # But let's allow saving it.
-    profile["use_uploaded_resume"] = True
     pm.save_profile(profile)
     
     return {"status": "uploaded", "filename": file.filename, "path": save_path}
 
 @app.post("/parse-resume", tags=["Settings"])
-async def parse_resume(source: str = "resume"):
-    # Retrieve file path based on source
+async def parse_resume(source: str = "pdf"):
     from src.profile_manager import ProfileManager
     pm = ProfileManager()
     profile = pm.get_profile()
     
     file_path = None
     
-    if source == "template":
-        # Check for template
-        potential_path = "data/resume_base.tex"
-        if os.path.exists(potential_path):
-            file_path = potential_path
-        else:
-            raise HTTPException(status_code=400, detail="No custom LaTeX template found (data/resume_base.tex).")
-    else:
-        # Default to resume
-        file_path = profile.get("uploaded_resume_path")
+    if source == "tex":
+        file_path = profile.get("uploaded_tex_path")
         if not file_path or not os.path.exists(file_path):
-             raise HTTPException(status_code=400, detail="No uploaded resume found. Please upload one first.")
+             # Fallback to base template if exists
+             base_path = "data/resumes/templates/resume_base.tex"
+             if os.path.exists(base_path):
+                 file_path = base_path
+             else:
+                 raise HTTPException(status_code=400, detail="No uploaded LaTeX template found.")
+    else:
+        # Default to pdf
+        file_path = profile.get("uploaded_pdf_path")
+        if not file_path or not os.path.exists(file_path):
+             raise HTTPException(status_code=400, detail="No uploaded PDF resume found. Please upload one first.")
 
     # Parse with ResumeParser
     try:

@@ -5,8 +5,10 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Sparkles, FileText, Upload, Database, LayoutGrid, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import { Separator } from "@/components/ui/separator";
 
 export default function ProfilePage() {
     const [profile, setProfile] = useState<any>(null);
@@ -29,6 +31,63 @@ export default function ProfilePage() {
     useEffect(() => {
         fetchProfile();
     }, []);
+
+    const uploadFile = async (file: File, type: 'pdf' | 'tex') => {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            setIsProcessing(true);
+            const endpoint = type === 'pdf' ? '/upload-resume' : '/upload-template';
+            const res = await axios.post(`${API_URL}${endpoint}`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            toast.success(`${type.toUpperCase()} uploaded successfully!`);
+
+            setProfile((prev: any) => ({
+                ...prev,
+                [`uploaded_${type}_path`]: res.data.path,
+                [`uploaded_${type}_filename`]: res.data.filename,
+                // Automatically set mode
+                resume_generation_mode: type === 'pdf' ? 'uploaded_pdf' : 'ats_generated'
+            }));
+        } catch (err: any) {
+            console.error(err);
+            toast.error(`Failed to upload ${type}: ` + (err.response?.data?.detail || err.message));
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleParseResume = async (source: 'pdf' | 'tex') => {
+        try {
+            setIsProcessing(true);
+            const endpoint = `/parse-resume?source=${source}`;
+            const res = await axios.post(`${API_URL}${endpoint}`);
+            const parsed = res.data;
+
+            // Merge parsed data into profile
+            setProfile((prev: any) => ({
+                ...prev,
+                basics: { ...prev.basics, ...parsed.basics },
+                urls: { ...prev.urls, ...parsed.urls },
+                education: parsed.education || prev.education,
+                experience: parsed.experience || prev.experience,
+                skills: parsed.skills
+                    ? Array.isArray(parsed.skills)
+                        ? parsed.skills.join(", ")
+                        : parsed.skills
+                    : prev.skills
+            }));
+
+            toast.success(`Profile auto-filled from ${source.toUpperCase()}! Please review changes.`);
+        } catch (err: any) {
+            console.error(err);
+            toast.error(`Failed to parse ${source}. Ensure one is uploaded.`);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
 
     const handleChange = (section: string, field: string, value: any) => {
         setProfile((prev: any) => {
@@ -74,294 +133,229 @@ export default function ProfilePage() {
             </header>
 
             <div className="flex flex-col gap-10">
-                {/* Resume Settings Section */}
+                {/* Resume Strategy & Settings Section */}
                 <section className="space-y-6">
                     <div className="flex flex-col gap-1">
-                        <h2 className="text-xl font-semibold text-foreground">Resume Settings</h2>
-                        <p className="text-sm text-muted-foreground">Upload your existing resume to auto-fill your profile or use it directly.</p>
+                        <h2 className="text-2xl font-bold text-foreground">Resume Selection</h2>
+                        <p className="text-sm text-muted-foreground">Choose how your resume is prepared for each application.</p>
                     </div>
-                    <Card className="shadow-sm border-border/60">
-                        <CardContent className="p-8 space-y-6">
-                            <div className="flex flex-col gap-4">
-                                <Label className="text-sm font-medium">
-                                    {profile.uploaded_resume_path ? "Current Resume" : "Upload Resume (PDF or Tex)"}
-                                </Label>
 
-                                {profile.uploaded_resume_path ? (
-                                    <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-lg border">
-                                        <div className="flex flex-col">
-                                            <span className="text-sm font-medium text-foreground">
-                                                {profile.uploaded_resume_filename || "Uploaded Resume"}
-                                            </span>
-                                            <span className="text-xs text-muted-foreground">
-                                                Ready for auto-fill or application usage
-                                            </span>
+                    <div className="grid gap-6 md:grid-cols-2">
+                        {/* ATS Generated Option */}
+                        <Card
+                            className={cn(
+                                "cursor-pointer transition-all duration-300 border-2",
+                                profile.resume_generation_mode === "ats_generated"
+                                    ? "border-primary bg-primary/5 shadow-md scale-[1.02]"
+                                    : "border-transparent hover:border-primary/30"
+                            )}
+                            onClick={() => handleChange('root', 'resume_generation_mode', 'ats_generated')}
+                        >
+                            <CardContent className="p-6 space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className={cn(
+                                            "p-2 rounded-full",
+                                            profile.resume_generation_mode === "ats_generated" ? "bg-primary text-primary-foreground" : "bg-muted"
+                                        )}>
+                                            <Sparkles className="h-5 w-5" />
                                         </div>
-                                        <div className="flex-1" />
-                                        <div className="relative">
-                                            <Button variant="secondary" size="sm" className="relative">
-                                                Replace
+                                        <CardTitle className="text-lg">ATS Generated</CardTitle>
+                                    </div>
+                                    <div className={cn(
+                                        "h-5 w-5 rounded-full border-2 flex items-center justify-center",
+                                        profile.resume_generation_mode === "ats_generated" ? "border-primary" : "border-muted"
+                                    )}>
+                                        {profile.resume_generation_mode === "ats_generated" && <div className="h-2.5 w-2.5 rounded-full bg-primary" />}
+                                    </div>
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                    Automatically tailor your resume for every job using AI. Uses your profile data and your uploaded <code>.tex</code> template (or default).
+                                </p>
+                            </CardContent>
+                        </Card>
+
+                        {/* Uploaded PDF Option */}
+                        <Card
+                            className={cn(
+                                "cursor-pointer transition-all duration-300 border-2",
+                                profile.resume_generation_mode === "uploaded_pdf"
+                                    ? "border-primary bg-primary/5 shadow-md scale-[1.02]"
+                                    : "border-transparent hover:border-primary/30"
+                            )}
+                            onClick={() => {
+                                if (profile.uploaded_pdf_path && profile.uploaded_pdf_path.toLowerCase().endsWith('.pdf')) {
+                                    handleChange('root', 'resume_generation_mode', 'uploaded_pdf');
+                                } else {
+                                    toast.error("Please upload a PDF resume first to use this mode.");
+                                }
+                            }}
+                        >
+                            <CardContent className="p-6 space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className={cn(
+                                            "p-2 rounded-full",
+                                            profile.resume_generation_mode === "uploaded_pdf" ? "bg-primary text-primary-foreground" : "bg-muted"
+                                        )}>
+                                            <FileText className="h-5 w-5" />
+                                        </div>
+                                        <CardTitle className="text-lg">Uploaded PDF</CardTitle>
+                                    </div>
+                                    <div className={cn(
+                                        "h-5 w-5 rounded-full border-2 flex items-center justify-center",
+                                        profile.resume_generation_mode === "uploaded_pdf" ? "border-primary" : "border-muted"
+                                    )}>
+                                        {profile.resume_generation_mode === "uploaded_pdf" && <div className="h-2.5 w-2.5 rounded-full bg-primary" />}
+                                    </div>
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                    Use your original, pre-made PDF resume for all applications. No AI tailoring will be applied.
+                                </p>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    <Card className="shadow-sm border-border/60">
+                        <CardHeader className="bg-muted/30 py-4">
+                            <CardTitle className="text-base font-medium">Resource Files</CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-8 space-y-10">
+                            {/* PDF Resume Upload */}
+                            <div className="space-y-4">
+                                <Label className="text-sm font-semibold flex items-center gap-2">
+                                    <FileText className="h-4 w-4 text-primary" />
+                                    Your PDF Resume
+                                </Label>
+                                <div className="flex flex-col gap-4">
+                                    {profile.uploaded_pdf_path && profile.uploaded_pdf_path.toLowerCase().endsWith('.pdf') ? (
+                                        <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-dashed hover:border-primary/50 transition-colors">
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-medium text-foreground truncate max-w-[200px]">
+                                                    {profile.uploaded_pdf_filename || "Uploaded Resume"}
+                                                </span>
+                                                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">PDF Format</span>
+                                            </div>
+                                            <div className="flex-1" />
+                                            <div className="relative">
+                                                <Button variant="outline" size="sm" className="relative h-9 px-4">
+                                                    Replace PDF
+                                                    <Input
+                                                        type="file"
+                                                        accept=".pdf"
+                                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                        onChange={async (e) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (!file) return;
+                                                            uploadFile(file, 'pdf');
+                                                        }}
+                                                        disabled={isProcessing}
+                                                    />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col gap-3">
+                                            <div className="relative border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center gap-3 hover:bg-muted/20 transition-all cursor-pointer">
+                                                <Upload className="h-8 w-8 text-muted-foreground" />
+                                                <div className="text-center">
+                                                    <p className="text-sm font-medium">Upload your PDF resume</p>
+                                                    <p className="text-xs text-muted-foreground">Click to browse or drag and drop</p>
+                                                </div>
                                                 <Input
                                                     type="file"
-                                                    accept=".pdf, .tex"
+                                                    accept=".pdf"
                                                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                                     onChange={async (e) => {
                                                         const file = e.target.files?.[0];
                                                         if (!file) return;
-
-                                                        const formData = new FormData();
-                                                        formData.append('file', file);
-
-                                                        try {
-                                                            setIsProcessing(true);
-                                                            const res = await axios.post(`${API_URL}/upload-resume`, formData, {
-                                                                headers: { 'Content-Type': 'multipart/form-data' }
-                                                            });
-                                                            toast.success("Resume replaced successfully!");
-                                                            setProfile((prev: any) => ({
-                                                                ...prev,
-                                                                uploaded_resume_path: res.data.path,
-                                                                uploaded_resume_filename: res.data.filename,
-                                                                use_uploaded_resume: true
-                                                            }));
-                                                        } catch (err: any) {
-                                                            console.error(err);
-                                                            toast.error("Failed to replace resume: " + (err.response?.data?.detail || err.message));
-                                                        } finally {
-                                                            setIsProcessing(false);
-                                                        }
+                                                        uploadFile(file, 'pdf');
                                                     }}
                                                     disabled={isProcessing}
                                                 />
-                                            </Button>
+                                            </div>
                                         </div>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center gap-4">
-                                        <Input
-                                            type="file"
-                                            accept=".pdf, .tex"
-                                            className="max-w-md"
-                                            onChange={async (e) => {
-                                                const file = e.target.files?.[0];
-                                                if (!file) return;
-
-                                                const formData = new FormData();
-                                                formData.append('file', file);
-
-                                                try {
-                                                    setIsProcessing(true);
-                                                    const res = await axios.post(`${API_URL}/upload-resume`, formData, {
-                                                        headers: { 'Content-Type': 'multipart/form-data' }
-                                                    });
-                                                    toast.success("Resume uploaded successfully!");
-                                                    setProfile((prev: any) => ({
-                                                        ...prev,
-                                                        uploaded_resume_path: res.data.path,
-                                                        uploaded_resume_filename: res.data.filename,
-                                                        use_uploaded_resume: true
-                                                    }));
-                                                } catch (err: any) {
-                                                    console.error(err);
-                                                    toast.error("Failed to upload resume: " + (err.response?.data?.detail || err.message));
-                                                } finally {
-                                                    setIsProcessing(false);
-                                                }
-                                            }}
-                                            disabled={isProcessing}
-                                        />
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="flex items-center space-x-3 p-4 border rounded-lg bg-slate-50/50">
-                                <input
-                                    type="checkbox"
-                                    id="use_uploaded"
-                                    className="h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                                    checked={profile.use_uploaded_resume || false}
-                                    disabled={!profile.uploaded_resume_path}
-                                    onChange={(e) => handleChange('root', 'use_uploaded_resume', e.target.checked)}
-                                />
-                                <div className="flex flex-col">
-                                    <Label
-                                        htmlFor="use_uploaded"
-                                        className={`text-sm font-medium cursor-pointer ${!profile.uploaded_resume_path ? 'text-muted-foreground cursor-not-allowed' : ''}`}
-                                    >
-                                        Use uploaded resume for applications
-                                    </Label>
-                                    <span className="text-xs text-muted-foreground">If checked, we will use your uploaded PDF instead of generating a new one.</span>
+                                    )}
                                 </div>
                             </div>
 
-                            <div className="pt-2">
-                                <Button
-                                    variant="outline"
-                                    onClick={async () => {
-                                        try {
-                                            setIsProcessing(true);
-                                            const res = await axios.post(`${API_URL}/parse-resume`);
-                                            const parsed = res.data;
+                            <Separator />
 
-                                            // Merge parsed data into profile
-                                            setProfile((prev: any) => ({
-                                                ...prev,
-                                                basics: { ...prev.basics, ...parsed.basics },
-                                                urls: { ...prev.urls, ...parsed.urls },
-                                                education: parsed.education || prev.education,
-                                                experience: parsed.experience || prev.experience,
-                                                skills: parsed.skills
-                                                    ? Array.isArray(parsed.skills)
-                                                        ? parsed.skills.join(", ")
-                                                        : parsed.skills
-                                                    : prev.skills
-                                            }));
-
-                                            toast.success("Profile auto-filled from resume! Please review changes.");
-                                        } catch (err: any) {
-                                            console.error(err);
-                                            toast.error("Failed to parse resume. Ensure one is uploaded.");
-                                        } finally {
-                                            setIsProcessing(false);
-                                        }
-                                    }}
-                                    disabled={isProcessing}
-                                >
-                                    {isProcessing ? "Processing..." : "Auto-fill Profile from Resume"}
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </section>
-                {/* Custom Resume Template Section */}
-                <section className="space-y-6">
-                    <div className="flex flex-col gap-1">
-                        <h2 className="text-xl font-semibold text-foreground">Custom Resume Template</h2>
-                        <p className="text-sm text-muted-foreground">Upload a custom LaTeX template for generated resumes.</p>
-                    </div>
-                    <Card className="shadow-sm border-border/60">
-                        <CardContent className="p-8 space-y-6">
-                            <div className="flex flex-col gap-4">
-                                <Label className="text-sm font-medium">
-                                    {profile.custom_template_filename ? "Current Template" : "Upload Template (.tex)"}
+                            {/* LaTeX Template Upload */}
+                            <div className="space-y-4">
+                                <Label className="text-sm font-semibold flex items-center gap-2">
+                                    <Database className="h-4 w-4 text-secondary" />
+                                    LaTeX Template (.tex)
                                 </Label>
-
-                                {profile.custom_template_filename ? (
-                                    <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-lg border">
-                                        <div className="flex flex-col">
-                                            <span className="text-sm font-medium text-foreground">
-                                                {profile.custom_template_filename}
-                                            </span>
-                                            <span className="text-xs text-muted-foreground">
-                                                Used for generating tailored resumes
-                                            </span>
+                                <div className="flex flex-col gap-4">
+                                    {profile.uploaded_tex_path && profile.uploaded_tex_path.toLowerCase().endsWith('.tex') ? (
+                                        <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-dashed hover:border-secondary/50 transition-colors">
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-medium text-foreground truncate max-w-[200px]">
+                                                    {profile.uploaded_tex_filename}
+                                                </span>
+                                                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">LaTeX Source</span>
+                                            </div>
+                                            <div className="flex-1" />
+                                            <div className="relative">
+                                                <Button variant="outline" size="sm" className="relative h-9 px-4">
+                                                    Replace .tex
+                                                    <Input
+                                                        type="file"
+                                                        accept=".tex"
+                                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                        onChange={async (e) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (!file) return;
+                                                            uploadFile(file, 'tex');
+                                                        }}
+                                                        disabled={isProcessing}
+                                                    />
+                                                </Button>
+                                            </div>
                                         </div>
-                                        <div className="flex-1" />
-                                        <div className="relative">
-                                            <Button variant="secondary" size="sm" className="relative">
-                                                Replace
-                                                <Input
-                                                    type="file"
-                                                    accept=".tex"
-                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                                    onChange={async (e) => {
-                                                        const file = e.target.files?.[0];
-                                                        if (!file) return;
-
-                                                        const formData = new FormData();
-                                                        formData.append('file', file);
-
-                                                        try {
-                                                            setIsProcessing(true);
-                                                            const res = await axios.post(`${API_URL}/upload-template`, formData, {
-                                                                headers: { 'Content-Type': 'multipart/form-data' }
-                                                            });
-                                                            toast.success("Template replaced successfully!");
-                                                            setProfile((prev: any) => ({
-                                                                ...prev,
-                                                                custom_template_filename: res.data.filename
-                                                            }));
-                                                        } catch (err: any) {
-                                                            console.error(err);
-                                                            toast.error("Failed to replace template: " + (err.response?.data?.detail || err.message));
-                                                        } finally {
-                                                            setIsProcessing(false);
-                                                        }
-                                                    }}
-                                                />
-                                            </Button>
+                                    ) : (
+                                        <div className="relative border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center gap-3 hover:bg-muted/20 transition-all cursor-pointer">
+                                            <Upload className="h-8 w-8 text-muted-foreground" />
+                                            <div className="text-center">
+                                                <p className="text-sm font-medium">Upload .tex template</p>
+                                                <p className="text-xs text-muted-foreground">For AI tailoring & profile auto-fill</p>
+                                            </div>
+                                            <Input
+                                                type="file"
+                                                accept=".tex"
+                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                onChange={async (e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (!file) return;
+                                                    uploadFile(file, 'tex');
+                                                }}
+                                                disabled={isProcessing}
+                                            />
                                         </div>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center gap-4">
-                                        <Input
-                                            type="file"
-                                            accept=".tex"
-                                            className="max-w-md"
-                                            onChange={async (e) => {
-                                                const file = e.target.files?.[0];
-                                                if (!file) return;
-
-                                                const formData = new FormData();
-                                                formData.append('file', file);
-
-                                                try {
-                                                    setIsProcessing(true);
-                                                    const res = await axios.post(`${API_URL}/upload-template`, formData, {
-                                                        headers: { 'Content-Type': 'multipart/form-data' }
-                                                    });
-                                                    toast.success("Template uploaded successfully!");
-                                                    setProfile((prev: any) => ({
-                                                        ...prev,
-                                                        custom_template_filename: res.data.filename
-                                                    }));
-                                                } catch (err: any) {
-                                                    console.error(err);
-                                                    toast.error("Failed to upload template: " + (err.response?.data?.detail || err.message));
-                                                } finally {
-                                                    setIsProcessing(false);
-                                                }
-                                            }}
-                                        />
-                                    </div>
-                                )}
-                                <div className="flex justify-between items-center">
-                                    <p className="text-xs text-muted-foreground">Must contain <code>\VAR{"{skills_list}"}</code> placeholder.</p>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={async () => {
-                                            try {
-                                                setIsProcessing(true);
-                                                const res = await axios.post(`${API_URL}/parse-resume?source=template`);
-                                                const parsed = res.data;
-
-                                                // Merge parsed data into profile
-                                                setProfile((prev: any) => ({
-                                                    ...prev,
-                                                    basics: { ...prev.basics, ...parsed.basics },
-                                                    urls: { ...prev.urls, ...parsed.urls },
-                                                    education: parsed.education || prev.education,
-                                                    experience: parsed.experience || prev.experience,
-                                                    skills: parsed.skills
-                                                        ? Array.isArray(parsed.skills)
-                                                            ? parsed.skills.join(", ")
-                                                            : parsed.skills
-                                                        : prev.skills
-                                                }));
-                                                toast.success("Profile auto-filled from template! Please review changes.");
-                                            } catch (err) {
-                                                console.error(err);
-                                                toast.error("Failed to parse template. Ensure one is uploaded.");
-                                            } finally {
-                                                setIsProcessing(false);
-                                            }
-                                        }}
-                                        disabled={isProcessing}
-                                    >
-                                        {isProcessing ? "Processing..." : "Auto-fill from Template"}
-                                    </Button>
+                                    )}
                                 </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-4 pt-4 border-t">
+                                <Button
+                                    variant="secondary"
+                                    className="gap-2 shadow-sm"
+                                    onClick={() => handleParseResume('pdf')}
+                                    disabled={isProcessing || (!profile.uploaded_pdf_path?.toLowerCase().endsWith('.pdf'))}
+                                >
+                                    <LayoutGrid className="h-4 w-4" />
+                                    Auto-fill from PDF
+                                </Button>
+                                <Button
+                                    variant="secondary"
+                                    className="gap-2 shadow-sm"
+                                    onClick={() => handleParseResume('tex')}
+                                    disabled={isProcessing || (!profile.uploaded_tex_path?.toLowerCase().endsWith('.tex'))}
+                                >
+                                    <LayoutGrid className="h-4 w-4" />
+                                    Auto-fill from .tex
+                                </Button>
                             </div>
                         </CardContent>
                     </Card>

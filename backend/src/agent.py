@@ -106,8 +106,6 @@ class BrowserAgent:
             model=self.DEFAULT_MODEL,
             api_key=api_key,
         )
-        # Initialize reusable browser instance
-        self.browser = Browser(headless=self.headless)
         # File paths available for upload (set per-task)
         self.available_file_paths = []
 
@@ -150,28 +148,61 @@ class BrowserAgent:
         Raises:
             Exception: If the browser-use internal logic or LLM call fails.
         """
-        # Create a fresh browser instance for each task to avoid CDP issues
-        # The browser-use library doesn't handle browser reuse well after session cleanup
-        browser = Browser(headless=self.headless)
+        # 1. Launch Browser Manually via Playwright
+        # This decouples launch from browser-use library to avoid Docker timeouts
+        from playwright.async_api import async_playwright
+        
+        playwright = await async_playwright().start()
+        browser_app = None
         
         try:
-            # Pass browser instance with enhanced configuration
-            agent = Agent(
-                task=task,
-                llm=self.llm,
-                browser=browser,
-                use_vision=False,  # DOM-only mode more reliable for form filling
-                max_actions_per_step=5,  # Allow more actions per reasoning step
-                max_failures=10,  # Keep trying on errors - don't give up easily
-                max_steps=50,  # Allow more steps to complete complex forms
-                extend_system_message=FORM_EXTRACTION_CONTEXT,  # Inject form extraction guidance
-                available_file_paths=self.available_file_paths,  # Allow file uploads
+            chrome_args = [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--remote-debugging-port=9222",
+                "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            ]
+            
+            # Launch the browser instance directly
+            browser_app = await playwright.chromium.launch(
+                headless=self.headless,
+                args=chrome_args
             )
-            result = await agent.run()
-            return result.final_result()
+            
+            try:
+                # 2. Connect browser-use to the existing instance
+                cdp_url = "http://localhost:9222"
+                # Initialize Browser with CDP URL to connect to our manually launched instance
+                browser = Browser(cdp_url=cdp_url)
+                
+                # 3. Initialize Agent with connected browser
+                agent = Agent(
+                    task=task,
+                    llm=self.llm,
+                    browser=browser,
+                    use_vision=False,  # DOM-only mode more reliable for form filling
+                    max_actions_per_step=5,  # Allow more actions per reasoning step
+                    max_failures=10,  # Keep trying on errors - don't give up easily
+                    max_steps=50,  # Allow more steps to complete complex forms
+                    extend_system_message=FORM_EXTRACTION_CONTEXT,  # Inject form extraction guidance
+                    available_file_paths=self.available_file_paths,  # Allow file uploads
+                )
+                
+                result = await agent.run()
+                return result.final_result()
+                
+            finally:
+                # Ensure browser app is closed
+                if browser_app:
+                    await browser_app.close()
+                # browser object doesn't have close() when connected via CDP, so we skip it
+                    
         except Exception as e:
-            # Re-raise to be handled by the caller (service layer)
             raise e
+        finally:
+            await playwright.stop()
 
     async def scrape_job_details(self, job_link: str) -> dict:
         """

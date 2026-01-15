@@ -269,7 +269,9 @@ class TestWorkflowRobustness:
 
         output_dir = Path(temp_data_dir) / "data" / "re"
         output_dir.mkdir(parents=True, exist_ok=True)
-        template_path = Path(temp_data_dir) / "data" / "resume_base.tex"
+        tex_dir = Path(temp_data_dir) / "data" / "tex_resumes"
+        tex_dir.mkdir(parents=True, exist_ok=True)
+        template_path = tex_dir / "resume_base.tex"
         template_path.write_text(r"\documentclass{article}\begin{document}\VAR{skills_list}\end{document}")
 
         builder = FailingResumeBuilder(base_template_path=str(template_path), output_dir=str(output_dir))

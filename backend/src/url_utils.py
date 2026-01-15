@@ -31,3 +31,14 @@ def normalize_job_url(url: str) -> str:
         return url
     except Exception:
         return url
+
+
+def get_stable_job_id(url: str) -> str:
+    """
+    Generate a stable, deterministic job ID from a URL.
+    This replaces Python's unstable hash() for filesystem paths.
+    """
+    import zlib
+    normalized = normalize_job_url(url)
+    # Ensure it's a positive 32-bit integer string for path friendliness
+    return str(zlib.adler32(normalized.encode('utf-8')) & 0xffffffff)

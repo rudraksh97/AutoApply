@@ -42,8 +42,11 @@ DEFAULT_PROFILE = {
     "cover_letter_template": "",
     "why_us": "",
     "challenging_project": "",
-    "uploaded_resume_path": "",
-    "uploaded_resume_filename": "",
+    "uploaded_pdf_path": "",
+    "uploaded_pdf_filename": "",
+    "uploaded_tex_path": "",
+    "uploaded_tex_filename": "",
+    "resume_generation_mode": "ats_generated",  # Options: ats_generated, uploaded_pdf
     "use_uploaded_resume": False,
     "custom_template_filename": ""
 }
@@ -89,6 +92,16 @@ class ProfileManager:
                          else:
                              merged[key] = [value]
                          continue
+                    
+                    # Migration: resume_generation_mode terminology change
+                    if key == "resume_generation_mode":
+                        if value in ["generate_from_default", "generate_from_custom_tex"]:
+                            merged[key] = "ats_generated"
+                        elif value == "use_uploaded_pdf":
+                            merged[key] = "uploaded_pdf"
+                        else:
+                            merged[key] = value
+                        continue
                          
                     # If the key is in default profile and types match (both dicts), update. 
                     # Otherwise (lists or primitives), overwrite.
@@ -97,8 +110,21 @@ class ProfileManager:
                     else:
                         merged[key] = value
                 
-                if not merged.get("uploaded_resume_filename") and merged.get("uploaded_resume_path"):
-                     merged["uploaded_resume_filename"] = os.path.basename(merged["uploaded_resume_path"])
+                # Migration: uploaded_resume_path -> uploaded_pdf_path or uploaded_tex_path
+                old_path = data.get("uploaded_resume_path")
+                if old_path and os.path.exists(old_path):
+                    if old_path.endswith(".pdf") and not merged.get("uploaded_pdf_path"):
+                        merged["uploaded_pdf_path"] = old_path
+                        merged["uploaded_pdf_filename"] = data.get("uploaded_resume_filename", os.path.basename(old_path))
+                    elif old_path.endswith(".tex") and not merged.get("uploaded_tex_path"):
+                        merged["uploaded_tex_path"] = old_path
+                        merged["uploaded_tex_filename"] = data.get("uploaded_resume_filename", os.path.basename(old_path))
+
+                if not merged.get("uploaded_pdf_filename") and merged.get("uploaded_pdf_path"):
+                     merged["uploaded_pdf_filename"] = os.path.basename(merged["uploaded_pdf_path"])
+                
+                if not merged.get("uploaded_tex_filename") and merged.get("uploaded_tex_path"):
+                     merged["uploaded_tex_filename"] = os.path.basename(merged["uploaded_tex_path"])
 
                 return merged
         except (json.JSONDecodeError, FileNotFoundError):

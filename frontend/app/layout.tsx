@@ -36,7 +36,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${merriweather.variable} antialiased flex h-screen overflow-hidden bg-background text-foreground`}
       >
-        <Sidebar className="flex-none w-[280px] border-r" />
+        <Sidebar className="flex-none w-[170px] border-r" />
         <main className="flex-1 overflow-y-auto bg-background relative">
           <div className="container-tight px-6 py-8 md:px-8 md:py-12">
             {children}

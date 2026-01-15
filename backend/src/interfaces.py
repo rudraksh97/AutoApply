@@ -135,17 +135,18 @@ class ResumeBuilderProtocol(Protocol):
     """
     Protocol defining the requirements for tailoring and generating resumes.
     """
-    def build(self, job_description: str, resume_info: str, job_id: int) -> str:
+    def calculate_ats_score(self, job_description: str, resume_text: str) -> dict:
+        """
+        Calculates an ATS score for a resume against a job description.
+        """
+        ...
+
+    def build(self, job_description: str, resume_info: str, job_id: int, template_path: Optional[str] = None, tailoring_prompt: Optional[str] = None, version: str = "v1") -> tuple[str, str]:
         """
         Generates a tailored resume PDF based on a job description.
 
-        Args:
-            job_description: The content of the job requirement.
-            resume_info: The original base resume/profile information.
-            job_id: A unique identifier for the job, used for file naming.
-
         Returns:
-            The absolute path to the generated PDF file.
+            A tuple of (pdf_path, tex_path).
         """
         ...
 

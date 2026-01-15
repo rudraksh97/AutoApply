@@ -122,7 +122,11 @@ def temp_resume_builder(temp_data_dir, valid_template_path):
     from src.resume_builder import ResumeBuilder
     
     # Copy the valid template to the temp data dir
-    template_dest = os.path.join(temp_data_dir, "data", "resume_base.tex")
+    tex_dir = os.path.join(temp_data_dir, "data", "tex_resumes")
+    if not os.path.exists(tex_dir):
+        os.makedirs(tex_dir)
+        
+    template_dest = os.path.join(tex_dir, "resume_base.tex")
     shutil.copy(valid_template_path, template_dest)
     
     output_dir = os.path.join(temp_data_dir, "data", "generated_resumes")
@@ -141,7 +145,11 @@ def invalid_resume_builder(temp_data_dir, invalid_template_path):
     from src.resume_builder import ResumeBuilder
     
     # Copy the invalid template to the temp data dir
-    template_dest = os.path.join(temp_data_dir, "data", "invalid_template.tex")
+    tex_dir = os.path.join(temp_data_dir, "data", "tex_resumes")
+    if not os.path.exists(tex_dir):
+        os.makedirs(tex_dir)
+        
+    template_dest = os.path.join(tex_dir, "invalid_template.tex")
     shutil.copy(invalid_template_path, template_dest)
     
     output_dir = os.path.join(temp_data_dir, "data", "generated_resumes")

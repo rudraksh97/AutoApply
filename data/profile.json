@@ -12,25 +12,72 @@
     "portfolio": ""
   },
   "demographics": {
-    "gender": "Prefer not to say",
-    "race": "Prefer not to say",
+    "gender": "",
+    "race": "",
     "nationality": "",
-    "veteran": "I am not a protected veteran",
-    "disability": "I do not have a disability"
+    "veteran": "",
+    "disability": ""
   },
   "work_auth": {
-    "authorized_in_us": true,
+    "authorized_in_us": false,
     "requires_sponsorship": false
   },
-  "education": [],
-  "experience": [],
+  "education": [
+    {
+      "degree": "",
+      "university": "",
+      "field_of_study": "",
+      "graduation_year": ""
+    },
+    {
+      "degree": "",
+      "university": "",
+      "field_of_study": "",
+      "graduation_year": ""
+    }
+  ],
+  "experience": [
+    {
+      "company": "",
+      "role": "",
+      "start_date": "",
+      "end_date": "",
+      "description": ""
+    },
+    {
+      "company": "",
+      "role": "",
+      "start_date": "",
+      "end_date": "",
+      "description": ""
+    },
+    {
+      "company": "",
+      "role": "",
+      "start_date": "",
+      "end_date": "",
+      "description": ""
+    },
+    {
+      "company": "",
+      "role": "",
+      "start_date": "",
+      "end_date": "",
+      "description": ""
+    }
+  ],
   "skills": "",
   "great_fit_pitch": "",
   "cover_letter_template": "",
   "why_us": "",
   "challenging_project": "",
-  "uploaded_resume_path": "",
-  "uploaded_resume_filename": "",
+  "uploaded_pdf_path": "",
+  "uploaded_pdf_filename": "",
+  "uploaded_tex_path": "",
+  "uploaded_tex_filename": "",
+  "resume_generation_mode": "",
   "use_uploaded_resume": false,
-  "custom_template_filename": ""
+  "custom_template_filename": "",
+  "uploaded_resume_path": "",
+  "uploaded_resume_filename": ""
 }

@@ -5,11 +5,41 @@ These models represent the source of truth for application data,
 supporting versioning, persistence, and cross-session portability.
 """
 
-from pydantic import BaseModel, Field
-from typing import Optional, List
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional, List, Any
 from datetime import datetime
 from enum import Enum
 import uuid
+
+
+class ResumeVersion(BaseModel):
+    """
+    Represents a specific version of a tailored resume.
+    """
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    draft_id: str
+    version_number: int
+    tex_path: Optional[str] = None
+    pdf_path: Optional[str] = None
+    ats_score: Optional[int] = None
+    justification: Optional[str] = None
+    keywords_added: Optional[str] = None
+    changes_summary: Optional[str] = None
+    status: str = "COMPLETED"  # "GENERATING", "COMPLETED", "FAILED"
+    is_current: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    @field_validator("is_current", mode="before")
+    @classmethod
+    def bool_fallback(cls, v: Any) -> bool:
+        """Coerce None or other non-bool values to bool."""
+        if v is None:
+            return False
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.lower() == 'true'
+        return bool(v)
 
 
 class DraftStatus(str, Enum):
@@ -19,6 +49,7 @@ class DraftStatus(str, Enum):
     PREFILLED = "prefilled"
     DRAFT_SAVED = "draft_saved"
     USER_OPENED = "user_opened"
+    FAILED = "failed"
 
 
 class FieldType(str, Enum):
@@ -61,6 +92,19 @@ class FieldState(BaseModel):
     skipped: bool = False
     skip_reason: Optional[str] = None
 
+    @field_validator("user_edited", "required", "skipped", mode="before")
+    @classmethod
+    def bool_fallback(cls, v: Any) -> bool:
+        """Coerce None or other non-bool values to bool."""
+        if v is None:
+            return False
+        if isinstance(v, bool):
+            return v
+        # Handle string 'true'/'false' just in case
+        if isinstance(v, str):
+            return v.lower() == 'true'
+        return bool(v)
+
 
 class FormState(BaseModel):
     """
@@ -78,6 +122,10 @@ class FormState(BaseModel):
         fields: List of all captured form fields
         extracted_at: When the form state was first captured
         last_modified: When the form state was last updated
+        relative_resume_path: Optional project-relative path to the resume file
+            (e.g. "data/resumes/resume.pdf" or "data/generated_resumes/Resume_123.pdf").
+            This is used by the browser extension to fetch the resume via the API
+            without needing host-absolute file system access.
     """
     version: str = "1.0"
     job_url: str
@@ -85,6 +133,7 @@ class FormState(BaseModel):
     fields: List[FieldState] = Field(default_factory=list)
     extracted_at: datetime = Field(default_factory=datetime.utcnow)
     last_modified: datetime = Field(default_factory=datetime.utcnow)
+    relative_resume_path: Optional[str] = None
     
     def get_field(self, xpath: str) -> Optional[FieldState]:
         """Retrieve a field by its XPath."""
@@ -129,6 +178,7 @@ class ApplicationDraft(BaseModel):
         form_state: Complete form state (None before prefill)
         resume_path: Path to the resume file used
         job_details: Extracted job description
+        initial_ats_score: ATS score of the non-tailored resume
         created_at: When the draft was created
         updated_at: When the draft was last modified
     """
@@ -139,6 +189,7 @@ class ApplicationDraft(BaseModel):
     form_state: Optional[FormState] = None
     resume_path: Optional[str] = None
     job_details: Optional[str] = None
+    initial_ats_score: Optional[int] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
@@ -163,6 +214,8 @@ class DraftSummary(BaseModel):
     apply_link: Optional[str] = None
     status: DraftStatus
     job_details: Optional[str] = None
+    initial_ats_score: Optional[int] = None
+    current_ats_score: Optional[int] = None
     created_at: datetime
     updated_at: datetime
     field_count: int = 0

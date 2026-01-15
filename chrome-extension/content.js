@@ -27,6 +27,9 @@
 const CONFIG = {
     API_BASE: "http://localhost:8000",
 
+    // Thresholds: { ... },
+    FORCE_FILL: true,
+
     // Timing (ms)
     TIMING: {
         FIELD_FILL_DELAY: 600,
@@ -880,6 +883,29 @@ class EventDispatcher {
             bubbles: true,
             cancelable: true
         }));
+    }
+
+    static async setFileValue(element, file) {
+        if (!element || !file) return;
+
+        try {
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+            element.files = dataTransfer.files;
+
+            // Dispatch multiple events to ensure listeners are triggered
+            element.dispatchEvent(new Event('change', { bubbles: true }));
+            element.dispatchEvent(new InputEvent('input', { bubbles: true }));
+
+            // Special handling for some frameworks
+            this.dispatchReactHandlers(element, ['onInput', 'onChange', 'onBlur']);
+
+            console.log(`✅ File "${file.name}" set on input element`);
+            return true;
+        } catch (error) {
+            console.error('❌ Failed to set file value:', error);
+            return false;
+        }
     }
 }
 
@@ -1813,7 +1839,111 @@ class FieldFillers {
     // File Upload (highlight for user)
     // -------------------------------------------------------------------------
 
-    static async handleFile(element, value, report, field) {
+    // -------------------------------------------------------------------------
+    // File Upload (Automated)
+    // -------------------------------------------------------------------------
+
+    static async handleFile(element, value, report, field, formSpec) {
+        const filePath = value; // This is the host absolute path
+        // Check nested form_state first, then fallback to direct property
+        const relativePath = formSpec?.form_state?.relative_resume_path || formSpec?.relative_resume_path;
+
+        console.log(`📎 Attempting automated upload for: ${field.label || 'Resume'}`);
+        console.log(`   - Host path: ${filePath}`);
+        console.log(`   - Relative path: ${relativePath}`);
+
+        if (!relativePath) {
+            console.warn('⚠️ No relative path found in form state, falling back to manual highlight');
+            return this._highlightForManualUpload(element, value, report, field);
+        }
+
+        // Ensure relativePath doesn't start with / to avoid double slashes
+        // The relativePath from backend already includes 'data/' (e.g., "data/resumes/resume.pdf")
+        // The static mount is at /data, so we use the path as-is
+        let cleanPath = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
+        
+        // Ensure path starts with 'data/' for static file mount
+        // If it doesn't have 'data/' prefix, add it
+        if (!cleanPath.startsWith('data/')) {
+            cleanPath = `data/${cleanPath}`;
+        }
+
+        try {
+            // Fetch file from backend via background script to avoid CORS issues
+            UIFeedback.showNotification(`Fetching resume...`, 'info');
+            
+            console.log(`🌐 Requesting file via background script: ${cleanPath}`);
+            
+            // Request file from background script
+            const fileData = await new Promise((resolve, reject) => {
+                chrome.runtime.sendMessage(
+                    {
+                        action: 'fetchFile',
+                        filePath: cleanPath
+                    },
+                    (response) => {
+                        if (chrome.runtime.lastError) {
+                            reject(new Error(chrome.runtime.lastError.message));
+                        } else if (response && response.success) {
+                            resolve(response);
+                        } else {
+                            reject(new Error(response?.error || 'Failed to fetch file'));
+                        }
+                    }
+                );
+            });
+
+            console.log(`📦 Received file data: ${fileData.size} bytes, type: ${fileData.contentType}`);
+            
+            if (fileData.size === 0) {
+                throw new Error('Received empty file from server');
+            }
+            
+            // Convert base64 back to binary
+            // Use chunked approach to avoid "Maximum call stack size exceeded" for large files
+            const binaryString = atob(fileData.data);
+            const bytes = new Uint8Array(binaryString.length);
+            const chunkSize = 0x8000; // 32KB chunks
+            for (let i = 0; i < binaryString.length; i += chunkSize) {
+                const end = Math.min(i + chunkSize, binaryString.length);
+                for (let j = i; j < end; j++) {
+                    bytes[j] = binaryString.charCodeAt(j);
+                }
+            }
+            
+            // Create Blob from binary data
+            const blob = new Blob([bytes], { type: fileData.contentType || 'application/pdf' });
+            
+            const fileName = relativePath.split('/').pop() || 'resume.pdf';
+            const file = new File([blob], fileName, { type: fileData.contentType || 'application/pdf' });
+
+            // Use EventDispatcher to set the file
+            const success = await EventDispatcher.setFileValue(element, file);
+
+            if (success) {
+                console.log('✅ Automated file upload successful');
+                UIFeedback.showNotification(`Resume uploaded automatically!`, 'success');
+                report.recordFilled(field, element);
+                return true;
+            } else {
+                throw new Error('Failed to set file on element');
+            }
+        } catch (error) {
+            console.error('❌ Automated upload failed:', error);
+            console.error('   Error details:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+                filePath: cleanPath
+            });
+            
+            const errorMessage = error.message || 'Unknown error';
+            UIFeedback.showNotification(`Auto-upload failed: ${errorMessage}. Please upload manually`, 'warning');
+            return this._highlightForManualUpload(element, value, report, field);
+        }
+    }
+
+    static _highlightForManualUpload(element, value, report, field) {
         // Check if file already uploaded
         if (element.files?.length > 0 && !field.allow_replacement) {
             report.recordSkipped(field, 'File already uploaded');
@@ -1990,12 +2120,13 @@ class FormFiller {
     /**
      * Main entry point - fill form based on JSON specification
      */
-    async fill(formSpec) {
+    async fill(formSpec, options = { force: true }) {
         if (!formSpec?.fields?.length) {
             console.error('AutoApply: Invalid form specification');
             return this.report;
         }
 
+        this.formSpec = formSpec;
         const fields = formSpec.fields.filter(f => !f.skipped && f.value != null);
         const totalFields = fields.length;
 
@@ -2044,8 +2175,8 @@ class FormFiller {
             return;
         }
 
-        // Idempotency check
-        if (IdempotencyChecker.hasCorrectValue(element, field.value, field.field_type)) {
+        // Idempotency check (skip if force=true)
+        if (!CONFIG.FORCE_FILL && IdempotencyChecker.hasCorrectValue(element, field.value, field.field_type)) {
             this.report.recordSkipped(field, 'Already has correct value');
             console.log(`⏭️ Skipped (already filled): ${field.label || field.xpath}`);
             return;
@@ -2123,7 +2254,7 @@ class FormFiller {
                 return FieldFillers.fillCustomBinaryChoice(element, field.value, this.report, field);
 
             case 'file':
-                return FieldFillers.handleFile(element, field.value, this.report, field);
+                return FieldFillers.handleFile(element, field.value, this.report, field, this.formSpec);
             default:
                 return tagName === 'select'
                     ? FieldFillers.fillSelect(element, field.value, this.report, field)

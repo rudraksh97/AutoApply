@@ -155,3 +155,68 @@ class ConfigManager:
         """
         return os.getenv(key_name)
 
+    def get_ats_prompts(self):
+        """
+        Retrieves the custom ATS prompts from configuration.
+        """
+        data = self._load_config()
+        defaults = {
+            "calculate_score": (
+                "You are an ATS (Applicant Tracking System) expert. "
+                "Evaluate the provided Resume against the Job Description.\n\n"
+                "--- JOB DESCRIPTION ---\n{{job_description}}\n\n"
+                "--- RESUME TEXT ---\n{{resume_text}}\n\n"
+                "Analyze the match and provide:\n"
+                "1. A list of missing keywords (crucial skills found in JD but not in Resume).\n"
+                "2. A list of matched keywords (skills found in both).\n"
+                "3. A score from 0 to 100 based on keyword density and relevance.\n"
+                "4. A detailed justification object with keys: keyword_match, skill_depth, role_fit, experience_relevance, education_fit, parsing_quality."
+            ),
+            "tailor_resume": (
+                "You are an ATS-optimization engine used by Big Tech recruiting platforms.\n"
+                "Your task is to rewrite a LaTeX resume so that its ATS score becomes at least 90% for a given job description, while preserving structure, honesty, and formatting.\n\n"
+                "You will be given:\n"
+                "- initial_ats_score: {{initial_ats_score}}\n"
+                "- missing_keywords: {{missing_keywords}}\n"
+                "- matched_keywords: {{matched_keywords}}\n"
+                "- justification: {{justification}}\n"
+                "- job_description: {{job_description}}\n"
+                "- old_resume_code (LaTeX): {{resume_text}}\n\n"
+                "You must modify ONLY the LaTeX content, not the section structure.\n\n"
+                "--------------------------------\n"
+                "STRICT RULES\n\n"
+                "1) DO NOT:\n"
+                "- Add new sections\n"
+                "- Remove any existing section\n"
+                "- Rename section headers\n"
+                "- Change the structure of the Skills section subheadings\n"
+                "- Delete any existing skills\n\n"
+                "2) YOU MUST:\n"
+                "- Add all missing_keywords into appropriate places:\n"
+                "  - Skills section (correct subheading)\n"
+                "  - Experience bullet points\n"
+                "  - Project descriptions\n"
+                "- If a missing skill is critical (core job requirement), then you MUST:\n"
+                "  - Replace or enhance technologies used in experience/projects to include that skill\n"
+                "  - Add appropriate frameworks if language matches (e.g. Java -> Spring Boot)\n\n"
+                "3) The resume must remain:\n"
+                "- Technically believable\n"
+                "- Internally consistent\n"
+                "- ATS-readable\n"
+                "- Optimized for keyword density and semantic matching\n\n"
+                "--------------------------------\n"
+                "OPTIMIZATION TARGET\n"
+                "You must simulate ATS scoring internally and ensure final_score >= 90.\n"
+                "If the rewritten resume would not reach 90, you must further optimize until it does.\n"
+            )
+        }
+        return data.get("ats_prompts", defaults)
+
+    def set_ats_prompts(self, prompts):
+        """
+        Updates the custom ATS prompts in configuration.
+        """
+        data = self._load_config()
+        data["ats_prompts"] = prompts
+        self._save_config(data)
+

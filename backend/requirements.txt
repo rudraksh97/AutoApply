@@ -12,4 +12,7 @@ websockets
 pytest
 pytest-asyncio
 pypdf
+pydantic
+pydantic-settings
+python-multipart
 uv

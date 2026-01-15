@@ -6,16 +6,20 @@ the draft-first workflow where applications are prepared but never submitted.
 """
 
 import json
+import os
+import shutil
+import uuid
 from datetime import datetime
 from typing import Optional, List
 
 from src.database import init_db, get_connection
-from src.url_utils import normalize_job_url
+from src.url_utils import normalize_job_url, get_stable_job_id
 from api.schemas.form_state import (
     ApplicationDraft, 
     FormState, 
     DraftStatus, 
-    DraftSummary
+    DraftSummary,
+    ResumeVersion
 )
 
 
@@ -56,7 +60,12 @@ class DraftManager:
         """
         job_url = normalize_job_url(job_url)
 
+        # Check if draft already exists for this URL to preserve the ID and its versions
+        existing = self.get_draft_by_url(job_url)
+        draft_id = existing.id if existing else str(uuid.uuid4())
+
         draft = ApplicationDraft(
+            id=draft_id,
             job_url=job_url,
             apply_link=apply_link,
             status=status,
@@ -72,8 +81,8 @@ class DraftManager:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT OR REPLACE INTO drafts 
-                (id, job_url, apply_link, status, form_state_json, resume_path, job_details, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, job_url, apply_link, status, form_state_json, resume_path, job_details, initial_ats_score, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 draft.id,
                 job_url,
@@ -82,7 +91,8 @@ class DraftManager:
                 form_state_json,
                 resume_path,
                 job_details,
-                now,
+                existing.initial_ats_score if existing else None,
+                existing.created_at.isoformat() if existing else now,
                 now
             ))
             conn.commit()
@@ -162,8 +172,12 @@ class DraftManager:
             conn.row_factory = lambda c, r: dict(zip([col[0] for col in c.description], r))
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT id, job_url, apply_link, status, job_details, created_at, updated_at, form_state_json 
-                FROM drafts ORDER BY updated_at DESC
+                SELECT d.id, d.job_url, d.apply_link, d.status, d.job_details, d.initial_ats_score, 
+                       d.created_at, d.updated_at, d.form_state_json,
+                       v.ats_score as current_ats_score
+                FROM drafts d
+                LEFT JOIN resume_versions v ON d.id = v.draft_id AND v.is_current = 1
+                ORDER BY d.updated_at DESC
             """)
             rows = cursor.fetchall()
             
@@ -187,6 +201,8 @@ class DraftManager:
                 apply_link=row.get('apply_link'),
                 status=DraftStatus(row['status']),
                 job_details=row['job_details'][:200] + "..." if row['job_details'] and len(row['job_details']) > 200 else row['job_details'],
+                initial_ats_score=row.get('initial_ats_score'),
+                current_ats_score=row.get('current_ats_score'),
                 created_at=datetime.fromisoformat(row['created_at']),
                 updated_at=datetime.fromisoformat(row['updated_at']),
                 field_count=field_count,
@@ -202,7 +218,8 @@ class DraftManager:
         form_state: Optional[FormState] = None,
         resume_path: Optional[str] = None,
         job_details: Optional[str] = None,
-        apply_link: Optional[str] = None
+        apply_link: Optional[str] = None,
+        initial_ats_score: Optional[int] = None
     ) -> bool:
         """
         Update an existing draft.
@@ -240,6 +257,10 @@ class DraftManager:
         if apply_link is not None:
             updates.append("apply_link = ?")
             values.append(apply_link)
+            
+        if initial_ats_score is not None:
+            updates.append("initial_ats_score = ?")
+            values.append(initial_ats_score)
         
         if not updates:
             return True  # Nothing to update
@@ -287,19 +308,60 @@ class DraftManager:
 
     def delete_draft_by_url(self, job_url: str) -> bool:
         """
-        Delete a draft by job URL.
+        Delete a draft by job URL, including all associated resume versions
+        and all related files on the filesystem.
         
-        Args:
-            job_url: The URL of the job
-            
-        Returns:
-            True if deleted, False if not found
+        This satisfies the "delete it completely" requirement.
         """
         job_url = normalize_job_url(job_url)
+        draft = self.get_draft_by_url(job_url)
+        
+        if not draft:
+            return False
+            
+        draft_id = draft.id
+        job_id = get_stable_job_id(job_url)
+        
+        # 1. Clean up filesystem
+        dirs_to_remove = [
+            f"data/generated_resumes/{job_id}",
+            f"data/tex_resumes/{job_id}",
+            f"data/logs/{job_id}"
+        ]
+        for d in dirs_to_remove:
+            if os.path.exists(d):
+                try:
+                    shutil.rmtree(d)
+                except Exception as e:
+                    print(f"Warning: Failed to delete directory {d}: {e}")
 
+        # 2. Delete from database (cascading manually)
         with get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM drafts WHERE job_url = ?", (job_url,))
+            # Delete resume versions first
+            cursor.execute("DELETE FROM resume_versions WHERE draft_id = ?", (draft_id,))
+            # Delete draft itself
+            cursor.execute("DELETE FROM drafts WHERE id = ?", (draft_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def delete_draft(self, draft_id: str) -> bool:
+        """
+        Delete a draft by ID. 
+        Note: If filesystem cleanup is needed, use delete_draft_by_url if possible,
+        otherwise this only deletes DB records.
+        """
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            # Try to get the URL for filesystem cleanup first
+            cursor.execute("SELECT job_url FROM drafts WHERE id = ?", (draft_id,))
+            row = cursor.fetchone()
+            if row:
+                return self.delete_draft_by_url(row[0])
+                
+            # Fallback if draft already gone but versions might linger
+            cursor.execute("DELETE FROM resume_versions WHERE draft_id = ?", (draft_id,))
+            cursor.execute("DELETE FROM drafts WHERE id = ?", (draft_id,))
             conn.commit()
             return cursor.rowcount > 0
     
@@ -343,8 +405,126 @@ class DraftManager:
             apply_link=row.get('apply_link'),
             status=DraftStatus(row['status']),
             form_state=form_state,
-            resume_path=row['resume_path'],
-            job_details=row['job_details'],
+            resume_path=row.get('resume_path'),
+            job_details=row.get('job_details'),
+            initial_ats_score=row.get('initial_ats_score'),
             created_at=datetime.fromisoformat(row['created_at']),
             updated_at=datetime.fromisoformat(row['updated_at'])
         )
+
+    def create_resume_version(self, version: ResumeVersion) -> str:
+        """Store a new resume version."""
+        now = datetime.utcnow().isoformat()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # If this is set as current, unset others for this draft
+            if version.is_current:
+                cursor.execute(
+                    "UPDATE resume_versions SET is_current = 0 WHERE draft_id = ?",
+                    (version.draft_id,)
+                )
+                
+            cursor.execute("""
+                INSERT INTO resume_versions 
+                (id, draft_id, version_number, tex_path, pdf_path, ats_score, justification, keywords_added, changes_summary, status, is_current, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                version.id,
+                version.draft_id,
+                version.version_number,
+                version.tex_path,
+                version.pdf_path,
+                version.ats_score,
+                version.justification,
+                version.keywords_added,
+                version.changes_summary,
+                version.status,
+                1 if version.is_current else 0,
+                now
+            ))
+            
+            # Also update the main draft's current resume path if this is current
+            if version.is_current:
+                cursor.execute(
+                    "UPDATE drafts SET resume_path = ? WHERE id = ?",
+                    (version.pdf_path, version.draft_id)
+                )
+                
+            conn.commit()
+        return version.id
+
+    def get_resume_versions(self, draft_id: str) -> List[ResumeVersion]:
+        """Get all versions for a draft."""
+        with get_connection() as conn:
+            conn.row_factory = lambda c, r: dict(zip([col[0] for col in c.description], r))
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM resume_versions WHERE draft_id = ? ORDER BY version_number DESC",
+                (draft_id,)
+            )
+            rows = cursor.fetchall()
+            
+        return [
+            ResumeVersion(
+                id=row['id'],
+                draft_id=row['draft_id'],
+                version_number=row['version_number'],
+                tex_path=row['tex_path'],
+                pdf_path=row['pdf_path'],
+                ats_score=row['ats_score'],
+                justification=row.get('justification'),
+                keywords_added=row.get('keywords_added'),
+                changes_summary=row.get('changes_summary'),
+                status=row.get('status', 'COMPLETED'),
+                is_current=bool(row['is_current']),
+                created_at=datetime.fromisoformat(row['created_at'])
+            ) for row in rows
+        ]
+
+    def update_resume_version(self, version_id: str, **kwargs) -> bool:
+        """Update a resume version's details (e.g., status, pdf_path, score)."""
+        updates = []
+        values = []
+        for k, v in kwargs.items():
+            updates.append(f"{k} = ?")
+            values.append(v)
+        
+        if not updates:
+            return True
+            
+        values.append(version_id)
+        query = f"UPDATE resume_versions SET {', '.join(updates)} WHERE id = ?"
+        
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, values)
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def set_current_resume_version(self, draft_id: str, version_id: str) -> bool:
+        """Set a specific version as current for a draft."""
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Unset all
+            cursor.execute("UPDATE resume_versions SET is_current = 0 WHERE draft_id = ?", (draft_id,))
+            
+            # Set target
+            cursor.execute(
+                "UPDATE resume_versions SET is_current = 1 WHERE id = ?",
+                (version_id,)
+            )
+            
+            if cursor.rowcount == 0:
+                conn.rollback()
+                return False
+                
+            # Get the PDF path to update the main draft
+            cursor.execute("SELECT pdf_path FROM resume_versions WHERE id = ?", (version_id,))
+            row = cursor.fetchone()
+            if row:
+                cursor.execute("UPDATE drafts SET resume_path = ? WHERE id = ?", (row[0], draft_id))
+            
+            conn.commit()
+            return True

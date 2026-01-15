@@ -144,4 +144,79 @@ async function handleAutoApply(tabId, url) {
 }
 
 // Handle messages from content script or other parts of extension
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    console.log('📨 Background received message:', request.action);
 
+    if (request.action === 'fetchDraftData') {
+        const draftId = request.draftId;
+        const apiUrl = `${API_BASE}/drafts/${draftId}`;
+
+        fetch(apiUrl)
+            .then(response => {
+                if (!response.ok) throw new Error('API request failed');
+                return response.json();
+            })
+            .then(data => {
+                sendResponse({ success: true, data: data });
+            })
+            .catch(error => {
+                console.error('AutoApply Fetch Error:', error);
+                sendResponse({ success: false, error: error.message });
+            });
+
+        return true; // Will respond asynchronously
+    }
+
+    if (request.action === 'fetchFile') {
+        // Proxy file requests from content script to avoid CORS issues
+        // Use static file mount at /data instead of separate API endpoint
+        // filePath already includes 'data/' prefix (e.g., "data/resumes/resume.pdf")
+        const filePath = request.filePath;
+        const fileUrl = `${API_BASE}/${filePath}`;
+        
+        console.log('📎 Background: Fetching static file from', fileUrl);
+
+        fetch(fileUrl)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                // Get content type from response headers
+                const contentType = response.headers.get('content-type') || 'application/octet-stream';
+                
+                return response.arrayBuffer().then(arrayBuffer => ({
+                    arrayBuffer,
+                    contentType
+                }));
+            })
+            .then(({ arrayBuffer, contentType }) => {
+                // Convert ArrayBuffer to base64 for transmission
+                // Use chunked approach to avoid "Maximum call stack size exceeded" for large files
+                const bytes = new Uint8Array(arrayBuffer);
+                let binary = '';
+                const chunkSize = 0x8000; // 32KB chunks
+                for (let i = 0; i < bytes.length; i += chunkSize) {
+                    const chunk = bytes.subarray(i, i + chunkSize);
+                    binary += String.fromCharCode.apply(null, chunk);
+                }
+                const base64 = btoa(binary);
+                
+                sendResponse({
+                    success: true,
+                    data: base64,
+                    contentType: contentType,
+                    size: arrayBuffer.byteLength
+                });
+            })
+            .catch(error => {
+                console.error('❌ Background: File fetch error', error);
+                sendResponse({
+                    success: false,
+                    error: error.message
+                });
+            });
+
+        return true; // Will respond asynchronously
+    }
+});
