@@ -223,23 +223,59 @@ class DraftPreparationService:
             profile_manager = ProfileManager()
             profile = profile_manager.get_profile()
             
-            use_uploaded = profile.get("use_uploaded_resume", False)
-            uploaded_path = profile.get("uploaded_resume_path", "")
+            mode = profile.get("resume_generation_mode", "ats_generated")
+            uploaded_pdf_path = profile.get("uploaded_pdf_path", "")
+            uploaded_tex_path = profile.get("uploaded_tex_path", "")
             
             pdf_path = None
             
-            if use_uploaded and uploaded_path:
-                if os.path.exists(uploaded_path):
-                    log_callback(f"📄 Using uploaded resume: {uploaded_path}")
-                    pdf_path = uploaded_path
+            if mode == "uploaded_pdf" and uploaded_pdf_path:
+                if os.path.exists(uploaded_pdf_path):
+                    log_callback(f"📄 Using uploaded resume: {uploaded_pdf_path}")
+                    pdf_path = uploaded_pdf_path
                 else:
-                    log_callback(f"⚠️ Uploaded resume not found. Generating new one...")
+                    log_callback(f"⚠️ Mode set to 'Uploaded PDF' but file not found at {uploaded_pdf_path}. Falling back to ATS generation.")
                     pdf_path = self._generate_resume(job_link, job_description, log_callback)
-            else:
-                log_callback("📄 Generating tailored resume...")
-                pdf_path = self._generate_resume(job_link, job_description, log_callback)
             
-            self.draft_manager.update_draft(draft_id, resume_path=pdf_path)
+            else:
+                # Default "ats_generated"
+                log_callback("📄 Generating tailored resume using ATS workflow...")
+                # If they have a custom template uploaded, use it
+                template_path = uploaded_tex_path if uploaded_tex_path and os.path.exists(uploaded_tex_path) else None
+                if template_path:
+                    log_callback(f"  - Using custom template: {template_path}")
+                
+                pdf_path = self._generate_resume(job_link, job_description, log_callback, template_path=template_path)
+            
+            # Normalize path for extension visibility (OS Absolute path if HOST_PROJECT_ROOT set)
+            if pdf_path:
+                host_root = os.getenv("HOST_PROJECT_ROOT")
+                
+                # Internal clean up: if it's an absolute path inside Docker (/app/data/...), make it relative to /app first
+                rel_path = pdf_path
+                if os.path.isabs(pdf_path) and pdf_path.startswith("/app/"):
+                    rel_path = os.path.relpath(pdf_path, "/app")
+                
+                if host_root:
+                    # Join host root with the relative path from project root
+                    pdf_path = os.path.join(host_root, rel_path)
+                    # For Windows paths in JSON, ensure forward slashes OR properly escaped backslashes.
+                    # User requested "F:/Projects/...", so let's use forward slashes.
+                    pdf_path = pdf_path.replace("\\", "/")
+                else:
+                    # Fallback to project-relative with forward slashes
+                    pdf_path = rel_path.replace("\\", "/")
+            
+            # Step 2.1: Inject resume path into form fields if they are of type FILE
+            # This ensures the extension knows WHERE the file is on the host
+            # We do this AFTER Step 5 (LLM generation) but we need to track it.
+            # Actually, let's do it after the form structure is extraction and LLM answers are generated.
+            # For now, store it in the draft's resume_path.
+            
+            self.draft_manager.update_draft(
+                draft_id, 
+                resume_path=pdf_path
+            )
             self.job_manager.update_job(job_link, pdf_path=pdf_path, status="Running - Extracting Form")
             
             # Step 3: Extract Form Structure (NO FILLING)
@@ -276,6 +312,17 @@ class DraftPreparationService:
                 log_callback
             )
             
+            # Step 5.1: Automatically inject resume path into fields of type FILE
+            # if they look like a resume/CV field.
+            if pdf_path:
+                for field in form_state.fields:
+                    if field.field_type == FieldType.FILE:
+                        label = (field.label or "").lower()
+                        if not label or any(kw in label for kw in ["resume", "cv", "document", "upload"]):
+                            log_callback(f"🔗 Injecting resume path into field: {field.label or field.xpath}")
+                            field.value = pdf_path
+                            field.skipped = False # Force fill
+            
             # Step 6: Save final draft
             self.draft_manager.update_draft(
                 draft_id,
@@ -306,12 +353,26 @@ class DraftPreparationService:
         self, 
         job_link: str, 
         job_description: str, 
-        log_callback: Callable[[str], None]
+        log_callback: Callable[[str], None],
+        template_path: Optional[str] = None
     ) -> str:
         """Generate a tailored resume PDF."""
         self.job_manager.update_job(job_link, status="Running - Generating Resume")
         job_id = abs(hash(job_link))
-        pdf_path = self.resume_builder.build(job_description, get_user_profile_text(), job_id=job_id)
+        
+        # Fetch tailoring prompt from config
+        from src.config import ConfigManager
+        config_manager = ConfigManager()
+        prompts = config_manager.get_ats_prompts()
+        tailoring_prompt = prompts.get("tailor_resume")
+        
+        pdf_path = self.resume_builder.build(
+            job_description, 
+            get_user_profile_text(), 
+            job_id=job_id,
+            template_path=template_path,
+            tailoring_prompt=tailoring_prompt
+        )
         log_callback(f"✅ Resume generated: {pdf_path}")
         return pdf_path
     

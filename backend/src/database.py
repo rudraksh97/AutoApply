@@ -75,7 +75,7 @@ def init_db():
         cursor.execute("ALTER TABLE drafts ADD COLUMN apply_link TEXT")
     except sqlite3.OperationalError:
         pass
-    
+
     conn.commit()
     conn.close()
 

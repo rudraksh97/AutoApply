@@ -71,7 +71,10 @@ class ProfileData(BaseModel):
     cover_letter_template: str = ""
     why_us: str = ""
     challenging_project: str = ""
-    uploaded_resume_path: Optional[str] = ""
-    uploaded_resume_filename: Optional[str] = ""
+    uploaded_pdf_path: Optional[str] = ""
+    uploaded_pdf_filename: Optional[str] = ""
+    uploaded_tex_path: Optional[str] = ""
+    uploaded_tex_filename: Optional[str] = ""
+    resume_generation_mode: Optional[str] = "ats_generated"
     use_uploaded_resume: Optional[bool] = False
     custom_template_filename: Optional[str] = ""

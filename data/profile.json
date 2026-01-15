@@ -1,15 +1,15 @@
 {
   "basics": {
-    "first_name": "",
-    "last_name": "",
-    "email": "",
-    "phone": "",
-    "location": ""
+    "first_name": "Bhuvan",
+    "last_name": "Thirwani",
+    "email": "bhuvanth@buffalo.edu",
+    "phone": "(716) 228-4256",
+    "location": "San Francisco Bay Area, CA, USA"
   },
   "urls": {
-    "linkedin": "",
-    "github": "",
-    "portfolio": ""
+    "linkedin": "http://www.linkedin.com/in/dev-hax-codes",
+    "github": "https://github.com/bhuvanthirwani",
+    "portfolio": "http://www.leetcode.com/bhuvanthirwani"
   },
   "demographics": {
     "gender": "Prefer not to say",
@@ -22,15 +22,62 @@
     "authorized_in_us": true,
     "requires_sponsorship": false
   },
-  "education": [],
-  "experience": [],
-  "skills": "",
+  "education": [
+    {
+      "degree": "Master of Science in Computer Science",
+      "university": "University at Buffalo, State University of New York",
+      "field_of_study": "Computer Science",
+      "graduation_year": "2024"
+    },
+    {
+      "degree": "Bachelor of Technology in Computer Science & Engineering",
+      "university": "Indian Institute of Information Technology Pune",
+      "field_of_study": "Computer Science & Engineering",
+      "graduation_year": "2022"
+    }
+  ],
+  "experience": [
+    {
+      "company": "Salesforce",
+      "role": "Software AI Intern",
+      "start_date": "May 2025",
+      "end_date": "August 2025",
+      "description": "Designed scalable ETL pipelines to process over 2 Billion weekly metrics for reporting tools using Apache Airflow & Apache Spark.\nAutomated root cause analysis for distributed servers managing 19,000 TB of cloud data, reducing operational downtime by 50%.\nEngineered interactive dashboards to visualize incident patterns, improving observability and accelerating issue resolution time by 40%.\nDesigned Feedback based Agentic AI system using GPT models to perform root cause diagnostics, enabling infrastructure intelligence."
+    },
+    {
+      "company": "Euler Motors",
+      "role": "Member of Technical Staff-1",
+      "start_date": "July 2022",
+      "end_date": "August 2024",
+      "description": "Led end-to-end development of 2 AI Based Software Products and developed a pioneering feature for vehicle hardware data extraction & boosted electrical components testing by 300% using Computer Vision System for stakeholders.\nCollaborated on advanced analytics to monitor vehicle performance and detect issues remotely via cloud, minimizing downtime by 30%. \nEngineered Real-time data pipeline using Apache Kafka & Flink for processing real-time telemetry data of vehicles.\nOrchestrated Docker and Kubernetes pipelines for projects deployment status, elevating platform efficiency and scalability by 5 times."
+    },
+    {
+      "company": "Paytm Money",
+      "role": "Software Engineer Intern",
+      "start_date": "January 2022",
+      "end_date": "June 2022",
+      "description": "Implemented Live Feed Data of 7000 Stocks using Asynchronous NodeJS and Websocket Technology.\nEnhanced system capacity through\nload testing for 100,000 shadow customers simultaneously. Utilized quantitative methods and networking protocols to optimize data delivery and performance of the Product.\nOptimized the Real-time stock market data latency from 400ms to 2ms using Springboot (MVC), MySQL and Redis Cache using Java - 8."
+    },
+    {
+      "company": "DRDO",
+      "role": "Research Intern",
+      "start_date": "April 2021",
+      "end_date": "July 2021",
+      "description": "Utilized Oversampling and Undersampling techniques, GRID CV with weighted Decision Tree model for Landslide Prediction.\nInnovated Frequency Ratio & Multi-Criteria Decision techniques for generating vulnerability map with 99% accuracy."
+    }
+  ],
+  "skills": "AWS, GCP, Docker, Kubernetes, Apache Airflow, Apache Spark, LLMs, Prompt Engineering, Grafana, CI/CD, Machine Learning, Python, Java, JavaScript, TypeScript, SQL, C++, Html, Css, Flask, Django, Node.js, Spring, Reactjs, Next.js, MongoDB, PostgreSQL, NoSQL, Git, Langchain, MCP, A2A, FAISS, Object-oriented Design Solutions, Open-Source Best practices, Technical Documentation, Communication Skills, Leadership, Teamwork, Data Analysis, Problem Solving Skills",
   "great_fit_pitch": "",
   "cover_letter_template": "",
   "why_us": "",
   "challenging_project": "",
-  "uploaded_resume_path": "data/resumes/resume_base.tex",
-  "uploaded_resume_filename": "resume_base.tex",
+  "uploaded_pdf_path": "data/resumes/Bhuvan_Thirwani_Software_Engineer_2026.pdf",
+  "uploaded_pdf_filename": "Bhuvan_Thirwani_Software_Engineer_2026.pdf",
+  "uploaded_tex_path": "data/tex_resumes/resume_base.tex",
+  "uploaded_tex_filename": "resume_base.tex",
+  "resume_generation_mode": "uploaded_pdf",
   "use_uploaded_resume": true,
-  "custom_template_filename": ""
+  "custom_template_filename": "Bhuvan_Thirwani.tex",
+  "uploaded_resume_path": "data/resumes/Bhuvan_Thirwani_Software_Engineer_2026.pdf",
+  "uploaded_resume_filename": "Bhuvan_Thirwani_Software_Engineer_2026.pdf"
 }

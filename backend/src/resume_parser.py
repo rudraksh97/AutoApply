@@ -57,9 +57,9 @@ class ResumeParser:
         if not self.api_key:
             raise RuntimeError("Missing API Key for LLM")
 
-        # Use standard ChatOpenAI with OpenRouter config
+        # Use a more capable model for parsing
         llm = ChatOpenAI(
-            model="meta-llama/llama-3.3-70b-instruct:free",
+            model="google/gemini-2.0-flash-001",
             api_key=self.api_key,
             base_url="https://openrouter.ai/api/v1"
         )
@@ -75,6 +75,10 @@ class ResumeParser:
             "demographics": {
                 "gender": "", "race": "", "nationality": "", "veteran": "", "disability": ""
             },
+            "work_auth": {
+                "authorized_in_us": true/false,
+                "requires_sponsorship": true/false
+            },
             "skills": ["skill1", "skill2"],
              "education": [
                 {"degree": "", "university": "", "field_of_study": "", "graduation_year": ""}
@@ -87,7 +91,7 @@ class ResumeParser:
         
         response = await llm.ainvoke([
             SystemMessage(content=system_prompt),
-            HumanMessage(content=f"Extract resume data from this text:\n\n{text[:10000]}")
+            HumanMessage(content=f"Extract resume data from this text:\n\n{text[:12000]}")
         ])
         
         # Robust JSON extraction using regex

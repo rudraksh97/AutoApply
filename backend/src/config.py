@@ -155,3 +155,35 @@ class ConfigManager:
         """
         return os.getenv(key_name)
 
+    def get_ats_prompts(self):
+        """
+        Retrieves the custom ATS prompts from configuration.
+        """
+        data = self._load_config()
+        defaults = {
+            "calculate_score": (
+                "You are an ATS (Applicant Tracking System) expert. "
+                "Evaluate the provided Resume against the Job Description and provide:\n"
+                "1. A score from 0 to 100 based on keyword match, skill alignment, and experience relevance.\n"
+                "2. A brief 1-sentence justification for the score.\n"
+                "Return the result as a JSON object with keys { \"score\": 85, \"justification\": \"...\" }."
+            ),
+            "tailor_resume": (
+                "You are a professional career assistant and LaTeX expert. "
+                "I will provide a LaTeX template and information from a Resume and LinkedIn Export. "
+                "Your task is to take the provided LaTeX template and rewrite it COMPLETELY to be optimized for the provided Job Description.\n"
+                "Rules:\n1. Keep the EXACT LaTeX structure and packages.\n2. Do NOT change structural layout.\n"
+                "3. Use EXACT keywords from the Job Description.\n4. Preserve existing skills.\n"
+                "5. Return ONLY raw LaTeX code."
+            )
+        }
+        return data.get("ats_prompts", defaults)
+
+    def set_ats_prompts(self, prompts):
+        """
+        Updates the custom ATS prompts in configuration.
+        """
+        data = self._load_config()
+        data["ats_prompts"] = prompts
+        self._save_config(data)
+

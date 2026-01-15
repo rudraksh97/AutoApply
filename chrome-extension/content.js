@@ -27,6 +27,9 @@
 const CONFIG = {
     API_BASE: "http://localhost:8000",
 
+    // Thresholds: { ... },
+    FORCE_FILL: true,
+
     // Timing (ms)
     TIMING: {
         FIELD_FILL_DELAY: 600,
@@ -364,7 +367,7 @@ class ElementValidator {
 
         // Label validation (skip if XPath is specific enough - @id= or @name= are reliable)
         const hasSpecificXPath = fieldSpec.xpath && (
-            fieldSpec.xpath.includes('@id=') || 
+            fieldSpec.xpath.includes('@id=') ||
             fieldSpec.xpath.includes('@name=')
         );
 
@@ -508,7 +511,7 @@ class ElementValidator {
                     return containerLabel.textContent?.trim() || '';
                 }
             }
-            
+
             // Also try looking at previous sibling label
             const parent = element.parentElement;
             if (parent) {
@@ -862,6 +865,29 @@ class EventDispatcher {
             cancelable: true
         }));
     }
+
+    static async setFileValue(element, file) {
+        if (!element || !file) return;
+
+        try {
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(file);
+            element.files = dataTransfer.files;
+
+            // Dispatch multiple events to ensure listeners are triggered
+            element.dispatchEvent(new Event('change', { bubbles: true }));
+            element.dispatchEvent(new InputEvent('input', { bubbles: true }));
+
+            // Special handling for some frameworks
+            this.dispatchReactHandlers(element, ['onInput', 'onChange', 'onBlur']);
+
+            console.log(`✅ File "${file.name}" set on input element`);
+            return true;
+        } catch (error) {
+            console.error('❌ Failed to set file value:', error);
+            return false;
+        }
+    }
 }
 
 // ============================================================================
@@ -937,10 +963,10 @@ class IdempotencyChecker {
 
         // Check for custom indicators
         return role === 'radiogroup' ||
-               role === 'radio' ||
-               role === 'checkbox' ||
-               element.hasAttribute('aria-checked') ||
-               element.closest('[role="radiogroup"]') !== null;
+            role === 'radio' ||
+            role === 'checkbox' ||
+            element.hasAttribute('aria-checked') ||
+            element.closest('[role="radiogroup"]') !== null;
     }
 
     /**
@@ -1617,10 +1643,10 @@ class FieldFillers {
         if (tagName === 'button' || element.getAttribute('role') === 'radio' || element.getAttribute('role') === 'option') {
             const elemText = Utils.normalizeText(element.textContent);
             const elemMatches = elemText === normalizedValue ||
-                               elemText.includes(normalizedValue) ||
-                               (normalizedValue === 'yes' && elemText === 'yes') ||
-                               (normalizedValue === 'no' && elemText === 'no');
-            
+                elemText.includes(normalizedValue) ||
+                (normalizedValue === 'yes' && elemText === 'yes') ||
+                (normalizedValue === 'no' && elemText === 'no');
+
             if (elemMatches) {
                 console.log(`✅ Element itself matches value, clicking directly: "${element.textContent?.trim()}"`);
                 element.scrollIntoView({ block: 'nearest' });
@@ -1628,7 +1654,7 @@ class FieldFillers {
                 EventDispatcher.dispatchClickSequence(element);
                 await Utils.sleep(200);
                 EventDispatcher.dispatchReactHandlers(element, ['onChange', 'onClick']);
-                
+
                 // Also check for sibling hidden input and update it
                 const parent = element.parentElement;
                 if (parent) {
@@ -1645,14 +1671,14 @@ class FieldFillers {
         // Strategy 1: Find the container (look for yesno, radiogroup, or button-group containers)
         let container = element;
         if (element.getAttribute('role') !== 'radiogroup') {
-            container = element.closest('[role="radiogroup"]') || 
-                        element.closest('[class*="yesno"]') ||      // Ashby-style
-                        element.closest('[class*="yes-no"]') ||
-                        element.closest('[class*="radio-group"]') ||
-                        element.closest('[class*="button-group"]') ||
-                        element.closest('[class*="choice"]') ||
-                        element.closest('[class*="toggle"]') ||
-                        element.parentElement;
+            container = element.closest('[role="radiogroup"]') ||
+                element.closest('[class*="yesno"]') ||      // Ashby-style
+                element.closest('[class*="yes-no"]') ||
+                element.closest('[class*="radio-group"]') ||
+                element.closest('[class*="button-group"]') ||
+                element.closest('[class*="choice"]') ||
+                element.closest('[class*="toggle"]') ||
+                element.parentElement;
         }
 
         // Find all clickable options in the container
@@ -1674,8 +1700,8 @@ class FieldFillers {
             try {
                 const found = Array.from(container.querySelectorAll(selector));
                 // Filter to only visible elements, and exclude the hidden input
-                const visible = found.filter(opt => 
-                    this._isVisible(opt) && 
+                const visible = found.filter(opt =>
+                    this._isVisible(opt) &&
                     !(opt.tagName === 'INPUT' && opt.type === 'checkbox' && opt.tabIndex === -1)
                 );
                 if (visible.length > 0 && visible.length <= 10) {
@@ -1693,10 +1719,10 @@ class FieldFillers {
             if (parent) {
                 const siblings = Array.from(parent.children).filter(child => {
                     return (child.getAttribute('role') === 'radio' ||
-                           child.getAttribute('role') === 'checkbox' ||
-                           child.hasAttribute('aria-checked') ||
-                           (child.tagName === 'BUTTON' && child.type !== 'submit')) &&
-                           this._isVisible(child);
+                        child.getAttribute('role') === 'checkbox' ||
+                        child.hasAttribute('aria-checked') ||
+                        (child.tagName === 'BUTTON' && child.type !== 'submit')) &&
+                        this._isVisible(child);
                 });
                 if (siblings.length > 0 && siblings.length <= 10) {
                     options = siblings;
@@ -1723,7 +1749,7 @@ class FieldFillers {
             const optValue = Utils.normalizeText(option.getAttribute('value') || '');
 
             // Check for match
-            const isMatch = 
+            const isMatch =
                 optText === normalizedValue ||
                 optText.includes(normalizedValue) ||
                 normalizedValue.includes(optText) ||
@@ -1738,12 +1764,12 @@ class FieldFillers {
 
             if (isMatch) {
                 console.log(`✅ Clicking matching option: "${option.textContent?.trim()}"`);
-                
+
                 // Check if already selected
                 const isSelected = option.getAttribute('aria-checked') === 'true' ||
-                                   option.classList.contains('selected') ||
-                                   option.classList.contains('active');
-                
+                    option.classList.contains('selected') ||
+                    option.classList.contains('active');
+
                 if (isSelected) {
                     console.log(`⏭️ Option already selected`);
                     return true;
@@ -1752,15 +1778,15 @@ class FieldFillers {
                 // Click the option
                 option.scrollIntoView({ block: 'nearest' });
                 await Utils.sleep(50);
-                
+
                 EventDispatcher.dispatchClickSequence(option);
-                
+
                 // Also try clicking any nested input
                 const nestedInput = option.querySelector('input[type="radio"], input[type="checkbox"]');
                 if (nestedInput && !nestedInput.checked) {
                     EventDispatcher.dispatchCheckableSequence(nestedInput, true);
                 }
-                
+
                 // For Ashby-style Yes/No: update the sibling hidden input if it exists
                 // The hidden input stores the actual form value
                 const siblingContainer = option.parentElement;
@@ -1776,12 +1802,12 @@ class FieldFillers {
                         EventDispatcher.dispatchInputEvents(hiddenInput, ['input', 'change']);
                     }
                 }
-                
+
                 await Utils.sleep(200);
-                
+
                 // Dispatch React handlers
                 EventDispatcher.dispatchReactHandlers(option, ['onChange', 'onClick']);
-                
+
                 return true;
             }
         }
@@ -1794,7 +1820,54 @@ class FieldFillers {
     // File Upload (highlight for user)
     // -------------------------------------------------------------------------
 
-    static async handleFile(element, value, report, field) {
+    // -------------------------------------------------------------------------
+    // File Upload (Automated)
+    // -------------------------------------------------------------------------
+
+    static async handleFile(element, value, report, field, formSpec) {
+        const filePath = value; // This is the host absolute path
+        const relativePath = formSpec?.relative_resume_path;
+
+        console.log(`📎 Attempting automated upload for: ${field.label || 'Resume'}`);
+        console.log(`   - Host path: ${filePath}`);
+        console.log(`   - Relative path: ${relativePath}`);
+
+        if (!relativePath) {
+            console.warn('⚠️ No relative path found in form state, falling back to manual highlight');
+            return this._highlightForManualUpload(element, value, report, field);
+        }
+
+        try {
+            // Fetch file from backend
+            UIFeedback.showNotification(`Fetching resume...`, 'info');
+            const fileUrl = `${API_BASE}/${relativePath}`;
+            const response = await fetch(fileUrl);
+
+            if (!response.ok) throw new Error(`Fetch failed: ${response.statusText}`);
+
+            const blob = await response.blob();
+            const fileName = relativePath.split('/').pop() || 'resume.pdf';
+            const file = new File([blob], fileName, { type: blob.type });
+
+            // Use EventDispatcher to set the file
+            const success = await EventDispatcher.setFileValue(element, file);
+
+            if (success) {
+                console.log('✅ Automated file upload successful');
+                UIFeedback.showNotification(`Resume uploaded automatically!`, 'success');
+                report.recordFilled(field, element);
+                return true;
+            } else {
+                throw new Error('Failed to set file on element');
+            }
+        } catch (error) {
+            console.error('❌ Automated upload failed:', error);
+            UIFeedback.showNotification(`Auto-upload failed, please upload manually`, 'warning');
+            return this._highlightForManualUpload(element, value, report, field);
+        }
+    }
+
+    static _highlightForManualUpload(element, value, report, field) {
         // Check if file already uploaded
         if (element.files?.length > 0 && !field.allow_replacement) {
             report.recordSkipped(field, 'File already uploaded');
@@ -1971,12 +2044,13 @@ class FormFiller {
     /**
      * Main entry point - fill form based on JSON specification
      */
-    async fill(formSpec) {
+    async fill(formSpec, options = { force: true }) {
         if (!formSpec?.fields?.length) {
             console.error('AutoApply: Invalid form specification');
             return this.report;
         }
 
+        this.formSpec = formSpec;
         const fields = formSpec.fields.filter(f => !f.skipped && f.value != null);
         const totalFields = fields.length;
 
@@ -2025,8 +2099,8 @@ class FormFiller {
             return;
         }
 
-        // Idempotency check
-        if (IdempotencyChecker.hasCorrectValue(element, field.value, field.field_type)) {
+        // Idempotency check (skip if force=true)
+        if (!CONFIG.FORCE_FILL && IdempotencyChecker.hasCorrectValue(element, field.value, field.field_type)) {
             this.report.recordSkipped(field, 'Already has correct value');
             console.log(`⏭️ Skipped (already filled): ${field.label || field.xpath}`);
             return;
@@ -2073,7 +2147,7 @@ class FormFiller {
 
         // Detect custom binary choice elements (Yes/No buttons, styled radio groups)
         const isCustomBinaryChoice = this._isCustomBinaryChoice(element, fieldType);
-        
+
         if (isCustomBinaryChoice) {
             console.log(`🔘 Detected custom binary choice for "${field.label}"`);
             return FieldFillers.fillCustomBinaryChoice(element, field.value, this.report, field);
@@ -2094,7 +2168,7 @@ class FormFiller {
                 }
                 // Custom checkbox (role="checkbox" or styled element)
                 return FieldFillers.fillCustomBinaryChoice(element, field.value, this.report, field);
-                
+
             case 'radio':
                 // Native radio input
                 if (tagName === 'input' && inputType === 'radio') {
@@ -2102,9 +2176,9 @@ class FormFiller {
                 }
                 // Custom radio/binary choice (role="radio", button groups, etc.)
                 return FieldFillers.fillCustomBinaryChoice(element, field.value, this.report, field);
-                
+
             case 'file':
-                return FieldFillers.handleFile(element, field.value, this.report, field);
+                return FieldFillers.handleFile(element, field.value, this.report, field, this.formSpec);
             default:
                 return tagName === 'select'
                     ? FieldFillers.fillSelect(element, field.value, this.report, field)
@@ -2131,7 +2205,7 @@ class FormFiller {
             return false;
         }
         // Also exclude inputs with combobox-like attributes
-        if (element.getAttribute('aria-haspopup') === 'listbox' || 
+        if (element.getAttribute('aria-haspopup') === 'listbox' ||
             element.getAttribute('aria-autocomplete')) {
             return false;
         }
@@ -2142,17 +2216,17 @@ class FormFiller {
         }
 
         // Check for custom binary choice indicators
-        const isCustomByRole = role === 'radiogroup' || 
-                               role === 'radio' || 
-                               role === 'checkbox';
-        
+        const isCustomByRole = role === 'radiogroup' ||
+            role === 'radio' ||
+            role === 'checkbox';
+
         const hasAriaChecked = element.hasAttribute('aria-checked');
-        
+
         const isInRadioGroup = element.closest('[role="radiogroup"]') !== null;
-        
+
         // Check for button-style Yes/No (must be a button AND field type is radio/checkbox)
-        const isYesNoButton = tagName === 'button' && 
-                              /yes|no|true|false/i.test(element.textContent || '');
+        const isYesNoButton = tagName === 'button' &&
+            /yes|no|true|false/i.test(element.textContent || '');
 
         // Check if element has yesno or similar class (specific patterns for Yes/No)
         const hasYesNoClass = /yesno|yes-no|binary|toggle-group/i.test(
@@ -2162,15 +2236,15 @@ class FormFiller {
         // If fieldType is radio/checkbox but element is not a native input,
         // AND it's inside a container that looks like a choice group
         const isNonInputRadioCheckbox = tagName !== 'input' && tagName !== 'select';
-        const parentHasChoiceIndicator = element.parentElement && 
+        const parentHasChoiceIndicator = element.parentElement &&
             /yesno|yes-no|radio|choice|toggle/i.test(element.parentElement.className || '');
 
-        return isCustomByRole || 
-               hasAriaChecked || 
-               isInRadioGroup || 
-               isYesNoButton || 
-               hasYesNoClass ||
-               (isNonInputRadioCheckbox && parentHasChoiceIndicator);
+        return isCustomByRole ||
+            hasAriaChecked ||
+            isInRadioGroup ||
+            isYesNoButton ||
+            hasYesNoClass ||
+            (isNonInputRadioCheckbox && parentHasChoiceIndicator);
     }
 
     _showCompletionSummary(totalFields) {

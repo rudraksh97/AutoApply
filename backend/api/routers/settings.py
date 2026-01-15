@@ -75,3 +75,19 @@ def set_selected_model(payload: ModelSelection):
     cm = ConfigManager()
     cm.set_selected_model(payload.model_id)
     return {"status": "success", "model_id": payload.model_id}
+
+@router.get("/ats-prompts")
+def get_ats_prompts():
+    """Retrieves custom ATS prompts."""
+    cm = ConfigManager()
+    return cm.get_ats_prompts()
+
+@router.post("/ats-prompts")
+def set_ats_prompts(prompts: dict):
+    """Updates custom ATS prompts."""
+    try:
+        cm = ConfigManager()
+        cm.set_ats_prompts(prompts)
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

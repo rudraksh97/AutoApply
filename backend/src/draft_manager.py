@@ -343,8 +343,8 @@ class DraftManager:
             apply_link=row.get('apply_link'),
             status=DraftStatus(row['status']),
             form_state=form_state,
-            resume_path=row['resume_path'],
-            job_details=row['job_details'],
+            resume_path=row.get('resume_path'),
+            job_details=row.get('job_details'),
             created_at=datetime.fromisoformat(row['created_at']),
             updated_at=datetime.fromisoformat(row['updated_at'])
         )
