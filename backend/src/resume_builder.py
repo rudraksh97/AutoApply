@@ -310,119 +310,109 @@ class ResumeBuilder:
         pdf_path = os.path.join(gen_dir, f"{filename}.pdf")
         log_path = os.path.join(log_dir, f"{version}.log")
         
-        # We'll use these potentially updated values in the background
+        # Use these potentially updated values synchronously
         result_metadata = {"keywords": "", "summary": ""}
+        predicted_score = 0
         
-        def run_background_process():
-            try:
-                os.makedirs(log_dir, exist_ok=True)
-                os.makedirs(gen_dir, exist_ok=True)
-                os.makedirs(tex_dir, exist_ok=True)
+        try:
+            os.makedirs(log_dir, exist_ok=True)
+            os.makedirs(gen_dir, exist_ok=True)
+            os.makedirs(tex_dir, exist_ok=True)
+            
+            with open(log_path, 'a', encoding='utf-8') as log_file:
+                def log(msg):
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    formatted_msg = f"[{timestamp}] {msg}"
+                    print(formatted_msg)
+                    log_file.write(formatted_msg + "\n")
+                    log_file.flush()
+
+                log(f"Synchronous Build: Starting process for {filename}...")
                 
-                with open(log_path, 'a', encoding='utf-8') as log_file:
-                    def log(msg):
-                        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        formatted_msg = f"[{timestamp}] {msg}"
-                        print(formatted_msg)
-                        log_file.write(formatted_msg + "\n")
-                        log_file.flush()
-
-                    log(f"Background: Starting process for {filename}...")
-                    
-                    try:
-                        # 1. Tailor LaTeX
-                        if tailoring_prompt:
-                            log(f"Background: Applying deep LaTeX tailoring for {filename}...")
-                            target_template = template_path if template_path else self.base_template_path
-                            with open(target_template, 'r', encoding='utf-8') as f:
-                                template_content = f.read()
-                            
-                            tailored_data = self.tailor_latex(template_content, job_description, user_profile_text, custom_prompt=tailoring_prompt, ats_context=ats_context)
-                            tailored_latex = tailored_data["latex"]
-                            result_metadata["keywords"] = tailored_data["keywords"]
-                            result_metadata["summary"] = tailored_data["summary"]
-                            # Capture the predicted final score if available
-                            predicted_score = tailored_data.get("final_score", 0)
-                            
-                            with open(tex_path, 'w', encoding='utf-8') as f:
-                                f.write(tailored_latex)
-                        else:
-                            # Fallback to legacy
-                            predicted_score = 0
-                            log(f"Background: Extracting keywords for {filename}...")
-                            extracted_data = self.generate_resume_content(job_description, user_profile_text)
-                            context = {
-                                "skills_list": extracted_data.get("skills_list", []),
-                                "summary": "Tailored Professional",
-                                "experience": "Detailed Experience",
-                                "education": "University Degree"
-                            }
-                            target_template = template_path if template_path else self.base_template_path
-                            with open(target_template, 'r', encoding='utf-8') as f:
-                                template_content = f.read()
-                            template = self.env.from_string(template_content)
-                            rendered = template.render(**context)
-                            
-                            with open(tex_path, 'w', encoding='utf-8') as f:
-                                f.write(rendered)
-
-                        # 2. Compile PDF
-                        log(f"Background: Compiling PDF for {filename}...")
-                        try:
-                            temp_pdf = self.compile_pdf(tex_path)
-                            
-                            # The pdflatex module might return a path or we derive it
-                            # If it's not where we want it, move it
-                            if os.path.exists(temp_pdf) and os.path.abspath(temp_pdf) != os.path.abspath(pdf_path):
-                                import shutil
-                                shutil.move(temp_pdf, pdf_path)
-                            log(f"Background: PDF compiled successfully: {pdf_path}")
-                        except Exception as compile_err:
-                            log(f"Background: LaTeX compilation failed: {compile_err}")
-                            raise
-
-                        # 3. Update Database
-                        if draft_manager and version_id:
-                            update_kwargs = {
-                                "status": "COMPLETED",
-                                "pdf_path": pdf_path,
-                                "keywords_added": result_metadata["keywords"],
-                                "changes_summary": result_metadata["summary"]
-                            }
-                            if predicted_score > 0:
-                                update_kwargs["ats_score"] = predicted_score
-                                
-                            draft_manager.update_resume_version(version_id, **update_kwargs)
-                            log(f"Background: PDF for {filename} COMPLETED")
-                    except Exception as e:
-                        import traceback
-                        err_traceback = traceback.format_exc()
-                        log(f"Background: PDF for {filename} FAILED: {e}")
-                        log(f"Traceback:\n{err_traceback}")
+                try:
+                    # 1. Tailor LaTeX
+                    if tailoring_prompt:
+                        log(f"Synchronous Build: Applying deep LaTeX tailoring for {filename}...")
+                        target_template = template_path if template_path else self.base_template_path
+                        with open(target_template, 'r', encoding='utf-8') as f:
+                            template_content = f.read()
                         
-                        if draft_manager and version_id:
-                            draft_manager.update_resume_version(version_id, status="FAILED")
-                        if job_manager and job_url:
-                            job_manager.update_job(job_url, status="Draft Failed", error_message=str(e))
-                        if draft_manager and draft_id:
-                             from api.schemas.form_state import DraftStatus
-                             draft_manager.update_status(draft_id, DraftStatus.FAILED)
-            except Exception as outer_e:
-                print(f"CRITICAL: Background thread failed before logging started: {outer_e}")
-                if job_manager and job_url:
-                    job_manager.update_job(job_url, status="Critical Error", error_message=str(outer_e))
+                        tailored_data = self.tailor_latex(template_content, job_description, user_profile_text, custom_prompt=tailoring_prompt, ats_context=ats_context)
+                        tailored_latex = tailored_data["latex"]
+                        result_metadata["keywords"] = tailored_data["keywords"]
+                        result_metadata["summary"] = tailored_data["summary"]
+                        # Capture the predicted final score if available
+                        predicted_score = tailored_data.get("final_score", 0)
+                        
+                        with open(tex_path, 'w', encoding='utf-8') as f:
+                            f.write(tailored_latex)
+                    else:
+                        # Fallback to legacy
+                        log(f"Synchronous Build: Extracting keywords for {filename}...")
+                        extracted_data = self.generate_resume_content(job_description, user_profile_text)
+                        context = {
+                            "skills_list": extracted_data.get("skills_list", []),
+                            "summary": "Tailored Professional",
+                            "experience": "Detailed Experience",
+                            "education": "University Degree"
+                        }
+                        target_template = template_path if template_path else self.base_template_path
+                        with open(target_template, 'r', encoding='utf-8') as f:
+                            template_content = f.read()
+                        template = self.env.from_string(template_content)
+                        rendered = template.render(**context)
+                        
+                        with open(tex_path, 'w', encoding='utf-8') as f:
+                            f.write(rendered)
 
-        if draft_manager and version_id:
-            import threading
-            thread = threading.Thread(target=run_background_process)
-            thread.start()
-            # Return immediately with tentative paths and placeholders
-            # The background process will update the DB with actual keywords/summary later
-            return pdf_path, tex_path, "", ""
-        else:
-            # Sync fallback (e.g. for initial CLI-like testing if any)
-            run_background_process()
-            return pdf_path, tex_path, result_metadata["keywords"], result_metadata["summary"]
+                    # 2. Compile PDF
+                    log(f"Synchronous Build: Compiling PDF for {filename}...")
+                    try:
+                        temp_pdf = self.compile_pdf(tex_path)
+                        
+                        if os.path.exists(temp_pdf) and os.path.abspath(temp_pdf) != os.path.abspath(pdf_path):
+                            import shutil
+                            shutil.move(temp_pdf, pdf_path)
+                        log(f"Synchronous Build: PDF compiled successfully: {pdf_path}")
+                    except Exception as compile_err:
+                        log(f"Synchronous Build: LaTeX compilation failed: {compile_err}")
+                        raise
+
+                    # 3. Update Database
+                    if draft_manager and version_id:
+                        update_kwargs = {
+                            "status": "COMPLETED",
+                            "pdf_path": pdf_path,
+                            "keywords_added": result_metadata["keywords"],
+                            "changes_summary": result_metadata["summary"]
+                        }
+                        if predicted_score > 0:
+                            update_kwargs["ats_score"] = predicted_score
+                            
+                        draft_manager.update_resume_version(version_id, **update_kwargs)
+                        log(f"Synchronous Build: PDF for {filename} COMPLETED")
+                    
+                    return pdf_path, tex_path, result_metadata["keywords"], result_metadata["summary"]
+
+                except Exception as e:
+                    import traceback
+                    err_traceback = traceback.format_exc()
+                    log(f"Synchronous Build: PDF for {filename} FAILED: {e}")
+                    log(f"Traceback:\n{err_traceback}")
+                    
+                    if draft_manager and version_id:
+                        draft_manager.update_resume_version(version_id, status="FAILED")
+                    if job_manager and job_url:
+                        job_manager.update_job(job_url, status="Draft Failed", error_message=str(e))
+                    if draft_manager and draft_id:
+                            from api.schemas.form_state import DraftStatus
+                            draft_manager.update_status(draft_id, DraftStatus.FAILED)
+                    raise e
+        except Exception as outer_e:
+            print(f"CRITICAL: Synchronous build failed: {outer_e}")
+            if job_manager and job_url:
+                job_manager.update_job(job_url, status="Critical Error", error_message=str(outer_e))
+            raise outer_e
 
 
 if __name__ == "__main__":

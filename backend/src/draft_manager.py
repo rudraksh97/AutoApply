@@ -6,11 +6,14 @@ the draft-first workflow where applications are prepared but never submitted.
 """
 
 import json
+import os
+import shutil
+import uuid
 from datetime import datetime
 from typing import Optional, List
 
 from src.database import init_db, get_connection
-from src.url_utils import normalize_job_url
+from src.url_utils import normalize_job_url, get_stable_job_id
 from api.schemas.form_state import (
     ApplicationDraft, 
     FormState, 
@@ -57,7 +60,12 @@ class DraftManager:
         """
         job_url = normalize_job_url(job_url)
 
+        # Check if draft already exists for this URL to preserve the ID and its versions
+        existing = self.get_draft_by_url(job_url)
+        draft_id = existing.id if existing else str(uuid.uuid4())
+
         draft = ApplicationDraft(
+            id=draft_id,
             job_url=job_url,
             apply_link=apply_link,
             status=status,
@@ -83,8 +91,8 @@ class DraftManager:
                 form_state_json,
                 resume_path,
                 job_details,
-                None,  # initial_ats_score
-                now,
+                existing.initial_ats_score if existing else None,
+                existing.created_at.isoformat() if existing else now,
                 now
             ))
             conn.commit()
@@ -300,19 +308,60 @@ class DraftManager:
 
     def delete_draft_by_url(self, job_url: str) -> bool:
         """
-        Delete a draft by job URL.
+        Delete a draft by job URL, including all associated resume versions
+        and all related files on the filesystem.
         
-        Args:
-            job_url: The URL of the job
-            
-        Returns:
-            True if deleted, False if not found
+        This satisfies the "delete it completely" requirement.
         """
         job_url = normalize_job_url(job_url)
+        draft = self.get_draft_by_url(job_url)
+        
+        if not draft:
+            return False
+            
+        draft_id = draft.id
+        job_id = get_stable_job_id(job_url)
+        
+        # 1. Clean up filesystem
+        dirs_to_remove = [
+            f"data/generated_resumes/{job_id}",
+            f"data/tex_resumes/{job_id}",
+            f"data/logs/{job_id}"
+        ]
+        for d in dirs_to_remove:
+            if os.path.exists(d):
+                try:
+                    shutil.rmtree(d)
+                except Exception as e:
+                    print(f"Warning: Failed to delete directory {d}: {e}")
 
+        # 2. Delete from database (cascading manually)
         with get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM drafts WHERE job_url = ?", (job_url,))
+            # Delete resume versions first
+            cursor.execute("DELETE FROM resume_versions WHERE draft_id = ?", (draft_id,))
+            # Delete draft itself
+            cursor.execute("DELETE FROM drafts WHERE id = ?", (draft_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def delete_draft(self, draft_id: str) -> bool:
+        """
+        Delete a draft by ID. 
+        Note: If filesystem cleanup is needed, use delete_draft_by_url if possible,
+        otherwise this only deletes DB records.
+        """
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            # Try to get the URL for filesystem cleanup first
+            cursor.execute("SELECT job_url FROM drafts WHERE id = ?", (draft_id,))
+            row = cursor.fetchone()
+            if row:
+                return self.delete_draft_by_url(row[0])
+                
+            # Fallback if draft already gone but versions might linger
+            cursor.execute("DELETE FROM resume_versions WHERE draft_id = ?", (draft_id,))
+            cursor.execute("DELETE FROM drafts WHERE id = ?", (draft_id,))
             conn.commit()
             return cursor.rowcount > 0
     

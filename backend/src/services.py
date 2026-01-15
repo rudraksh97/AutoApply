@@ -360,7 +360,10 @@ class DraftPreparationService:
     ) -> str:
         """Generate a tailored resume PDF and track its version."""
         self.job_manager.update_job(job_link, status="Running - Generating Resume")
-        job_id = abs(hash(job_link))
+        
+        # Use a stable hash for the job_id to ensure consistent filesystem paths across restarts
+        from src.url_utils import get_stable_job_id
+        job_id = get_stable_job_id(job_link)
         
         # 1. Fetch tailoring prompt from config
         from src.config import ConfigManager
@@ -397,7 +400,7 @@ class DraftPreparationService:
         )
         self.draft_manager.create_resume_version(v1)
 
-        # 4. Asynchronously Build version v1
+        # 4. Synchronously Build version v1
         # The builder will update the DB entry with actual score, keywords, and status="COMPLETED"
         pdf_path, tex_path, keywords, changes = self.resume_builder.build(
             job_description, 
@@ -414,7 +417,7 @@ class DraftPreparationService:
             job_url=job_link
         )
         
-        log_callback(f"✅ Resume generation started for v1")
+        log_callback(f"✅ Resume generation completed for v1")
         return pdf_path
     
     def _extract_form_structure(self, job_link: str, extraction_result: dict) -> FormState:
