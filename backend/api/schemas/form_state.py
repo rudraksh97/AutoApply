@@ -78,6 +78,10 @@ class FormState(BaseModel):
         fields: List of all captured form fields
         extracted_at: When the form state was first captured
         last_modified: When the form state was last updated
+        relative_resume_path: Optional project-relative path to the resume file
+            (e.g. "data/resumes/resume.pdf" or "data/generated_resumes/Resume_123.pdf").
+            This is used by the browser extension to fetch the resume via the API
+            without needing host-absolute file system access.
     """
     version: str = "1.0"
     job_url: str
@@ -85,6 +89,7 @@ class FormState(BaseModel):
     fields: List[FieldState] = Field(default_factory=list)
     extracted_at: datetime = Field(default_factory=datetime.utcnow)
     last_modified: datetime = Field(default_factory=datetime.utcnow)
+    relative_resume_path: Optional[str] = None
     
     def get_field(self, xpath: str) -> Optional[FieldState]:
         """Retrieve a field by its XPath."""
