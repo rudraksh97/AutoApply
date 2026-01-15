@@ -1826,7 +1826,8 @@ class FieldFillers {
 
     static async handleFile(element, value, report, field, formSpec) {
         const filePath = value; // This is the host absolute path
-        const relativePath = formSpec?.relative_resume_path;
+        // Check nested form_state first, then fallback to direct property
+        const relativePath = formSpec?.form_state?.relative_resume_path || formSpec?.relative_resume_path;
 
         console.log(`📎 Attempting automated upload for: ${field.label || 'Resume'}`);
         console.log(`   - Host path: ${filePath}`);
@@ -1837,17 +1838,65 @@ class FieldFillers {
             return this._highlightForManualUpload(element, value, report, field);
         }
 
+        // Ensure relativePath doesn't start with / to avoid double slashes
+        // The relativePath from backend already includes 'data/' (e.g., "data/resumes/resume.pdf")
+        // The static mount is at /data, so we use the path as-is
+        let cleanPath = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
+        
+        // Ensure path starts with 'data/' for static file mount
+        // If it doesn't have 'data/' prefix, add it
+        if (!cleanPath.startsWith('data/')) {
+            cleanPath = `data/${cleanPath}`;
+        }
+
         try {
-            // Fetch file from backend
+            // Fetch file from backend via background script to avoid CORS issues
             UIFeedback.showNotification(`Fetching resume...`, 'info');
-            const fileUrl = `${API_BASE}/${relativePath}`;
-            const response = await fetch(fileUrl);
+            
+            console.log(`🌐 Requesting file via background script: ${cleanPath}`);
+            
+            // Request file from background script
+            const fileData = await new Promise((resolve, reject) => {
+                chrome.runtime.sendMessage(
+                    {
+                        action: 'fetchFile',
+                        filePath: cleanPath
+                    },
+                    (response) => {
+                        if (chrome.runtime.lastError) {
+                            reject(new Error(chrome.runtime.lastError.message));
+                        } else if (response && response.success) {
+                            resolve(response);
+                        } else {
+                            reject(new Error(response?.error || 'Failed to fetch file'));
+                        }
+                    }
+                );
+            });
 
-            if (!response.ok) throw new Error(`Fetch failed: ${response.statusText}`);
-
-            const blob = await response.blob();
+            console.log(`📦 Received file data: ${fileData.size} bytes, type: ${fileData.contentType}`);
+            
+            if (fileData.size === 0) {
+                throw new Error('Received empty file from server');
+            }
+            
+            // Convert base64 back to binary
+            // Use chunked approach to avoid "Maximum call stack size exceeded" for large files
+            const binaryString = atob(fileData.data);
+            const bytes = new Uint8Array(binaryString.length);
+            const chunkSize = 0x8000; // 32KB chunks
+            for (let i = 0; i < binaryString.length; i += chunkSize) {
+                const end = Math.min(i + chunkSize, binaryString.length);
+                for (let j = i; j < end; j++) {
+                    bytes[j] = binaryString.charCodeAt(j);
+                }
+            }
+            
+            // Create Blob from binary data
+            const blob = new Blob([bytes], { type: fileData.contentType || 'application/pdf' });
+            
             const fileName = relativePath.split('/').pop() || 'resume.pdf';
-            const file = new File([blob], fileName, { type: blob.type });
+            const file = new File([blob], fileName, { type: fileData.contentType || 'application/pdf' });
 
             // Use EventDispatcher to set the file
             const success = await EventDispatcher.setFileValue(element, file);
@@ -1862,7 +1911,15 @@ class FieldFillers {
             }
         } catch (error) {
             console.error('❌ Automated upload failed:', error);
-            UIFeedback.showNotification(`Auto-upload failed, please upload manually`, 'warning');
+            console.error('   Error details:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+                filePath: cleanPath
+            });
+            
+            const errorMessage = error.message || 'Unknown error';
+            UIFeedback.showNotification(`Auto-upload failed: ${errorMessage}. Please upload manually`, 'warning');
             return this._highlightForManualUpload(element, value, report, field);
         }
     }

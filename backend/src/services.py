@@ -229,6 +229,7 @@ class DraftPreparationService:
             uploaded_tex_path = profile.get("uploaded_tex_path", "")
             
             pdf_path = None
+            relative_resume_path: Optional[str] = None
             
             if mode == "uploaded_pdf" and uploaded_pdf_path:
                 if os.path.exists(uploaded_pdf_path):
@@ -248,24 +249,28 @@ class DraftPreparationService:
                 
                 pdf_path = await self._generate_resume(draft_id, job_link, job_description, log_callback, template_path=template_path)
             
-            # Normalize path for extension visibility (OS Absolute path if HOST_PROJECT_ROOT set)
+            # Derive a project-relative path for API/static serving and a host-visible path
+            # for legacy flows that need direct filesystem access.
             if pdf_path:
                 host_root = os.getenv("HOST_PROJECT_ROOT")
-                
-                # Internal clean up: if it's an absolute path inside Docker (/app/data/...), make it relative to /app first
-                rel_path = pdf_path
-                if os.path.isabs(pdf_path) and pdf_path.startswith("/app/"):
-                    rel_path = os.path.relpath(pdf_path, "/app")
-                
+
+                # Compute a project-relative path (e.g. "data/generated_resumes/Resume_123.pdf")
+                rel_path_for_static = pdf_path
+                if os.path.isabs(pdf_path):
+                    # Container images typically mount the project at /app
+                    rel_path_for_static = os.path.relpath(pdf_path, "/app")
+
+                # Normalise to forward slashes for URLs/JSON
+                rel_path_for_static = rel_path_for_static.replace("\\", "/")
+                relative_resume_path = rel_path_for_static
+
+                # Preserve existing behaviour for host-visible absolute paths
                 if host_root:
-                    # Join host root with the relative path from project root
-                    pdf_path = os.path.join(host_root, rel_path)
-                    # For Windows paths in JSON, ensure forward slashes OR properly escaped backslashes.
-                    # User requested "F:/Projects/...", so let's use forward slashes.
-                    pdf_path = pdf_path.replace("\\", "/")
+                    pdf_host_path = os.path.join(host_root, rel_path_for_static).replace("\\", "/")
+                    pdf_path = pdf_host_path
                 else:
                     # Fallback to project-relative with forward slashes
-                    pdf_path = rel_path.replace("\\", "/")
+                    pdf_path = rel_path_for_static
             
             # Step 2.1: Inject resume path into form fields if they are of type FILE
             # This ensures the extension knows WHERE the file is on the host
@@ -323,6 +328,12 @@ class DraftPreparationService:
                             log_callback(f"🔗 Injecting resume path into field: {field.label or field.xpath}")
                             field.value = pdf_path
                             field.skipped = False # Force fill
+            
+            # Step 5.2: Expose project-relative resume path for the browser extension.
+            # This lets the extension download the resume via the API and synthesize
+            # a File object without needing direct filesystem access.
+            if relative_resume_path:
+                form_state.relative_resume_path = relative_resume_path
             
             # Step 6: Save final draft
             self.draft_manager.update_draft(
