@@ -166,6 +166,20 @@ class FillReport {
         this.startTime = Date.now();
     }
 
+    _logToBackground(level, message, data = null) {
+        // Send log to background safely (don't block execution)
+        try {
+            chrome.runtime.sendMessage({
+                action: 'log',
+                level,
+                message,
+                data
+            }).catch(() => { }); // Maintain silence if background is unreachable
+        } catch (e) {
+            // Ignore messaging errors
+        }
+    }
+
     recordFilled(field, element) {
         this.filled.push({
             xpath: field.xpath,
@@ -173,6 +187,7 @@ class FillReport {
             fieldType: field.field_type,
             timestamp: Date.now()
         });
+        this._logToBackground('success', `Filled: ${field.label || 'Unknown Field'}`);
     }
 
     recordSkipped(field, reason) {
@@ -183,6 +198,7 @@ class FillReport {
             timestamp: Date.now()
         });
         console.warn(`⏭️ Skipped: ${field.label || field.xpath} - ${reason}`);
+        this._logToBackground('warn', `Skipped: ${field.label || 'Unknown Field'}`, reason);
     }
 
     recordMismatch(field, expected, actual) {
@@ -194,6 +210,7 @@ class FillReport {
             timestamp: Date.now()
         });
         console.warn(`⚠️ Mismatch: ${field.label || field.xpath}`, { expected, actual });
+        this._logToBackground('warn', `Mismatch: ${field.label || 'Unknown Field'}`, { expected, actual });
     }
 
     recordError(field, error) {
@@ -204,6 +221,7 @@ class FillReport {
             timestamp: Date.now()
         });
         console.error(`❌ Error: ${field.label || field.xpath}`, error);
+        this._logToBackground('error', `Error: ${field.label || 'Unknown Field'}`, error.message);
     }
 
     recordFileUpload(field) {
@@ -212,6 +230,7 @@ class FillReport {
             label: field.label,
             timestamp: Date.now()
         });
+        this._logToBackground('info', `File Upload detected: ${field.label || 'Unknown Field'}`);
     }
 
     getSummary() {

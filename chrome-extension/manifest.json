@@ -5,7 +5,8 @@
     "description": "Automatically fills job applications from AutoApply drafts. Click the icon to fill the current page.",
     "permissions": [
         "activeTab",
-        "scripting"
+        "scripting",
+        "storage"
     ],
     "host_permissions": [
         "http://localhost:8000/*",
@@ -13,7 +14,8 @@
     ],
     "action": {
         "default_icon": "icon.png",
-        "default_title": "AutoApply - Click to fill form"
+        "default_title": "AutoApply - Click to fill form",
+        "default_popup": "popup.html"
     },
     "background": {
         "service_worker": "background.js"
