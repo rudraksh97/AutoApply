@@ -219,10 +219,15 @@ class BrowserAgent:
         
         # Try to parse as JSON
         try:
-            # Look for JSON in the response
-            json_match = re.search(r'\{.*\}', result, re.DOTALL)
-            if json_match:
-                parsed = json.loads(json_match.group())
+            # Look for JSON in the response - try to find the LAST JSON block as it usually contains the final result
+            json_blocks = re.findall(r'(\{.*\})', result, re.DOTALL)
+            if json_blocks:
+                # Use the last match which is likely the result JSON
+                parsed = json.loads(json_blocks[-1])
+                # Validate minimal requirements
+                if not any([parsed.get("job_description"), parsed.get("apply_link"), parsed.get("company_name")]):
+                    raise ValueError("Parsed JSON contains no useful job data")
+                    
                 return {
                     "job_description": parsed.get("job_description", result),
                     "apply_link": parsed.get("apply_link"),
@@ -230,17 +235,20 @@ class BrowserAgent:
                     "job_title": parsed.get("job_title"),
                     "location": parsed.get("location")
                 }
-        except (json.JSONDecodeError, AttributeError):
-            pass
-        
-        # Fallback: return raw text as job_description
-        return {
-            "job_description": result,
-            "apply_link": None,
-            "company_name": None,
-            "job_title": None,
-            "location": None
-        }
+            else:
+                raise ValueError("No JSON found in agent response")
+        except (json.JSONDecodeError, ValueError) as e:
+            # If it's just raw text that looks like a description, we might allow it,
+            # but if it was clearly meant to be JSON and failed, we should probably fail.
+            if len(result) > 100: # Looks like a description
+                return {
+                    "job_description": result,
+                    "apply_link": None,
+                    "company_name": None,
+                    "job_title": None,
+                    "location": None
+                }
+            raise ValueError(f"Failed to parse job details: {e}. Raw response: {result[:200]}...")
 
     async def extract_form(self, job_link: str) -> dict:
         """
@@ -273,22 +281,18 @@ class BrowserAgent:
             # Try direct parse first
             return json.loads(result)
         except json.JSONDecodeError:
-            # Try regex extraction
-            match = re.search(r"(\{.*\})", result, re.DOTALL)
-            if match:
+            # Try regex extraction - find the last JSON block
+            matches = re.findall(r"(\{.*\})", result, re.DOTALL)
+            if matches:
                 try:
-                    return json.loads(match.group(1))
-                except json.JSONDecodeError:
-                    pass
+                    parsed = json.loads(matches[-1])
+                    if not parsed.get("fields") and parsed.get("status") != "no_form_found":
+                        raise ValueError("Extracted form contains no fields")
+                    return parsed
+                except (json.JSONDecodeError, ValueError) as e:
+                    raise ValueError(f"Agent returned malformed form data: {e}. Raw: {result[:200]}...")
             
-            # If all parsing fails, return fallback
-            return {
-                "status": "extracted",
-                "fields": [],
-                "total_fields": 0,
-                "notes": result,
-                "raw_response": True
-            }
+            raise ValueError(f"Agent failed to return a structured form: {result[:500]}...")
 
     async def prefill_form(self, job_link: str, resume_path: str, user_details: str) -> dict:
         """
@@ -330,20 +334,14 @@ class BrowserAgent:
             return json.loads(result)
         except json.JSONDecodeError:
             # Try regex extraction
-            match = re.search(r"(\{.*\})", result, re.DOTALL)
-            if match:
+            matches = re.findall(r"(\{.*\})", result, re.DOTALL)
+            if matches:
                 try:
-                    return json.loads(match.group(1))
+                    return json.loads(matches[-1])
                 except json.JSONDecodeError:
                     pass
             
-            return {
-                "status": "rehydrated",
-                "fields_restored": 0,
-                "fields_failed": 0,
-                "notes": result,
-                "raw_response": True
-            }
+            raise ValueError(f"Agent failed to rehydrate draft: {result[:500]}...")
 
     # Legacy method alias for backwards compatibility during migration
     async def apply_to_job(self, job_link: str, resume_path: str, user_details: str) -> str:

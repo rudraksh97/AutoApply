@@ -48,3 +48,12 @@ class ProfileService:
 
     def save_profile(self, profile: dict):
         self.repository.save_profile(profile)
+
+    def add_resume(self, resume_type: str, filename: str, path: str):
+        return self.repository.add_resume(resume_type, filename, path)
+
+    def delete_resume(self, resume_id: str):
+        return self.repository.delete_resume(resume_id)
+
+    def set_current_resume(self, resume_id: str):
+        return self.repository.set_current_resume(resume_id)

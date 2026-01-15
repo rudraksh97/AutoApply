@@ -47,3 +47,12 @@ class JsonProfileRepository(ProfileRepository):
     
     def save_profile(self, profile: dict) -> None:
         self._manager.save_profile(profile)
+
+    def add_resume(self, resume_type: str, filename: str, path: str) -> str:
+        return self._manager.add_resume(resume_type, filename, path)
+
+    def delete_resume(self, resume_id: str) -> bool:
+        return self._manager.delete_resume(resume_id)
+
+    def set_current_resume(self, resume_id: str) -> bool:
+        return self._manager.set_current_resume(resume_id)

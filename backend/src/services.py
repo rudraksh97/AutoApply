@@ -225,8 +225,8 @@ class DraftPreparationService:
             profile = profile_manager.get_profile()
             
             mode = profile.get("resume_generation_mode", "ats_generated")
-            uploaded_pdf_path = profile.get("uploaded_pdf_path", "")
-            uploaded_tex_path = profile.get("uploaded_tex_path", "")
+            uploaded_pdf_path = profile_manager.get_current_resume_path("pdf")
+            uploaded_tex_path = profile_manager.get_current_resume_path("text")
             
             pdf_path = None
             relative_resume_path: Optional[str] = None
@@ -243,9 +243,8 @@ class DraftPreparationService:
                 # Default "ats_generated"
                 log_callback("📄 Generating tailored resume using ATS workflow...")
                 # If they have a custom template uploaded, use it
-                template_path = uploaded_tex_path if uploaded_tex_path and os.path.exists(uploaded_tex_path) else None
                 if template_path:
-                    log_callback(f"  - Using custom template: {template_path}")
+                    log_callback(f"  - Using your selected .tex resume: {template_path}")
                 
                 pdf_path = await self._generate_resume(draft_id, job_link, job_description, log_callback, template_path=template_path)
             
@@ -307,6 +306,14 @@ class DraftPreparationService:
             # Step 4: Convert to FormState (structure only, no values)
             form_state = self._extract_form_structure(job_link, extraction_result)
             field_count = len(form_state.fields)
+            
+            if field_count == 0:
+                # If we really found 0 fields, maybe it's a "no form" page or extraction failed silently
+                if extraction_result.get("status") == "no_form_found":
+                    log_callback("⚠️ No form fields found on this page.")
+                else:
+                    raise ValueError("Form extraction succeeded but found 0 fields. This usually indicates a parsing error or a page that doesn't look like a form.")
+            
             log_callback(f"📋 Found {field_count} form fields")
             
             # Step 5: Generate answers using LLM
@@ -535,8 +542,7 @@ class DraftPreparationService:
                 else:
                     answers = json.loads(response_text)
             except json.JSONDecodeError:
-                log_callback("⚠️ Failed to parse LLM response as JSON")
-                return form_state
+                raise ValueError(f"Failed to parse AI-generated answers as JSON. Response: {response_text[:200]}...")
             
             # Map answers back to form state
             answer_map = {a.get("xpath"): a for a in answers}

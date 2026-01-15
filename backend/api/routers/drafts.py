@@ -547,7 +547,7 @@ async def use_original_resume(draft_id: str):
     pm = ProfileManager()
     profile = pm.get_profile()
     
-    orig_path = profile.get("uploaded_pdf_path")
+    orig_path = pm.get_current_resume_path("pdf")
     if not orig_path or not os.path.exists(orig_path):
         raise HTTPException(status_code=400, detail="No original PDF resume uploaded in profile")
         

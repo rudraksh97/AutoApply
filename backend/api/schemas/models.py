@@ -59,6 +59,12 @@ class ProfileExperience(BaseModel):
     end_date: str
     description: str
 
+class ResumeInfo(BaseModel):
+    id: str
+    filename: str
+    path: str
+    created_at: str
+
 class ProfileData(BaseModel):
     basics: ProfileBasics
     urls: ProfileURLs
@@ -71,10 +77,18 @@ class ProfileData(BaseModel):
     cover_letter_template: str = ""
     why_us: str = ""
     challenging_project: str = ""
+    # Legacy fields (kept for migration/safety)
     uploaded_pdf_path: Optional[str] = ""
     uploaded_pdf_filename: Optional[str] = ""
     uploaded_tex_path: Optional[str] = ""
     uploaded_tex_filename: Optional[str] = ""
+    
+    # Multi-resume support
+    pdf_resumes: List[ResumeInfo] = []
+    text_resumes: List[ResumeInfo] = []
+    current_pdf_resume_id: Optional[str] = None
+    current_text_resume_id: Optional[str] = None
+    
     resume_generation_mode: Optional[str] = "ats_generated"
     use_uploaded_resume: Optional[bool] = False
     custom_template_filename: Optional[str] = ""

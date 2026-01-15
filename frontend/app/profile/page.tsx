@@ -39,21 +39,40 @@ export default function ProfilePage() {
         try {
             setIsProcessing(true);
             const endpoint = type === 'pdf' ? '/upload-resume' : '/upload-template';
-            const res = await axios.post(`${API_URL}${endpoint}`, formData, {
+            await axios.post(`${API_URL}${endpoint}`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             toast.success(`${type.toUpperCase()} uploaded successfully!`);
-
-            setProfile((prev: any) => ({
-                ...prev,
-                [`uploaded_${type}_path`]: res.data.path,
-                [`uploaded_${type}_filename`]: res.data.filename,
-                // Automatically set mode
-                resume_generation_mode: type === 'pdf' ? 'uploaded_pdf' : 'ats_generated'
-            }));
+            fetchProfile(); // Refresh list
         } catch (err: any) {
             console.error(err);
             toast.error(`Failed to upload ${type}: ` + (err.response?.data?.detail || err.message));
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const deleteResume = async (resumeId: string) => {
+        try {
+            setIsProcessing(true);
+            await axios.delete(`${API_URL}/profile/resumes/${resumeId}`);
+            toast.success("Resume deleted");
+            fetchProfile();
+        } catch (err) {
+            toast.error("Failed to delete resume");
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const selectResume = async (resumeId: string) => {
+        try {
+            setIsProcessing(true);
+            await axios.post(`${API_URL}/profile/resumes/${resumeId}/select`);
+            toast.success("Current resume updated");
+            fetchProfile();
+        } catch (err) {
+            toast.error("Failed to select resume");
         } finally {
             setIsProcessing(false);
         }
@@ -218,121 +237,139 @@ export default function ProfilePage() {
 
                     <Card className="shadow-sm border-border/60">
                         <CardHeader className="bg-muted/30 py-4">
-                            <CardTitle className="text-base font-medium">Resource Files</CardTitle>
+                            <CardTitle className="text-base font-medium">Resume Management</CardTitle>
                         </CardHeader>
                         <CardContent className="p-8 space-y-10">
-                            {/* PDF Resume Upload */}
+                            {/* PDF Resume Management */}
                             <div className="space-y-4">
-                                <Label className="text-sm font-semibold flex items-center gap-2">
-                                    <FileText className="h-4 w-4 text-primary" />
-                                    Your PDF Resume
-                                </Label>
-                                <div className="flex flex-col gap-4">
-                                    {profile.uploaded_pdf_path && profile.uploaded_pdf_path.toLowerCase().endsWith('.pdf') ? (
-                                        <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-dashed hover:border-primary/50 transition-colors">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-sm font-semibold flex items-center gap-2">
+                                        <FileText className="h-4 w-4 text-primary" />
+                                        PDF Resumes
+                                    </Label>
+                                    <Button variant="outline" size="sm" className="relative">
+                                        <Plus className="h-4 w-4 mr-2" /> Upload New PDF
+                                        <Input
+                                            type="file"
+                                            accept=".pdf"
+                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) uploadFile(file, 'pdf');
+                                            }}
+                                            disabled={isProcessing}
+                                        />
+                                    </Button>
+                                </div>
+
+                                <div className="grid gap-3">
+                                    {(profile.pdf_resumes || []).map((r: any) => (
+                                        <div
+                                            key={r.id}
+                                            className={cn(
+                                                "flex items-center gap-4 p-4 rounded-xl border transition-all",
+                                                profile.current_pdf_resume_id === r.id
+                                                    ? "bg-primary/5 border-primary/40"
+                                                    : "bg-muted/10 border-transparent hover:border-muted-foreground/20"
+                                            )}
+                                        >
                                             <div className="flex flex-col">
-                                                <span className="text-sm font-medium text-foreground truncate max-w-[200px]">
-                                                    {profile.uploaded_pdf_filename || "Uploaded Resume"}
-                                                </span>
-                                                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">PDF Format</span>
+                                                <span className="text-sm font-medium truncate max-w-[300px]">{r.filename}</span>
+                                                <span className="text-[10px] text-muted-foreground">Uploaded on {new Date(r.created_at).toLocaleDateString()}</span>
                                             </div>
                                             <div className="flex-1" />
-                                            <div className="relative">
-                                                <Button variant="outline" size="sm" className="relative h-9 px-4">
-                                                    Replace PDF
-                                                    <Input
-                                                        type="file"
-                                                        accept=".pdf"
-                                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                                        onChange={async (e) => {
-                                                            const file = e.target.files?.[0];
-                                                            if (!file) return;
-                                                            uploadFile(file, 'pdf');
-                                                        }}
-                                                        disabled={isProcessing}
-                                                    />
+                                            {profile.current_pdf_resume_id === r.id ? (
+                                                <span className="text-[10px] font-bold text-primary uppercase bg-primary/10 px-2 py-0.5 rounded">Current</span>
+                                            ) : (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-xs h-7"
+                                                    onClick={() => selectResume(r.id)}
+                                                >
+                                                    Select
                                                 </Button>
-                                            </div>
+                                            )}
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 text-muted-foreground hover:text-red-500"
+                                                onClick={() => deleteResume(r.id)}
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
                                         </div>
-                                    ) : (
-                                        <div className="flex flex-col gap-3">
-                                            <div className="relative border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center gap-3 hover:bg-muted/20 transition-all cursor-pointer">
-                                                <Upload className="h-8 w-8 text-muted-foreground" />
-                                                <div className="text-center">
-                                                    <p className="text-sm font-medium">Upload your PDF resume</p>
-                                                    <p className="text-xs text-muted-foreground">Click to browse or drag and drop</p>
-                                                </div>
-                                                <Input
-                                                    type="file"
-                                                    accept=".pdf"
-                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                                    onChange={async (e) => {
-                                                        const file = e.target.files?.[0];
-                                                        if (!file) return;
-                                                        uploadFile(file, 'pdf');
-                                                    }}
-                                                    disabled={isProcessing}
-                                                />
-                                            </div>
-                                        </div>
+                                    ))}
+                                    {(!profile.pdf_resumes || profile.pdf_resumes.length === 0) && (
+                                        <p className="text-sm text-muted-foreground italic text-center py-4 border-2 border-dashed rounded-xl">No PDF resumes uploaded yet.</p>
                                     )}
                                 </div>
                             </div>
 
                             <Separator />
 
-                            {/* LaTeX Template Upload */}
+                            {/* LaTeX Template Management */}
                             <div className="space-y-4">
-                                <Label className="text-sm font-semibold flex items-center gap-2">
-                                    <Database className="h-4 w-4 text-secondary" />
-                                    LaTeX Template (.tex)
-                                </Label>
-                                <div className="flex flex-col gap-4">
-                                    {profile.uploaded_tex_path && profile.uploaded_tex_path.toLowerCase().endsWith('.tex') ? (
-                                        <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-dashed hover:border-secondary/50 transition-colors">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-sm font-semibold flex items-center gap-2">
+                                        <Database className="h-4 w-4 text-secondary" />
+                                        LaTeX Templates (.tex)
+                                    </Label>
+                                    <Button variant="outline" size="sm" className="relative">
+                                        <Plus className="h-4 w-4 mr-2" /> Upload New .tex
+                                        <Input
+                                            type="file"
+                                            accept=".tex"
+                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) uploadFile(file, 'tex');
+                                            }}
+                                            disabled={isProcessing}
+                                        />
+                                    </Button>
+                                </div>
+
+                                <div className="grid gap-3">
+                                    {(profile.text_resumes || []).map((r: any) => (
+                                        <div
+                                            key={r.id}
+                                            className={cn(
+                                                "flex items-center gap-4 p-4 rounded-xl border transition-all",
+                                                profile.current_text_resume_id === r.id
+                                                    ? "bg-secondary/5 border-secondary/40"
+                                                    : "bg-muted/10 border-transparent hover:border-muted-foreground/20"
+                                            )}
+                                        >
                                             <div className="flex flex-col">
-                                                <span className="text-sm font-medium text-foreground truncate max-w-[200px]">
-                                                    {profile.uploaded_tex_filename}
-                                                </span>
-                                                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">LaTeX Source</span>
+                                                <span className="text-sm font-medium truncate max-w-[300px]">{r.filename}</span>
+                                                <span className="text-[10px] text-muted-foreground">Uploaded on {new Date(r.created_at).toLocaleDateString()}</span>
                                             </div>
                                             <div className="flex-1" />
-                                            <div className="relative">
-                                                <Button variant="outline" size="sm" className="relative h-9 px-4">
-                                                    Replace .tex
-                                                    <Input
-                                                        type="file"
-                                                        accept=".tex"
-                                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                                        onChange={async (e) => {
-                                                            const file = e.target.files?.[0];
-                                                            if (!file) return;
-                                                            uploadFile(file, 'tex');
-                                                        }}
-                                                        disabled={isProcessing}
-                                                    />
+                                            {profile.current_text_resume_id === r.id ? (
+                                                <span className="text-[10px] font-bold text-secondary uppercase bg-secondary/10 px-2 py-0.5 rounded">Current</span>
+                                            ) : (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-xs h-7"
+                                                    onClick={() => selectResume(r.id)}
+                                                >
+                                                    Select
                                                 </Button>
-                                            </div>
+                                            )}
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 text-muted-foreground hover:text-red-500"
+                                                onClick={() => deleteResume(r.id)}
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
                                         </div>
-                                    ) : (
-                                        <div className="relative border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center gap-3 hover:bg-muted/20 transition-all cursor-pointer">
-                                            <Upload className="h-8 w-8 text-muted-foreground" />
-                                            <div className="text-center">
-                                                <p className="text-sm font-medium">Upload .tex template</p>
-                                                <p className="text-xs text-muted-foreground">For AI tailoring & profile auto-fill</p>
-                                            </div>
-                                            <Input
-                                                type="file"
-                                                accept=".tex"
-                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                                onChange={async (e) => {
-                                                    const file = e.target.files?.[0];
-                                                    if (!file) return;
-                                                    uploadFile(file, 'tex');
-                                                }}
-                                                disabled={isProcessing}
-                                            />
-                                        </div>
+                                    ))}
+                                    {(!profile.text_resumes || profile.text_resumes.length === 0) && (
+                                        <p className="text-sm text-muted-foreground italic text-center py-4 border-2 border-dashed rounded-xl">No LaTeX templates uploaded yet.</p>
                                     )}
                                 </div>
                             </div>
@@ -342,19 +379,19 @@ export default function ProfilePage() {
                                     variant="secondary"
                                     className="gap-2 shadow-sm"
                                     onClick={() => handleParseResume('pdf')}
-                                    disabled={isProcessing || (!profile.uploaded_pdf_path?.toLowerCase().endsWith('.pdf'))}
+                                    disabled={isProcessing || !profile.current_pdf_resume_id}
                                 >
                                     <LayoutGrid className="h-4 w-4" />
-                                    Auto-fill from PDF
+                                    Auto-fill from Current PDF
                                 </Button>
                                 <Button
                                     variant="secondary"
                                     className="gap-2 shadow-sm"
                                     onClick={() => handleParseResume('tex')}
-                                    disabled={isProcessing || (!profile.uploaded_tex_path?.toLowerCase().endsWith('.tex'))}
+                                    disabled={isProcessing || !profile.current_text_resume_id}
                                 >
                                     <LayoutGrid className="h-4 w-4" />
-                                    Auto-fill from .tex
+                                    Auto-fill from Current .tex
                                 </Button>
                             </div>
                         </CardContent>

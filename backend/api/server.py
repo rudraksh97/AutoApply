@@ -227,13 +227,13 @@ async def automation_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Consolidate Directories
-    for d in ["data/resumes", "data/resumes/templates", "data/generated_resumes", "data/tex_resumes"]:
+    for d in ["data/resumes", "data/generated_resumes", "data/tex_resumes", "data/resumes/templates"]:
         if not os.path.exists(d):
             os.makedirs(d)
     
     # Simple migration: Move data/ resumes if they exist
     old_tex = "data/tex_resumes/resume_base.tex"
-    new_tex = "data/resumes/templates/resume_base.tex"
+    new_tex = "data/tex_resumes/resume_base.tex"
     if os.path.exists(old_tex) and not os.path.exists(new_tex):
         import shutil
         shutil.copy2(old_tex, new_tex)
@@ -302,13 +302,14 @@ async def upload_template(file: UploadFile = File(...)):
         
     from src.profile_manager import ProfileManager
     pm = ProfileManager()
+    resume_id = pm.add_resume("text", file.filename, save_path)
+    
+    # Also set as current custom template for backward compatibility
     profile = pm.get_profile()
-    profile["uploaded_tex_path"] = save_path
-    profile["uploaded_tex_filename"] = file.filename
     profile["custom_template_filename"] = file.filename
     pm.save_profile(profile)
     
-    return {"status": "uploaded", "filename": file.filename, "path": save_path}
+    return {"status": "uploaded", "filename": file.filename, "path": save_path, "resume_id": resume_id}
 
 @app.post("/upload-resume", tags=["Settings"])
 async def upload_resume(file: UploadFile = File(...)):
@@ -331,21 +332,20 @@ async def upload_resume(file: UploadFile = File(...)):
     # Update profile
     from src.profile_manager import ProfileManager
     pm = ProfileManager()
-    profile = pm.get_profile()
     
+    resume_type = "pdf" if is_pdf else "text"
+    resume_id = pm.add_resume(resume_type, file.filename, save_path)
+    
+    # Set mode
+    profile = pm.get_profile()
     if is_pdf:
-        profile["uploaded_pdf_path"] = save_path
-        profile["uploaded_pdf_filename"] = file.filename
         profile["resume_generation_mode"] = "uploaded_pdf"
     else:
-        profile["uploaded_tex_path"] = save_path
-        profile["uploaded_tex_filename"] = file.filename
         profile["resume_generation_mode"] = "ats_generated"
         profile["custom_template_filename"] = file.filename
-    
     pm.save_profile(profile)
     
-    return {"status": "uploaded", "filename": file.filename, "path": save_path}
+    return {"status": "uploaded", "filename": file.filename, "path": save_path, "resume_id": resume_id}
 
 @app.post("/parse-resume", tags=["Settings"])
 async def parse_resume(source: str = "pdf"):
@@ -356,19 +356,14 @@ async def parse_resume(source: str = "pdf"):
     file_path = None
     
     if source == "tex":
-        file_path = profile.get("uploaded_tex_path")
+        file_path = pm.get_current_resume_path("text")
         if not file_path or not os.path.exists(file_path):
-             # Fallback to base template if exists
-             base_path = "data/resumes/templates/resume_base.tex"
-             if os.path.exists(base_path):
-                 file_path = base_path
-             else:
-                 raise HTTPException(status_code=400, detail="No uploaded LaTeX template found.")
+             raise HTTPException(status_code=400, detail="No selected LaTeX resume found. Please upload and select one first.")
     else:
         # Default to pdf
-        file_path = profile.get("uploaded_pdf_path")
+        file_path = pm.get_current_resume_path("pdf")
         if not file_path or not os.path.exists(file_path):
-             raise HTTPException(status_code=400, detail="No uploaded PDF resume found. Please upload one first.")
+             raise HTTPException(status_code=400, detail="No selected PDF resume found. Please upload and select one first.")
 
     # Parse with ResumeParser
     try:

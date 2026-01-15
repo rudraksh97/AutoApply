@@ -46,6 +46,10 @@ DEFAULT_PROFILE = {
     "uploaded_pdf_filename": "",
     "uploaded_tex_path": "",
     "uploaded_tex_filename": "",
+    "pdf_resumes": [],
+    "text_resumes": [],
+    "current_pdf_resume_id": None,
+    "current_text_resume_id": None,
     "resume_generation_mode": "ats_generated",  # Options: ats_generated, uploaded_pdf
     "use_uploaded_resume": False,
     "custom_template_filename": ""
@@ -125,6 +129,32 @@ class ProfileManager:
                 
                 if not merged.get("uploaded_tex_filename") and merged.get("uploaded_tex_path"):
                      merged["uploaded_tex_filename"] = os.path.basename(merged["uploaded_tex_path"])
+
+                # Migration to multi-resume structure
+                import uuid
+                from datetime import datetime
+                
+                # Migrate PDF
+                if merged.get("uploaded_pdf_path") and not merged.get("pdf_resumes"):
+                    resume_id = str(uuid.uuid4())
+                    merged["pdf_resumes"] = [{
+                        "id": resume_id,
+                        "filename": merged.get("uploaded_pdf_filename", "Resume.pdf"),
+                        "path": merged["uploaded_pdf_path"],
+                        "created_at": datetime.utcnow().isoformat()
+                    }]
+                    merged["current_pdf_resume_id"] = resume_id
+                
+                # Migrate Text/Tex
+                if merged.get("uploaded_tex_path") and not merged.get("text_resumes"):
+                    resume_id = str(uuid.uuid4())
+                    merged["text_resumes"] = [{
+                        "id": resume_id,
+                        "filename": merged.get("uploaded_tex_filename", "Resume.tex"),
+                        "path": merged["uploaded_tex_path"],
+                        "created_at": datetime.utcnow().isoformat()
+                    }]
+                    merged["current_text_resume_id"] = resume_id
 
                 return merged
         except (json.JSONDecodeError, FileNotFoundError):
@@ -249,3 +279,110 @@ why_us: {p.get('why_us', '(Not provided)')}
 challenging_project: {p.get('challenging_project', '(Not provided)')}
 """
         return text.strip()
+
+    def add_resume(self, resume_type: str, filename: str, path: str):
+        """Adds a new resume to the profile and makes it current."""
+        import uuid
+        from datetime import datetime
+        
+        profile = self.get_profile()
+        resume_id = str(uuid.uuid4())
+        
+        resume_info = {
+            "id": resume_id,
+            "filename": filename,
+            "path": path,
+            "created_at": datetime.utcnow().isoformat()
+        }
+        
+        if resume_type == "pdf":
+            profile["pdf_resumes"].append(resume_info)
+            profile["current_pdf_resume_id"] = resume_id
+            profile["uploaded_pdf_path"] = path # For backward compatibility
+            profile["uploaded_pdf_filename"] = filename
+        else:
+            profile["text_resumes"].append(resume_info)
+            profile["current_text_resume_id"] = resume_id
+            profile["uploaded_tex_path"] = path # For backward compatibility
+            profile["uploaded_tex_filename"] = filename
+            
+        self.save_profile(profile)
+        return resume_id
+
+    def delete_resume(self, resume_id: str):
+        """Deletes a resume from the profile by ID."""
+        profile = self.get_profile()
+        
+        # Check PDF resumes
+        for i, r in enumerate(profile.get("pdf_resumes", [])):
+            if r["id"] == resume_id:
+                profile["pdf_resumes"].pop(i)
+                if profile["current_pdf_resume_id"] == resume_id:
+                    # Reset current pointer
+                    if profile["pdf_resumes"]:
+                        profile["current_pdf_resume_id"] = profile["pdf_resumes"][0]["id"]
+                        profile["uploaded_pdf_path"] = profile["pdf_resumes"][0]["path"]
+                    else:
+                        profile["current_pdf_resume_id"] = None
+                        profile["uploaded_pdf_path"] = ""
+                self.save_profile(profile)
+                return True
+                
+        # Check Text resumes
+        for i, r in enumerate(profile.get("text_resumes", [])):
+            if r["id"] == resume_id:
+                profile["text_resumes"].pop(i)
+                if profile["current_text_resume_id"] == resume_id:
+                    # Reset current pointer
+                    if profile["text_resumes"]:
+                        profile["current_text_resume_id"] = profile["text_resumes"][0]["id"]
+                        profile["uploaded_tex_path"] = profile["text_resumes"][0]["path"]
+                    else:
+                        profile["current_text_resume_id"] = None
+                        profile["uploaded_tex_path"] = ""
+                self.save_profile(profile)
+                return True
+                
+        return False
+
+    def set_current_resume(self, resume_id: str):
+        """Sets a resume as current by its ID."""
+        profile = self.get_profile()
+        
+        # Check PDF resumes
+        for r in profile.get("pdf_resumes", []):
+            if r["id"] == resume_id:
+                profile["current_pdf_resume_id"] = resume_id
+                # Explicitly update legacy fields for backward compatibility
+                profile["uploaded_pdf_path"] = r["path"]
+                profile["uploaded_pdf_filename"] = r["filename"]
+                self.save_profile(profile)
+                return True
+                
+        # Check Text resumes
+        for r in profile.get("text_resumes", []):
+            if r["id"] == resume_id:
+                profile["current_text_resume_id"] = resume_id
+                # Explicitly update legacy fields for backward compatibility
+                profile["uploaded_tex_path"] = r["path"]
+                profile["uploaded_tex_filename"] = r["filename"]
+                self.save_profile(profile)
+                return True
+                
+        return False
+
+    def get_current_resume_path(self, resume_type: str = "pdf"):
+        """Returns the path of the currently selected resume of the given type."""
+        profile = self.get_profile()
+        if resume_type == "pdf":
+            current_id = profile.get("current_pdf_resume_id")
+            for r in profile.get("pdf_resumes", []):
+                if r["id"] == current_id:
+                    return r["path"]
+            return profile.get("uploaded_pdf_path")
+        else:
+            current_id = profile.get("current_text_resume_id")
+            for r in profile.get("text_resumes", []):
+                if r["id"] == current_id:
+                    return r["path"]
+            return profile.get("uploaded_tex_path")
