@@ -264,6 +264,11 @@ export function ResumePreviewPopup({ isOpen, onClose, draftId, jobUrl }: ResumeP
                                                             Generating...
                                                         </Badge>
                                                     )}
+                                                    {v.status === 'FAILED' && (
+                                                        <Badge className="bg-red-100 text-red-700 border-none h-5 text-[10px] px-1.5 ml-1">
+                                                            Failed
+                                                        </Badge>
+                                                    )}
                                                 </div>
                                                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                                                     <span>Score: {v.status === 'GENERATING' ? '...' : (v.ats_score || 'N/A')}</span>

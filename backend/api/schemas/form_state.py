@@ -5,8 +5,8 @@ These models represent the source of truth for application data,
 supporting versioning, persistence, and cross-session portability.
 """
 
-from pydantic import BaseModel, Field
-from typing import Optional, List
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional, List, Any
 from datetime import datetime
 from enum import Enum
 import uuid
@@ -29,6 +29,18 @@ class ResumeVersion(BaseModel):
     is_current: bool = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+    @field_validator("is_current", mode="before")
+    @classmethod
+    def bool_fallback(cls, v: Any) -> bool:
+        """Coerce None or other non-bool values to bool."""
+        if v is None:
+            return False
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.lower() == 'true'
+        return bool(v)
+
 
 class DraftStatus(str, Enum):
     """Lifecycle states for an application draft."""
@@ -37,6 +49,7 @@ class DraftStatus(str, Enum):
     PREFILLED = "prefilled"
     DRAFT_SAVED = "draft_saved"
     USER_OPENED = "user_opened"
+    FAILED = "failed"
 
 
 class FieldType(str, Enum):
@@ -78,6 +91,19 @@ class FieldState(BaseModel):
     required: bool = False
     skipped: bool = False
     skip_reason: Optional[str] = None
+
+    @field_validator("user_edited", "required", "skipped", mode="before")
+    @classmethod
+    def bool_fallback(cls, v: Any) -> bool:
+        """Coerce None or other non-bool values to bool."""
+        if v is None:
+            return False
+        if isinstance(v, bool):
+            return v
+        # Handle string 'true'/'false' just in case
+        if isinstance(v, str):
+            return v.lower() == 'true'
+        return bool(v)
 
 
 class FormState(BaseModel):

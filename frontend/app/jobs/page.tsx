@@ -210,7 +210,7 @@ export default function JobsPage() {
         if (status.includes('Running')) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
         if (status === 'Completed' || status === 'Applied') return 'bg-green-50 text-green-700 border-green-200';
         if (status === 'Draft Saved' || status === 'draft_saved') return 'bg-blue-50 text-blue-700 border-blue-200';
-        if (status === 'Failed' || status === 'Error' || status === 'Draft Failed') return 'bg-red-50 text-red-700 border-red-200';
+        if (status === 'Failed' || status === 'Error' || status === 'Draft Failed' || status === 'failed') return 'bg-red-50 text-red-700 border-red-200';
         if (status === 'Pending') return 'bg-yellow-50 text-yellow-700 border-yellow-200';
         return 'bg-gray-50 text-gray-700 border-gray-200';
     };
@@ -275,9 +275,9 @@ export default function JobsPage() {
                             <tr>
                                 <th className="px-4 py-3 font-bold w-[90px]">Date</th>
                                 <th className="px-4 py-3 font-bold w-[250px]">Job</th>
-                                <th className="px-4 py-3 font-bold w-[80px]">Status</th>
+                                <th className="px-4 py-3 font-bold w-[100px]">Status</th>
                                 <th className="px-4 py-3 font-bold w-[100px]">Fields</th>
-                                <th className="px-4 py-3 font-bold text-right w-[300px]">Actions</th>
+                                <th className="px-4 py-3 font-bold text-right w-[250px]">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border/40">

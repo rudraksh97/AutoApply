@@ -346,7 +346,7 @@ class DraftPreparationService:
 
         except Exception as e:
             log_callback(f"❌ Error preparing draft: {e}")
-            self.draft_manager.update_status(draft_id, DraftStatus.EXTRACTED)  # Partial state
+            self.draft_manager.update_status(draft_id, DraftStatus.FAILED)
             self.job_manager.update_job(job_link, status="Draft Failed", error_message=str(e))
             return None
     
@@ -374,14 +374,31 @@ class DraftPreparationService:
         log_callback("📊 Calculating initial ATS score...")
         initial_score_data = self.resume_builder.calculate_ats_score(job_description, get_user_profile_text())
         initial_score = initial_score_data.get("score", 0)
+        
         self.draft_manager.update_draft(draft_id, initial_ats_score=initial_score)
         log_callback(f"  - Initial Score: {initial_score}/100")
 
-        # 3. Build version v1
-        # 3. Build version v1
+        # 3. Create initial ResumeVersion entry (before async build to avoid race condition)
         import uuid
         version_id = str(uuid.uuid4())
         
+        v1 = ResumeVersion(
+            id=version_id,
+            draft_id=draft_id,
+            version_number=1,
+            tex_path=f"data/tex_resumes/{job_id}/v1/Resume_{job_id}_v1.tex", # Predicted path
+            pdf_path=f"data/generated_resumes/{job_id}/v1/Resume_{job_id}_v1.pdf", # Predicted path
+            ats_score=0, # Will be updated by background process
+            justification="Generating...",
+            keywords_added="",
+            changes_summary="Initial tailored version",
+            status="GENERATING",
+            is_current=True
+        )
+        self.draft_manager.create_resume_version(v1)
+
+        # 4. Asynchronously Build version v1
+        # The builder will update the DB entry with actual score, keywords, and status="COMPLETED"
         pdf_path, tex_path, keywords, changes = self.resume_builder.build(
             job_description, 
             get_user_profile_text(), 
@@ -390,33 +407,14 @@ class DraftPreparationService:
             tailoring_prompt=tailoring_prompt,
             version="v1",
             version_id=version_id,
-            draft_manager=self.draft_manager
-        )
-        
-        # 4. Calculate FINAL ATS Score for v1
-        log_callback("📊 Calculating final ATS score for v1...")
-        # Ideally we'd scan the PDF or use the generated LaTeX, but let's use the tailored LLM context/output for scoring
-        final_score_data = self.resume_builder.calculate_ats_score(job_description, get_user_profile_text()) # Simplified
-        final_score = final_score_data.get("score", 0)
-        justification = final_score_data.get("justification", "")
-        
-        # 5. Store Version 1 in Database
-        v1 = ResumeVersion(
-            id=version_id,
             draft_id=draft_id,
-            version_number=1,
-            tex_path=tex_path,
-            pdf_path=pdf_path,
-            ats_score=final_score,
-            justification=justification,
-            keywords_added=keywords,
-            changes_summary=changes or "Initial tailored version",
-            status="GENERATING", # PDF compilation is backgrounded
-            is_current=True
+            draft_manager=self.draft_manager,
+            ats_context=initial_score_data,
+            job_manager=self.job_manager,
+            job_url=job_link
         )
-        self.draft_manager.create_resume_version(v1)
         
-        log_callback(f"✅ Resume version v1 generated. Final Score: {final_score}/100")
+        log_callback(f"✅ Resume generation started for v1")
         return pdf_path
     
     def _extract_form_structure(self, job_link: str, extraction_result: dict) -> FormState:

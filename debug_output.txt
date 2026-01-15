@@ -1,0 +1,51 @@
+--- Checking for Orphaned Resume Versions ---
+Found 31 orphaned resume versions:
+  - Version ID: 16a2eb4c-b0bb-4574-bb9b-c56e118cc977, Draft ID (Missing): 8ef4947c-f93b-4997-8b7b-cf1756aedb95, Path: data/generated_resumes/4329664970444966583/v1/Resume_4329664970444966583_v1.pdf
+  - Version ID: e3adc021-4702-4c73-bbcf-229e4f295ae7, Draft ID (Missing): 0c12cf55-6144-4879-a37b-21d0f90ff743, Path: data/generated_resumes/4324159618524152312/v1/Resume_4324159618524152312_v1.pdf
+  - Version ID: 83d5a88d-9e53-4284-acb8-8c9312d7d2b1, Draft ID (Missing): 23863cc0-feba-4ccf-b4ac-355e9ddfc291, Path: data/generated_resumes/2971930586983122895/v1/Resume_2971930586983122895_v1.pdf
+  - Version ID: a13b78af-b359-4fbc-9a97-77099bca6adc, Draft ID (Missing): 8ef4947c-f93b-4997-8b7b-cf1756aedb95, Path: data/generated_resumes/4329664970444966583/v2/Resume_4329664970444966583_v2.pdf
+  - Version ID: 912e0f49-2c24-4c39-90af-489ddfc3a364, Draft ID (Missing): 3129891d-4a30-41ba-aaa6-466592f01724, Path: data/generated_resumes/7874659720545565738/v1/Resume_7874659720545565738_v1.pdf
+  - Version ID: 957df2c9-f412-4843-ae77-c35d72b25f6d, Draft ID (Missing): f139be48-aecf-409a-b0e3-9ad2c39bf784, Path: data/generated_resumes/5046687545762874576/v1/Resume_5046687545762874576_v1.pdf
+  - Version ID: 7f8b7460-4cb4-4928-bde4-db5c0a69770e, Draft ID (Missing): 69a85041-9548-4755-8c63-24332e7ac09d, Path: data/generated_resumes/2263248633949211021/v1/Resume_2263248633949211021_v1.pdf
+  - Version ID: f394135f-5ce9-452d-8321-6618f0ed6e1d, Draft ID (Missing): 4e1075dc-6476-41f2-b551-bd2fa8a54439, Path: data/generated_resumes/3167407217793256004/v1/Resume_3167407217793256004_v1.pdf
+  - Version ID: 2cc4cb6a-0e62-4825-b409-c32647583a89, Draft ID (Missing): 43e3515d-1e4b-4280-adc8-9cd38391b3a3, Path: data/generated_resumes/1861134483098137324/v1/Resume_1861134483098137324_v1.pdf
+  - Version ID: 2076bd6e-c179-41db-a98a-f3ffd2b53a82, Draft ID (Missing): b529c8c9-fe75-41f2-b446-b4ea07d2c79b, Path: data/generated_resumes/2275351449086444137/v1/Resume_2275351449086444137_v1.pdf
+  - Version ID: 721974d4-8bad-4fd4-82b7-4e4235ae5059, Draft ID (Missing): 14384339-8000-4035-8e1e-1423daff106a, Path: data/generated_resumes/428158513180239134/v1/Resume_428158513180239134_v1.pdf
+  - Version ID: c7343fd8-e4b4-44af-99dc-c6825f3d84c8, Draft ID (Missing): 1c2235f8-e56b-4fde-89ff-55aacd8063a2, Path: data/generated_resumes/3235534787619494054/v1/Resume_3235534787619494054_v1.pdf
+  - Version ID: bdfe3f22-fd10-44fd-99ff-7dd0f14dfc0b, Draft ID (Missing): 71fda854-38bb-4810-a5b0-236129e91590, Path: data/generated_resumes/8528155608856442824/v1/Resume_8528155608856442824_v1.pdf
+  - Version ID: 185d54b6-aff0-4ff0-a3b2-dfcbaebb48ad, Draft ID (Missing): 03d1fc0f-d3b6-42d5-979d-90c60bba9267, Path: data/generated_resumes/906851940281965459/v1/Resume_906851940281965459_v1.pdf
+  - Version ID: 0fec5917-2af6-43e4-a95e-13f5f5ec96af, Draft ID (Missing): ecb29f9f-0432-48e7-a8e5-232fd19dd555, Path: data/generated_resumes/1142731695401562900/v1/Resume_1142731695401562900_v1.pdf
+  - Version ID: b1ecca2c-0157-406d-a716-cae522ba73ea, Draft ID (Missing): f4a4a2a3-819a-4a75-96e0-77271cf5670f, Path: data/generated_resumes/6460697484844985321/v1/Resume_6460697484844985321_v1.pdf
+  - Version ID: d423cae0-c2ec-4312-818b-69ab7f2cfbce, Draft ID (Missing): d72b88f0-99de-478b-bec1-8da475e8a457, Path: data/generated_resumes/2473436895842136373/v1/Resume_2473436895842136373_v1.pdf
+  - Version ID: d3f81ee2-7113-46b2-a53e-4e4f20852d88, Draft ID (Missing): 911679f7-c70b-4220-a6e5-9ff2a5c94f66, Path: data/generated_resumes/4231144587115863849/v1/Resume_4231144587115863849_v1.pdf
+  - Version ID: 2121e687-3ba9-484b-8a25-0d4fec0d6cd0, Draft ID (Missing): a8589057-49ee-4ac2-8e80-98395ac58038, Path: data/generated_resumes/2263580369427689106/v1/Resume_2263580369427689106_v1.pdf
+  - Version ID: 7137ec5f-3cb3-465c-a25c-a1587a5c322d, Draft ID (Missing): 2de43202-01c7-4df2-a350-8dc0ee6d5468, Path: data/generated_resumes/2813241903630010392/v1/Resume_2813241903630010392_v1.pdf
+  - Version ID: ac3f9ef0-eb25-41b3-852c-1d9a8cbddfb5, Draft ID (Missing): acef3ff2-379e-4f86-8a1c-626143d163f6, Path: data/generated_resumes/2264321368738428786/v1/Resume_2264321368738428786_v1.pdf
+  - Version ID: f4070959-c202-4e0c-87b1-cabddfb86929, Draft ID (Missing): c7ae6937-39dd-4874-b6f3-884f10ddb6dc, Path: data/generated_resumes/5923290298935374299/v1/Resume_5923290298935374299_v1.pdf
+  - Version ID: ed58f233-9f63-48eb-b71d-06d27ed32023, Draft ID (Missing): d27b062f-0b65-4bce-b42f-c6cc4a41499b, Path: data/generated_resumes/5371466904920220890/v1/Resume_5371466904920220890_v1.pdf
+  - Version ID: 4517632b-e9df-4dbb-bc47-3004926554e0, Draft ID (Missing): f47991fb-ba96-4f0a-a56e-631b1478242c, Path: data/generated_resumes/7520951874695860044/v1/Resume_7520951874695860044_v1.pdf
+  - Version ID: d607ad45-dd51-4524-870d-36dc1acb2c85, Draft ID (Missing): 7e8c7891-0c65-4032-924e-6c44bcac4150, Path: data/generated_resumes/3659019728838089885/v1/Resume_3659019728838089885_v1.pdf
+  - Version ID: c94d1ab6-8445-4233-90c0-0aaf05fb8a79, Draft ID (Missing): 8f15711d-5b7b-4a1d-8fe2-032b4d04c14b, Path: data/generated_resumes/4729333787102259271/v1/Resume_4729333787102259271_v1.pdf
+  - Version ID: b1326372-ef83-40cd-81fd-80821b001d16, Draft ID (Missing): 2386e47d-2722-4f7a-a90b-66c667355177, Path: data/generated_resumes/3839979396487118451/v1/Resume_3839979396487118451_v1.pdf
+  - Version ID: 814390d9-30fb-43c4-8407-bb2d7cc45018, Draft ID (Missing): db78cdef-3432-4d28-bc75-08a9b49397ea, Path: data/generated_resumes/4308940533448098398/v1/Resume_4308940533448098398_v1.pdf
+  - Version ID: 501afde7-ceeb-48c4-bc20-cb045ac8999e, Draft ID (Missing): 1281b0ca-fa85-41c9-b2c9-dc9dbbf1f88a, Path: data/generated_resumes/6649484354894333640/v1/Resume_6649484354894333640_v1.pdf
+  - Version ID: c8313eff-eef6-4af9-a372-fd0fda045519, Draft ID (Missing): f1fc9fb3-5ce6-42ba-af92-3cbde2bf82a1, Path: data/generated_resumes/6954441227526277588/v1/Resume_6954441227526277588_v1.pdf
+  - Version ID: 699bc4dd-0523-47e5-afb4-8a045631b34f, Draft ID (Missing): 5d3dfcf8-99d1-4ad4-8820-716c3aa8e3bb, Path: data/generated_resumes/201876829570241955/v1/Resume_201876829570241955_v1.pdf
+
+--- Checking for Draft IDs associated with target job IDs ---
+
+Target Path Segment: /7014725717177112913/
+  Version points to VALID draft: 626d244b-c434-4fab-9841-80448e68b58e (Status: draft_saved)
+  Path: data/generated_resumes/7014725717177112913/v1/Resume_7014725717177112913_v1.pdf
+
+Target Path Segment: /5107616587956981479/
+  Version points to VALID draft: 90fe2d01-9ac8-4169-a1ed-6cbd690adf4f (Status: draft_saved)
+  Path: data/generated_resumes/5107616587956981479/v1/Resume_5107616587956981479_v1.pdf
+
+Target Path Segment: /5814125911930369848/
+  Version points to VALID draft: 7b79976f-40cd-4d09-9c80-3c7a769c3bd8 (Status: draft_saved)
+  Path: data/generated_resumes/5814125911930369848/v1/Resume_5814125911930369848_v1.pdf
+
+Target Path Segment: /200687386713884251/
+  Version points to VALID draft: b447c785-3e1b-4bba-9dd1-fca6abc93b2f (Status: failed)
+  Path: data/generated_resumes/200687386713884251/v1/Resume_200687386713884251_v1.pdf

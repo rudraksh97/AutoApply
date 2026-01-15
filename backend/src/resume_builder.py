@@ -1,24 +1,10 @@
 import os
 import subprocess
 import jinja2
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
-from dotenv import load_dotenv
-
-load_dotenv()
-
-"""
-Tailored resume generation using LaTeX and LLMs.
-
-This module provides the `ResumeBuilder` class, which extracts relevant 
-keywords from job descriptions, injects them into a Jinja2-enabled 
-LaTeX template, and compiles the result into a PDF.
-"""
-
-import os
-import subprocess
-import jinja2
+import logging
+import json
+from datetime import datetime
+from typing import List, Optional
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
@@ -26,6 +12,8 @@ from dotenv import load_dotenv
 from src.prompts import RESUME_OPTIMIZER_PROMPT_TEMPLATE
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 class ResumeBuilder:
     """
@@ -84,69 +72,76 @@ class ResumeBuilder:
         chain = prompt | self.llm | JsonOutputParser()
         return chain.invoke({"job_description": job_description})
 
-    def tailor_latex(self, latex_template: str, job_description: str, user_profile_text: str, custom_prompt: str = None):
+    def tailor_latex(self, latex_template: str, job_description: str, user_profile_text: str, custom_prompt: str = None, ats_context: dict = None):
         """
-        Tailors the entire LaTeX template using an LLM.
-        Returns a dict: {"latex": str, "keywords": str, "summary": str}
+        Tailors the LaTeX template using structured output with full ATS context.
+        ats_context should contain: missing_keywords, matched_keywords, score, justification
         """
+        from pydantic import BaseModel, Field
+        from typing import List
+
+        # New output schema as requested
+        class TailoredResumeOutput(BaseModel):
+            final_score: int = Field(description="Simulated ATS score between 0 and 100")
+            new_latex_code: str = Field(description="The FULL optimized LaTeX resume code")
+            summary: List[str] = Field(description="List of changes made, e.g. added skills, modified bullets")
+
         if not custom_prompt:
             from src.config import ConfigManager
             config_manager = ConfigManager()
             prompts = config_manager.get_ats_prompts()
             custom_prompt = prompts.get("tailor_resume")
 
-        system_prompt = f"""
-{custom_prompt}
+        # Prepare context variables
+        missing_keywords = ats_context.get("missing_keywords", []) if ats_context else []
+        matched_keywords = ats_context.get("matched_keywords", []) if ats_context else []
+        initial_score = ats_context.get("score", 0) if ats_context else 0
+        justification = ats_context.get("justification", "") if ats_context else ""
 
---- User Profile ---
-{user_profile_text}
-"""
-        user_prompt = f"""
-Optimize this LaTeX template for the following Job Description:
+        missing_str = ", ".join(missing_keywords) if missing_keywords else "None"
+        matched_str = ", ".join(matched_keywords) if matched_keywords else "None"
 
---- JOB DESCRIPTION ---
-{job_description}
+        # Replace placeholders
+        formatted_prompt = custom_prompt.replace("{{job_description}}", job_description)\
+                                        .replace("{{old_resume_code}}", latex_template)\
+                                        .replace("{{resume_text}}", latex_template)\
+                                        .replace("{{missing_keywords}}", missing_str)\
+                                        .replace("{{matched_keywords}}", matched_str)\
+                                        .replace("{{initial_ats_score}}", str(initial_score))\
+                                        .replace("{{justification}}", justification)
+        
+        # Add user profile context if needed (though new prompt might not need it explicitly if strict)
+        if "{{user_profile}}" in custom_prompt:
+             formatted_prompt = formatted_prompt.replace("{{user_profile}}", user_profile_text)
+        elif "User Profile" not in formatted_prompt:
+             formatted_prompt += f"\n\n--- ADDITIONAL CONTEXT: USER PROFILE ---\n{user_profile_text}"
 
---- LATEX TEMPLATE ---
-{latex_template}
-"""
-        from langchain_core.messages import SystemMessage, HumanMessage
-        from langchain_core.output_parsers import StrOutputParser
-        
-        chain = self.llm | StrOutputParser()
-        
-        response = chain.invoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt)
-        ])
-        
-        # Parse sections
-        keywords = ""
-        summary = ""
-        latex = response
-        
-        if "--- KEYWORDS ---" in response and "--- LATEX ---" in response:
-            try:
-                parts = response.split("--- KEYWORDS ---")[1].split("--- SUMMARY ---")
-                keywords = parts[0].strip()
-                sub_parts = parts[1].split("--- LATEX ---")
-                summary = sub_parts[0].strip()
-                latex = sub_parts[1].strip()
-            except Exception:
-                # Fallback if structure is slightly off
-                pass
-        
-        # Strip potential markdown code blocks
-        if "```latex" in latex:
-            latex = latex.split("```latex")[1].split("```")[0].strip()
-        elif "```" in latex:
-            latex = latex.split("```")[1].split("```")[0].strip()
-            
-        return {
-            "latex": latex.strip(),
-            "keywords": keywords,
-            "summary": summary
-        }
+        try:
+             if hasattr(self.llm, "with_structured_output"):
+                chain = self.llm.with_structured_output(TailoredResumeOutput)
+                result = chain.invoke(formatted_prompt)
+                return {
+                    "latex": result.new_latex_code,
+                    "final_score": result.final_score,
+                    "keywords": missing_str,
+                    "summary": "; ".join(result.summary)
+                }
+             else:
+                from langchain_core.output_parsers import JsonOutputParser
+                parser = JsonOutputParser(pydantic_object=TailoredResumeOutput)
+                format_instructions = parser.get_format_instructions()
+                
+                chain = self.llm | parser
+                result = chain.invoke(f"{formatted_prompt}\n\n{format_instructions}")
+                return {
+                    "latex": result.get("new_latex_code", latex_template),
+                    "final_score": result.get("final_score", 0),
+                    "keywords": missing_str,
+                    "summary": "; ".join(result.get("summary", []))
+                }
+        except Exception as e:
+            print(f"Error tailoring resume: {e}")
+            return {"latex": latex_template, "keywords": "", "summary": f"Error: {e}"}
 
     def render_tex(self, context, filename, template_path=None, raw_latex=None):
         """
@@ -227,32 +222,79 @@ Optimize this LaTeX template for the following Job Description:
 
     def calculate_ats_score(self, job_description: str, resume_text: str):
         """
-        Calculates an ATS score for a resume against a job description.
+        Calculates an ATS score using structured output.
         """
         from src.config import ConfigManager
+        from pydantic import BaseModel, Field
+        from typing import List
+        import json
+
+        class JustificationDetail(BaseModel):
+            keyword_match: str = Field(description="Analysis of matched and missing keywords")
+            skill_depth: str = Field(description="Evaluation of skill proficiency and relevance")
+            role_fit: str = Field(description="Assessment of overall fit for the specific role")
+            experience_relevance: str = Field(description="How well past experience aligns with requirements")
+            education_fit: str = Field(description="Alignment of education and certifications")
+            parsing_quality: str = Field(description="Quality of content structure and readability")
+
+        class ATSScoreOutput(BaseModel):
+            missing_keywords: List[str] = Field(description="List of keywords present in the job description but missing from the resume")
+            matched_keywords: List[str] = Field(description="List of keywords present in both the job description and the resume")
+            score: int = Field(description="ATS score from 0 to 100")
+            justification: JustificationDetail = Field(description="Detailed breakdown of the score justification")
+
         config_manager = ConfigManager()
         prompts = config_manager.get_ats_prompts()
         score_prompt = prompts.get("calculate_score")
 
-        system_prompt = score_prompt
-        user_prompt = f"--- JOB DESCRIPTION ---\n{job_description}\n\n--- RESUME TEXT ---\n{resume_text}"
+        # Replace placeholders
+        formatted_prompt = score_prompt.replace("{{job_description}}", job_description)\
+                                       .replace("{{resume_text}}", resume_text)
 
-        from langchain_core.messages import SystemMessage, HumanMessage
-        from langchain_core.output_parsers import JsonOutputParser
-
-        chain = self.llm | JsonOutputParser()
-        
         try:
-            result = chain.invoke([
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt)
-            ])
-            return result # Expected: {"score": 85, "justification": "..."}
+            # Try structured output if available (requires tool calling model)
+            if hasattr(self.llm, "with_structured_output"):
+                logger.info("Using structured output for ATS score calculation")
+                chain = self.llm.with_structured_output(ATSScoreOutput)
+                result = chain.invoke(formatted_prompt)
+                
+                # Serialize detailed justification to string for DB storage
+                justification_json = result.justification.json()
+                
+                return {
+                    "missing_keywords": result.missing_keywords,
+                    "matched_keywords": result.matched_keywords,
+                    "score": result.score,
+                    "justification": justification_json # Store as JSON string
+                }
+            else:
+                # Fallback to JSON parsing
+                from langchain_core.output_parsers import JsonOutputParser
+                parser = JsonOutputParser(pydantic_object=ATSScoreOutput)
+                format_instructions = parser.get_format_instructions()
+                
+                chain = self.llm | parser
+                result = chain.invoke(f"{formatted_prompt}\n\n{format_instructions}")
+                
+                # Manual fallback serialization if dict returned
+                just_data = result.get("justification", {})
+                if isinstance(just_data, dict):
+                    just_str = json.dumps(just_data)
+                else:
+                    just_str = str(just_data)
+
+                return {
+                    "missing_keywords": result.get("missing_keywords", []),
+                    "matched_keywords": result.get("matched_keywords", []),
+                    "score": result.get("score", 0),
+                    "justification": just_str
+                }
+                
         except Exception as e:
             print(f"Error calculating ATS score: {e}")
-            return {"score": 0, "justification": f"Error: {e}"}
+            return {"score": 0, "justification": f"Error: {e}", "missing_keywords": []}
 
-    def build(self, job_description, user_profile_text, job_id, template_path=None, tailoring_prompt=None, version="v1", version_id=None, draft_manager=None):
+    def build(self, job_description, user_profile_text, job_id, template_path=None, tailoring_prompt=None, version="v1", version_id=None, draft_id=None, draft_manager=None, ats_context=None, job_manager=None, job_url=None):
         """
         Orchestrates the tailoring. If draft_manager and version_id are provided, 
         both tailoring and compilation happen in a separate thread.
@@ -261,78 +303,114 @@ Optimize this LaTeX template for the following Job Description:
         # Create versioned directories paths
         gen_dir = os.path.join("data", "generated_resumes", str(job_id), version)
         tex_dir = os.path.join("data", "tex_resumes", str(job_id), version)
+        log_dir = os.path.join("data", "logs", str(job_id))
         
         filename = f"Resume_{job_id}_{version}"
         tex_path = os.path.join(tex_dir, f"{filename}.tex")
         pdf_path = os.path.join(gen_dir, f"{filename}.pdf")
+        log_path = os.path.join(log_dir, f"{version}.log")
         
         # We'll use these potentially updated values in the background
         result_metadata = {"keywords": "", "summary": ""}
         
         def run_background_process():
-            print(f"Background: Starting process for {filename}...")
             try:
-                # Ensure directories exist
+                os.makedirs(log_dir, exist_ok=True)
                 os.makedirs(gen_dir, exist_ok=True)
                 os.makedirs(tex_dir, exist_ok=True)
                 
-                # 1. Tailor LaTeX
-                if tailoring_prompt:
-                    print(f"Background: Applying deep LaTeX tailoring for {filename}...")
-                    target_template = template_path if template_path else self.base_template_path
-                    with open(target_template, 'r', encoding='utf-8') as f:
-                        template_content = f.read()
-                    
-                    tailored_data = self.tailor_latex(template_content, job_description, user_profile_text, custom_prompt=tailoring_prompt)
-                    tailored_latex = tailored_data["latex"]
-                    result_metadata["keywords"] = tailored_data["keywords"]
-                    result_metadata["summary"] = tailored_data["summary"]
-                    
-                    with open(tex_path, 'w', encoding='utf-8') as f:
-                        f.write(tailored_latex)
-                else:
-                    # Fallback to legacy
-                    print(f"Background: Extracting keywords for {filename}...")
-                    extracted_data = self.generate_resume_content(job_description, user_profile_text)
-                    context = {
-                        "skills_list": extracted_data.get("skills_list", []),
-                        "summary": "Tailored Professional",
-                        "experience": "Detailed Experience",
-                        "education": "University Degree"
-                    }
-                    target_template = template_path if template_path else self.base_template_path
-                    with open(target_template, 'r', encoding='utf-8') as f:
-                        template_content = f.read()
-                    template = self.env.from_string(template_content)
-                    rendered = template.render(**context)
-                    
-                    with open(tex_path, 'w', encoding='utf-8') as f:
-                        f.write(rendered)
+                with open(log_path, 'a', encoding='utf-8') as log_file:
+                    def log(msg):
+                        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        formatted_msg = f"[{timestamp}] {msg}"
+                        print(formatted_msg)
+                        log_file.write(formatted_msg + "\n")
+                        log_file.flush()
 
-                # 2. Compile PDF
-                print(f"Background: Compiling PDF for {filename}...")
-                temp_pdf = self.compile_pdf(tex_path)
-                
-                # The pdflatex module might return a path or we derive it
-                # If it's not where we want it, move it
-                if os.path.exists(temp_pdf) and os.path.abspath(temp_pdf) != os.path.abspath(pdf_path):
-                    import shutil
-                    shutil.move(temp_pdf, pdf_path)
-                
-                # 3. Update Database
-                if draft_manager and version_id:
-                    draft_manager.update_resume_version(
-                        version_id, 
-                        status="COMPLETED", 
-                        pdf_path=pdf_path,
-                        keywords_added=result_metadata["keywords"],
-                        changes_summary=result_metadata["summary"]
-                    )
-                    print(f"Background: PDF for {filename} COMPLETED")
-            except Exception as e:
-                print(f"Background: PDF for {filename} FAILED: {e}")
-                if draft_manager and version_id:
-                    draft_manager.update_resume_version(version_id, status="FAILED")
+                    log(f"Background: Starting process for {filename}...")
+                    
+                    try:
+                        # 1. Tailor LaTeX
+                        if tailoring_prompt:
+                            log(f"Background: Applying deep LaTeX tailoring for {filename}...")
+                            target_template = template_path if template_path else self.base_template_path
+                            with open(target_template, 'r', encoding='utf-8') as f:
+                                template_content = f.read()
+                            
+                            tailored_data = self.tailor_latex(template_content, job_description, user_profile_text, custom_prompt=tailoring_prompt, ats_context=ats_context)
+                            tailored_latex = tailored_data["latex"]
+                            result_metadata["keywords"] = tailored_data["keywords"]
+                            result_metadata["summary"] = tailored_data["summary"]
+                            # Capture the predicted final score if available
+                            predicted_score = tailored_data.get("final_score", 0)
+                            
+                            with open(tex_path, 'w', encoding='utf-8') as f:
+                                f.write(tailored_latex)
+                        else:
+                            # Fallback to legacy
+                            predicted_score = 0
+                            log(f"Background: Extracting keywords for {filename}...")
+                            extracted_data = self.generate_resume_content(job_description, user_profile_text)
+                            context = {
+                                "skills_list": extracted_data.get("skills_list", []),
+                                "summary": "Tailored Professional",
+                                "experience": "Detailed Experience",
+                                "education": "University Degree"
+                            }
+                            target_template = template_path if template_path else self.base_template_path
+                            with open(target_template, 'r', encoding='utf-8') as f:
+                                template_content = f.read()
+                            template = self.env.from_string(template_content)
+                            rendered = template.render(**context)
+                            
+                            with open(tex_path, 'w', encoding='utf-8') as f:
+                                f.write(rendered)
+
+                        # 2. Compile PDF
+                        log(f"Background: Compiling PDF for {filename}...")
+                        try:
+                            temp_pdf = self.compile_pdf(tex_path)
+                            
+                            # The pdflatex module might return a path or we derive it
+                            # If it's not where we want it, move it
+                            if os.path.exists(temp_pdf) and os.path.abspath(temp_pdf) != os.path.abspath(pdf_path):
+                                import shutil
+                                shutil.move(temp_pdf, pdf_path)
+                            log(f"Background: PDF compiled successfully: {pdf_path}")
+                        except Exception as compile_err:
+                            log(f"Background: LaTeX compilation failed: {compile_err}")
+                            raise
+
+                        # 3. Update Database
+                        if draft_manager and version_id:
+                            update_kwargs = {
+                                "status": "COMPLETED",
+                                "pdf_path": pdf_path,
+                                "keywords_added": result_metadata["keywords"],
+                                "changes_summary": result_metadata["summary"]
+                            }
+                            if predicted_score > 0:
+                                update_kwargs["ats_score"] = predicted_score
+                                
+                            draft_manager.update_resume_version(version_id, **update_kwargs)
+                            log(f"Background: PDF for {filename} COMPLETED")
+                    except Exception as e:
+                        import traceback
+                        err_traceback = traceback.format_exc()
+                        log(f"Background: PDF for {filename} FAILED: {e}")
+                        log(f"Traceback:\n{err_traceback}")
+                        
+                        if draft_manager and version_id:
+                            draft_manager.update_resume_version(version_id, status="FAILED")
+                        if job_manager and job_url:
+                            job_manager.update_job(job_url, status="Draft Failed", error_message=str(e))
+                        if draft_manager and draft_id:
+                             from api.schemas.form_state import DraftStatus
+                             draft_manager.update_status(draft_id, DraftStatus.FAILED)
+            except Exception as outer_e:
+                print(f"CRITICAL: Background thread failed before logging started: {outer_e}")
+                if job_manager and job_url:
+                    job_manager.update_job(job_url, status="Critical Error", error_message=str(outer_e))
 
         if draft_manager and version_id:
             import threading
