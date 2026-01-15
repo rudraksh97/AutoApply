@@ -375,7 +375,7 @@ class DraftPreparationService:
         # We use a base rendering or just user profile text vs JD
         # To be precise, let's score the profile text against the JD
         log_callback("📊 Calculating initial ATS score...")
-        initial_score_data = self.resume_builder.calculate_ats_score(job_description, get_user_profile_text())
+        initial_score_data = await self.resume_builder.calculate_ats_score(job_description, get_user_profile_text())
         initial_score = initial_score_data.get("score", 0)
         
         self.draft_manager.update_draft(draft_id, initial_ats_score=initial_score)
@@ -402,7 +402,7 @@ class DraftPreparationService:
 
         # 4. Synchronously Build version v1
         # The builder will update the DB entry with actual score, keywords, and status="COMPLETED"
-        pdf_path, tex_path, keywords, changes = self.resume_builder.build(
+        pdf_path, tex_path, keywords, changes = await self.resume_builder.build(
             job_description, 
             get_user_profile_text(), 
             job_id=job_id,

@@ -455,7 +455,7 @@ async def get_resume_versions(draft_id: str):
 
 
 @router.post("/{draft_id}/resume/versions")
-async def refine_resume(draft_id: str, request: ResumeEditRequest):
+async def refine_resume(draft_id: str, request: ResumeEditRequest, background_tasks: BackgroundTasks):
     """
     Generate a new version of the resume based on user prompt.
     """
@@ -495,18 +495,28 @@ async def refine_resume(draft_id: str, request: ResumeEditRequest):
     import uuid
     version_id = str(uuid.uuid4())
     
-    # Generate new version (TeX part is sync, PDF is backgrounded)
-    job_id = abs(hash(draft.job_url))
-    pdf_path, tex_path, keywords, changes = service.resume_builder.build(
-        draft.job_details,
-        "", # profile text
+    # Use accurate job ID from URL
+    from src.url_utils import get_stable_job_id
+    job_id = get_stable_job_id(draft.job_url)
+
+    # Add build task to background
+    background_tasks.add_task(
+        service.resume_builder.build,
+        job_description=draft.job_details,
+        user_profile_text=get_user_profile_text(), # Use actual profile text
         job_id=job_id,
-        template_path=current_version.tex_path, # Refine from previous version's TeX
+        template_path=current_version.tex_path,
         tailoring_prompt=refinement_prompt,
         version=f"v{new_version_num}",
         version_id=version_id,
-        draft_manager=draft_manager
+        draft_manager=draft_manager,
+        job_manager=service.job_manager,
+        job_url=draft.job_url
     )
+    
+    # Define predicted paths
+    tex_path = f"data/tex_resumes/{job_id}/v{new_version_num}/Resume_{job_id}_v{new_version_num}.tex"
+    pdf_path = f"data/generated_resumes/{job_id}/v{new_version_num}/Resume_{job_id}_v{new_version_num}.pdf"
     
     # Create the record in DB (status will be GENERATING because PDF is still cooking)
     new_v = ResumeVersion(
@@ -517,8 +527,8 @@ async def refine_resume(draft_id: str, request: ResumeEditRequest):
         pdf_path=pdf_path,
         ats_score=0, # Score can be updated after PDF text extraction if needed
         justification="Generating...",
-        keywords_added=keywords,
-        changes_summary=changes or request.prompt,
+        keywords_added="",
+        changes_summary=request.prompt,
         status="GENERATING",
         is_current=True
     )

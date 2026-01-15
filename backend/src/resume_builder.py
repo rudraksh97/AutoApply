@@ -63,16 +63,16 @@ class ResumeBuilder:
             base_url="https://openrouter.ai/api/v1"
         )
 
-    def generate_resume_content(self, job_description, current_resume_info):
+    async def generate_resume_content(self, job_description, current_resume_info):
         """
         Uses an LLM to extract relevant keywords from a job description.
         (Legacy method for skills_list injection)
         """
         prompt = ChatPromptTemplate.from_template(RESUME_OPTIMIZER_PROMPT_TEMPLATE)
         chain = prompt | self.llm | JsonOutputParser()
-        return chain.invoke({"job_description": job_description})
+        return await chain.ainvoke({"job_description": job_description})
 
-    def tailor_latex(self, latex_template: str, job_description: str, user_profile_text: str, custom_prompt: str = None, ats_context: dict = None):
+    async def tailor_latex(self, latex_template: str, job_description: str, user_profile_text: str, custom_prompt: str = None, ats_context: dict = None):
         """
         Tailors the LaTeX template using structured output with full ATS context.
         ats_context should contain: missing_keywords, matched_keywords, score, justification
@@ -119,7 +119,7 @@ class ResumeBuilder:
         try:
              if hasattr(self.llm, "with_structured_output"):
                 chain = self.llm.with_structured_output(TailoredResumeOutput)
-                result = chain.invoke(formatted_prompt)
+                result = await chain.ainvoke(formatted_prompt)
                 return {
                     "latex": result.new_latex_code,
                     "final_score": result.final_score,
@@ -132,7 +132,7 @@ class ResumeBuilder:
                 format_instructions = parser.get_format_instructions()
                 
                 chain = self.llm | parser
-                result = chain.invoke(f"{formatted_prompt}\n\n{format_instructions}")
+                result = await chain.ainvoke(f"{formatted_prompt}\n\n{format_instructions}")
                 return {
                     "latex": result.get("new_latex_code", latex_template),
                     "final_score": result.get("final_score", 0),
@@ -173,12 +173,14 @@ class ResumeBuilder:
         
         return tex_path
 
-    def compile_pdf(self, tex_path):
-        # ... (same as before)
+    async def compile_pdf(self, tex_path):
+        import asyncio
         # Check if pdflatex is available
         try:
-            subprocess.run(["pdflatex", "--version"], check=True, 
-                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            await asyncio.to_thread(
+                subprocess.run, ["pdflatex", "--version"], check=True, 
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
         except (FileNotFoundError, subprocess.CalledProcessError) as e:
             raise RuntimeError("pdflatex is not available. Please install a TeX distribution.") from e
         
@@ -187,12 +189,13 @@ class ResumeBuilder:
             tex_dir = os.path.abspath(os.path.dirname(tex_path))
             tex_filename = os.path.basename(tex_path)
             
-            result = subprocess.run(
-            ["pdflatex", "-interaction=nonstopmode", "-output-directory", tex_dir, tex_filename],
-            cwd=tex_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
+            result = await asyncio.to_thread(
+                subprocess.run,
+                ["pdflatex", "-interaction=nonstopmode", "-output-directory", tex_dir, tex_filename],
+                cwd=tex_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"pdflatex compilation failed: {e.stderr.decode('utf-8')}")
         
@@ -220,7 +223,7 @@ class ResumeBuilder:
             print(f"pdflatex module compilation error: {e}")
             raise
 
-    def calculate_ats_score(self, job_description: str, resume_text: str):
+    async def calculate_ats_score(self, job_description: str, resume_text: str):
         """
         Calculates an ATS score using structured output.
         """
@@ -256,7 +259,7 @@ class ResumeBuilder:
             if hasattr(self.llm, "with_structured_output"):
                 logger.info("Using structured output for ATS score calculation")
                 chain = self.llm.with_structured_output(ATSScoreOutput)
-                result = chain.invoke(formatted_prompt)
+                result = await chain.ainvoke(formatted_prompt)
                 
                 # Serialize detailed justification to string for DB storage
                 justification_json = result.justification.json()
@@ -274,7 +277,7 @@ class ResumeBuilder:
                 format_instructions = parser.get_format_instructions()
                 
                 chain = self.llm | parser
-                result = chain.invoke(f"{formatted_prompt}\n\n{format_instructions}")
+                result = await chain.ainvoke(f"{formatted_prompt}\n\n{format_instructions}")
                 
                 # Manual fallback serialization if dict returned
                 just_data = result.get("justification", {})
@@ -294,7 +297,7 @@ class ResumeBuilder:
             print(f"Error calculating ATS score: {e}")
             return {"score": 0, "justification": f"Error: {e}", "missing_keywords": []}
 
-    def build(self, job_description, user_profile_text, job_id, template_path=None, tailoring_prompt=None, version="v1", version_id=None, draft_id=None, draft_manager=None, ats_context=None, job_manager=None, job_url=None):
+    async def build(self, job_description, user_profile_text, job_id, template_path=None, tailoring_prompt=None, version="v1", version_id=None, draft_id=None, draft_manager=None, ats_context=None, job_manager=None, job_url=None):
         """
         Orchestrates the tailoring. If draft_manager and version_id are provided, 
         both tailoring and compilation happen in a separate thread.
@@ -327,17 +330,17 @@ class ResumeBuilder:
                     log_file.write(formatted_msg + "\n")
                     log_file.flush()
 
-                log(f"Synchronous Build: Starting process for {filename}...")
+                log(f"Asynchronous Build: Starting process for {filename}...")
                 
                 try:
                     # 1. Tailor LaTeX
                     if tailoring_prompt:
-                        log(f"Synchronous Build: Applying deep LaTeX tailoring for {filename}...")
+                        log(f"Asynchronous Build: Applying deep LaTeX tailoring for {filename}...")
                         target_template = template_path if template_path else self.base_template_path
                         with open(target_template, 'r', encoding='utf-8') as f:
                             template_content = f.read()
                         
-                        tailored_data = self.tailor_latex(template_content, job_description, user_profile_text, custom_prompt=tailoring_prompt, ats_context=ats_context)
+                        tailored_data = await self.tailor_latex(template_content, job_description, user_profile_text, custom_prompt=tailoring_prompt, ats_context=ats_context)
                         tailored_latex = tailored_data["latex"]
                         result_metadata["keywords"] = tailored_data["keywords"]
                         result_metadata["summary"] = tailored_data["summary"]
@@ -348,8 +351,8 @@ class ResumeBuilder:
                             f.write(tailored_latex)
                     else:
                         # Fallback to legacy
-                        log(f"Synchronous Build: Extracting keywords for {filename}...")
-                        extracted_data = self.generate_resume_content(job_description, user_profile_text)
+                        log(f"Asynchronous Build: Extracting keywords for {filename}...")
+                        extracted_data = await self.generate_resume_content(job_description, user_profile_text)
                         context = {
                             "skills_list": extracted_data.get("skills_list", []),
                             "summary": "Tailored Professional",
@@ -366,16 +369,16 @@ class ResumeBuilder:
                             f.write(rendered)
 
                     # 2. Compile PDF
-                    log(f"Synchronous Build: Compiling PDF for {filename}...")
+                    log(f"Asynchronous Build: Compiling PDF for {filename}...")
                     try:
-                        temp_pdf = self.compile_pdf(tex_path)
+                        temp_pdf = await self.compile_pdf(tex_path)
                         
                         if os.path.exists(temp_pdf) and os.path.abspath(temp_pdf) != os.path.abspath(pdf_path):
                             import shutil
                             shutil.move(temp_pdf, pdf_path)
-                        log(f"Synchronous Build: PDF compiled successfully: {pdf_path}")
+                        log(f"Asynchronous Build: PDF compiled successfully: {pdf_path}")
                     except Exception as compile_err:
-                        log(f"Synchronous Build: LaTeX compilation failed: {compile_err}")
+                        log(f"Asynchronous Build: LaTeX compilation failed: {compile_err}")
                         raise
 
                     # 3. Update Database
@@ -390,14 +393,14 @@ class ResumeBuilder:
                             update_kwargs["ats_score"] = predicted_score
                             
                         draft_manager.update_resume_version(version_id, **update_kwargs)
-                        log(f"Synchronous Build: PDF for {filename} COMPLETED")
+                        log(f"Asynchronous Build: PDF for {filename} COMPLETED")
                     
                     return pdf_path, tex_path, result_metadata["keywords"], result_metadata["summary"]
 
                 except Exception as e:
                     import traceback
                     err_traceback = traceback.format_exc()
-                    log(f"Synchronous Build: PDF for {filename} FAILED: {e}")
+                    log(f"Asynchronous Build: PDF for {filename} FAILED: {e}")
                     log(f"Traceback:\n{err_traceback}")
                     
                     if draft_manager and version_id:
@@ -409,7 +412,7 @@ class ResumeBuilder:
                             draft_manager.update_status(draft_id, DraftStatus.FAILED)
                     raise e
         except Exception as outer_e:
-            print(f"CRITICAL: Synchronous build failed: {outer_e}")
+            print(f"CRITICAL: Asynchronous build failed: {outer_e}")
             if job_manager and job_url:
                 job_manager.update_job(job_url, status="Critical Error", error_message=str(outer_e))
             raise outer_e

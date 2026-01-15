@@ -25,6 +25,8 @@ AVAILABLE_MODELS = [
     {"id": "meta-llama/llama-3.3-70b-instruct", "name": "Llama 3.3 70B", "provider": "Meta", "description": "Open-source powerhouse, great for general tasks"},
     {"id": "deepseek/deepseek-chat", "name": "DeepSeek Chat", "provider": "DeepSeek", "description": "Cost-effective with strong performance"},
     {"id": "qwen/qwen-2.5-72b-instruct", "name": "Qwen 2.5 72B", "provider": "Alibaba", "description": "Strong multilingual capabilities"},
+    {"id": "xiaomi/mimo-v2-flash:free", "name": "Mimo V2 Flash", "provider": "Xiaomi", "description": "Fast and efficient model"},
+    {"id": "mistralai/devstral-2512:free", "name": "DevStral 2512", "provider": "Mistral", "description": "Fast and efficient model"}
 ]
 
 @router.get("/keys")

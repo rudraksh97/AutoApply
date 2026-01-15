@@ -50,10 +50,40 @@ export function ResumePreviewPopup({ isOpen, onClose, draftId, jobUrl }: ResumeP
     const fetchVersions = async () => {
         try {
             const res = await axios.get(`${API_URL}/drafts/${draftId}/resume/versions`);
-            setVersions(res.data);
-            if (res.data.length > 0 && !selectedVersionId) {
-                const current = res.data.find((v: ResumeVersion) => v.is_current) || res.data[0];
-                setSelectedVersionId(current.id);
+            const fetchedVersions: ResumeVersion[] = res.data;
+            setVersions(fetchedVersions);
+
+            if (fetchedVersions.length > 0) {
+                // Determine which version to show in preview
+                const currentSelected = fetchedVersions.find(v => v.id === selectedVersionId);
+
+                // If nothing selected yet, or current selected is gone
+                if (!selectedVersionId || !currentSelected) {
+                    // 1. Try to find the version marked as is_current
+                    const currentVersion = fetchedVersions.find(v => v.is_current);
+                    if (currentVersion) {
+                        setSelectedVersionId(currentVersion.id);
+                    } else {
+                        // 2. Fallback to newest completed
+                        const completedVersions = fetchedVersions.filter(v => v.status === 'COMPLETED');
+                        if (completedVersions.length > 0) {
+                            setSelectedVersionId(completedVersions[0].id);
+                        } else {
+                            // 3. Absolute fallback to latest
+                            setSelectedVersionId(fetchedVersions[0].id);
+                        }
+                    }
+                }
+                // Special case: if we have a selection but it's GENERATING, 
+                // see if there's a COMPLETED one we should be showing instead
+                else if (currentSelected.status === 'GENERATING') {
+                    const completedVersions = fetchedVersions.filter(v => v.status === 'COMPLETED');
+                    if (completedVersions.length > 0) {
+                        // Only switch if the completed one is actually newer or if the user hasn't explicitly clicked the generating one
+                        // For simplicity, let's just stick to the newest completed if current is generating
+                        setSelectedVersionId(completedVersions[0].id);
+                    }
+                }
             }
         } catch (e) {
             console.error(e);
@@ -103,11 +133,13 @@ export function ResumePreviewPopup({ isOpen, onClose, draftId, jobUrl }: ResumeP
             const res = await axios.post(`${API_URL}/drafts/${draftId}/resume/versions`, {
                 prompt: refinementPrompt
             });
-            toast.success("New resume version generated!");
+            toast.success("New resume version is being generated...");
             setRefinementPrompt("");
             await fetchVersions();
-            setSelectedVersionId(res.data.id);
-            setViewMode('resume'); // Auto switch back to resume view
+            // Don't setSelectedVersionId(res.data.id) immediately if it's GENERATING
+            // The polling/fetchVersions logic will handle the switch when a completed one exists
+            // or we can explicitly wait for it to be COMPLETED before switching.
+            setViewMode('resume'); // Auto switch view mode anyway
         } catch (e) {
             console.error(e);
             toast.error("Failed to refine resume");
