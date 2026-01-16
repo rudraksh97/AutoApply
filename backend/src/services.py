@@ -242,7 +242,7 @@ class DraftPreparationService:
             else:
                 # Default "ats_generated"
                 log_callback("📄 Generating tailored resume using ATS workflow...")
-                # If they have a custom template uploaded, use it
+                template_path = uploaded_tex_path if uploaded_tex_path and os.path.exists(uploaded_tex_path) else None
                 if template_path:
                     log_callback(f"  - Using your selected .tex resume: {template_path}")
                 

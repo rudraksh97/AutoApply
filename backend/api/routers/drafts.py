@@ -14,6 +14,7 @@ import json
 
 from src.draft_manager import DraftManager
 from api.schemas.form_state import ApplicationDraft, DraftSummary, DraftStatus, ResumeVersion
+from src.services import get_user_profile_text
 
 router = APIRouter(prefix="/drafts", tags=["Drafts"])
 

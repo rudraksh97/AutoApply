@@ -26,8 +26,10 @@ AVAILABLE_MODELS = [
     {"id": "deepseek/deepseek-chat", "name": "DeepSeek Chat", "provider": "DeepSeek", "description": "Cost-effective with strong performance"},
     {"id": "qwen/qwen-2.5-72b-instruct", "name": "Qwen 2.5 72B", "provider": "Alibaba", "description": "Strong multilingual capabilities"},
     {"id": "xiaomi/mimo-v2-flash:free", "name": "Mimo V2 Flash", "provider": "Xiaomi", "description": "Fast and efficient model"},
-    {"id": "mistralai/devstral-2512:free", "name": "DevStral 2512", "provider": "Mistral", "description": "Fast and efficient model"}
-]
+    {"id": "mistralai/devstral-2512:free", "name": "DevStral 2512", "provider": "Mistral", "description": "Fast and efficient model"},
+    {"id": "tngtech/deepseek-r1t2-chimera:free", "name": "DeepSeek R1T2 Chimera", "provider": "DeepSeek", "description": "Fast and efficient model"},
+    {"id": "openai/gpt-oss-120b:free", "name": "GPT-120B OSS", "provider": "OpenAI", "description": "OpenAI's flagship multimodal model"}
+]   
 
 @router.get("/keys")
 def get_key_status():
