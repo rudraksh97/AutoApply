@@ -298,6 +298,10 @@ class DraftPreparationService:
                 # Fallback: Ashby special handling
                 extract_link = job_link.rstrip("/") + "/application"
                 log_callback(f"ℹ️ Ashby link detected. Extracting from: {extract_link}")
+            elif "apply.workable.com" in job_link and "/apply" not in job_link:
+                # Fallback: Workable special handling
+                extract_link = job_link.rstrip("/") + "/apply"
+                log_callback(f"ℹ️ Workable link detected. Extracting from: {extract_link}")
             else:
                 log_callback(f"📋 Extracting form from: {extract_link}")
 
