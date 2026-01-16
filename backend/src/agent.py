@@ -1,34 +1,45 @@
 """
 Browser automation agent for the AutoApply application.
 
-This module leverages the `browser-use` library and OpenRouter LLMs to 
-perform intelligent web scraping and form filling. 
+This module leverages the `browser-use` library and OpenRouter LLMs to
+perform intelligent web scraping and form filling.
 
 IMPORTANT: This agent NEVER submits applications. It only prepares drafts
 for later manual submission by the user.
 """
 
 import json
+import os
 import re
+
 from browser_use import Agent, Browser
 from browser_use.llm.openrouter.chat import ChatOpenRouter
-import os
-from typing import Optional
-
 from dotenv import load_dotenv
+
 from src.prompts import (
-    SCRAPE_JOB_TASK_TEMPLATE, 
     EXTRACT_FORM_TASK_TEMPLATE,
     FORM_EXTRACTION_CONTEXT,
-    # Legacy aliases
-    PREFILL_JOB_TASK_TEMPLATE,
-    FORM_FILLING_CONTEXT
+    SCRAPE_JOB_TASK_TEMPLATE,
 )
 
 load_dotenv()
 
 
-# Template for reopening a draft and rehydrating the form
+# =============================================================================
+# Constants
+# =============================================================================
+
+DEFAULT_MODEL = "google/gemini-2.0-flash-001"
+
+CHROME_ARGS = [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--remote-debugging-port=9222",
+    "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+]
+
 REHYDRATE_DRAFT_TEMPLATE = """
 You are a job application assistant. Your task is to open a saved application draft and restore the form state.
 
@@ -41,7 +52,7 @@ TASK: Open {job_link} and fill the form with the previously saved values.
 1. Navigate to {job_link}
 2. Wait for the form to fully load (wait for dynamic content)
 3. For each field in the saved form state:
-   a. Use the "xpath" field to locate the element (document.evaluate with XPathResult.FIRST_ORDERED_NODE_TYPE)
+   a. Use the "xpath" field to locate the element
    b. If xpath fails, try CSS selectors based on field label or field_id
    c. Fill the field with the "value" from the saved state
    d. Handle different field types:
@@ -53,309 +64,244 @@ TASK: Open {job_link} and fill the form with the previously saved values.
 4. If a field cannot be found, note it but continue with other fields
 5. DO NOT click any submit button
 
-===== FIELD LOCATION PRIORITY =====
-1. PRIMARY: Use the "xpath" field to locate elements (most reliable)
-2. FALLBACK: Try CSS selectors (#id, [name="..."], [id="..."])
-3. LAST RESORT: Fuzzy match by label text
-
 ===== CRITICAL =====
-⚠️ DO NOT SUBMIT THE APPLICATION ⚠️
+DO NOT SUBMIT THE APPLICATION
 The user will review and submit manually.
 
 Report the results as:
 {{
   "status": "rehydrated",
-  "fields_restored": <number of fields successfully restored>,
-  "fields_failed": <number of fields that could not be restored>,
+  "fields_restored": <number>,
+  "fields_failed": <number>,
   "notes": "Any issues encountered"
 }}
-
-IMPORTANT: Return the JSON directly in your final response text. 
-⚠️ DO NOT create a file, artifact, or attachment. 
-⚠️ The JSON must be in the text response itself.
 """
 
 
+# =============================================================================
+# JSON Parsing Helpers
+# =============================================================================
+
+def _extract_json_from_response(response: str, fallback_as_text: bool = False) -> dict:
+    """
+    Extract JSON object from agent response.
+
+    Args:
+        response: Raw response string from agent.
+        fallback_as_text: If True and no JSON found, return response as job_description.
+
+    Returns:
+        Parsed JSON dict.
+
+    Raises:
+        ValueError: If no valid JSON found and fallback disabled.
+    """
+    # Try direct parse first
+    try:
+        return json.loads(response)
+    except json.JSONDecodeError:
+        pass
+
+    # Try to find JSON block in response
+    matches = re.findall(r'(\{.*\})', response, re.DOTALL)
+    if matches:
+        try:
+            return json.loads(matches[-1])
+        except json.JSONDecodeError:
+            pass
+
+    # Fallback for job scraping - return as raw description
+    if fallback_as_text and len(response) > 100:
+        return {
+            "job_description": response,
+            "apply_link": None,
+            "company_name": None,
+            "job_title": None,
+            "location": None
+        }
+
+    raise ValueError(f"Failed to parse JSON from response: {response[:200]}...")
+
+
+def _datetime_serializer(obj):
+    """JSON serializer for datetime objects."""
+    if hasattr(obj, 'isoformat'):
+        return obj.isoformat()
+    raise TypeError(f'Object of type {type(obj)} is not JSON serializable')
+
+
+# =============================================================================
+# Browser Agent
+# =============================================================================
+
 class BrowserAgent:
     """
-    An LLM-driven browser agent for scraping and prefilling job applications.
+    LLM-driven browser agent for scraping and prefilling job applications.
 
-    This class maintains a reusable browser instance and provides high-level
-    asynchronous methods for job-related tasks.
-    
     IMPORTANT: This agent NEVER submits applications. All automation ends
     with a filled form that the user can review and submit manually.
     """
-    DEFAULT_MODEL = "google/gemini-2.0-flash-001"  # Fast and reliable
 
     def __init__(self, headless: bool = True):
         """
-        Initializes the browser agent with a specific LLM and browser config.
+        Initialize the browser agent.
 
         Args:
             headless: Whether to run the browser in headless mode.
         """
         self.headless = headless
-        api_key = os.getenv("OPENROUTER_API_KEY")
-        if not api_key:
-            # We don't raise here to allow instantiation, but it might fail later.
-            # Ideally logs a warning.
-            pass
-            
-        self.llm = ChatOpenRouter(
-            model=self.DEFAULT_MODEL,
-            api_key=api_key,
-        )
-        # File paths available for upload (set per-task)
         self.available_file_paths = []
 
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        self.llm = ChatOpenRouter(model=DEFAULT_MODEL, api_key=api_key)
+
+    # -------------------------------------------------------------------------
+    # Task Builders
+    # -------------------------------------------------------------------------
+
     def _create_scrape_task(self, job_link: str) -> str:
-        """Generates the LLM task string for job scraping."""
+        """Generate task string for job scraping."""
         return SCRAPE_JOB_TASK_TEMPLATE.format(job_link=job_link)
 
     def _create_extract_task(self, job_link: str) -> str:
-        """Generates the LLM task string for form extraction (no filling)."""
+        """Generate task string for form extraction."""
         return EXTRACT_FORM_TASK_TEMPLATE.format(job_link=job_link)
 
-    def _create_prefill_task(self, job_link: str, resume_path: str, user_details: str) -> str:
-        """DEPRECATED: Use _create_extract_task instead."""
-        # Now just extracts, doesn't fill
-        return self._create_extract_task(job_link)
-
     def _create_rehydrate_task(self, job_link: str, form_state: dict) -> str:
-        """Generates the LLM task string for reopening a saved draft."""
-        # Handle datetime serialization
-        def json_serializer(obj):
-            if hasattr(obj, 'isoformat'):
-                return obj.isoformat()
-            raise TypeError(f'Object of type {type(obj)} is not JSON serializable')
-        
+        """Generate task string for draft rehydration."""
         return REHYDRATE_DRAFT_TEMPLATE.format(
             job_link=job_link,
-            form_state_json=json.dumps(form_state, indent=2, default=json_serializer)
+            form_state_json=json.dumps(form_state, indent=2, default=_datetime_serializer)
         )
+
+    # -------------------------------------------------------------------------
+    # Browser Execution
+    # -------------------------------------------------------------------------
 
     async def _run_agent(self, task: str) -> str:
         """
-        Helper to run the browser-use agent with a specific task string.
+        Run the browser-use agent with a specific task.
 
         Args:
-            task: The natural language instruction for the LLM agent.
+            task: Natural language instruction for the LLM agent.
 
         Returns:
-            The final result/string reported by the agent.
-
-        Raises:
-            Exception: If the browser-use internal logic or LLM call fails.
+            Final result string from the agent.
         """
-        # 1. Launch Browser Manually via Playwright
-        # This decouples launch from browser-use library to avoid Docker timeouts
         from playwright.async_api import async_playwright
-        
+
         playwright = await async_playwright().start()
         browser_app = None
-        
+
         try:
-            chrome_args = [
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--remote-debugging-port=9222",
-                "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            ]
-            
-            # Launch the browser instance directly
+            # Launch browser with CDP debugging enabled
             browser_app = await playwright.chromium.launch(
                 headless=self.headless,
-                args=chrome_args
+                args=CHROME_ARGS
             )
-            
-            try:
-                # 2. Connect browser-use to the existing instance
-                cdp_url = "http://localhost:9222"
-                # Initialize Browser with CDP URL to connect to our manually launched instance
-                browser = Browser(cdp_url=cdp_url)
-                
-                # 3. Initialize Agent with connected browser
-                agent = Agent(
-                    task=task,
-                    llm=self.llm,
-                    browser=browser,
-                    use_vision=False,  # DOM-only mode more reliable for form filling
-                    max_actions_per_step=5,  # Allow more actions per reasoning step
-                    max_failures=10,  # Keep trying on errors - don't give up easily
-                    max_steps=50,  # Allow more steps to complete complex forms
-                    extend_system_message=FORM_EXTRACTION_CONTEXT,  # Inject form extraction guidance
-                    available_file_paths=self.available_file_paths,  # Allow file uploads
-                )
-                
-                result = await agent.run()
-                return result.final_result()
-                
-            finally:
-                # Ensure browser app is closed
-                if browser_app:
-                    await browser_app.close()
-                # browser object doesn't have close() when connected via CDP, so we skip it
-                    
-        except Exception as e:
-            raise e
+
+            # Connect browser-use via CDP and execute task
+            browser = Browser(cdp_url="http://localhost:9222")
+            agent = Agent(
+                task=task,
+                llm=self.llm,
+                browser=browser,
+                use_vision=False,
+                max_actions_per_step=5,
+                max_failures=10,
+                max_steps=50,
+                extend_system_message=FORM_EXTRACTION_CONTEXT,
+                available_file_paths=self.available_file_paths,
+            )
+
+            result = await agent.run()
+            return result.final_result()
+
         finally:
+            if browser_app:
+                await browser_app.close()
             await playwright.stop()
+
+    # -------------------------------------------------------------------------
+    # Public Methods
+    # -------------------------------------------------------------------------
 
     async def scrape_job_details(self, job_link: str) -> dict:
         """
-        Opens a job link and extracts the job description and apply link.
+        Extract job description and apply link from a job posting.
 
         Args:
-            job_link: The URL of the job posting.
+            job_link: URL of the job posting.
 
         Returns:
-            Dict with keys: job_description, apply_link, company_name, job_title, location
+            Dict with job_description, apply_link, company_name, job_title, location.
         """
         task = self._create_scrape_task(job_link)
         result = await self._run_agent(task)
-        
-        # Try to parse as JSON
-        try:
-            # Look for JSON in the response - try to find the LAST JSON block as it usually contains the final result
-            json_blocks = re.findall(r'(\{.*\})', result, re.DOTALL)
-            if json_blocks:
-                # Use the last match which is likely the result JSON
-                parsed = json.loads(json_blocks[-1])
-                # Validate minimal requirements
-                if not any([parsed.get("job_description"), parsed.get("apply_link"), parsed.get("company_name")]):
-                    raise ValueError("Parsed JSON contains no useful job data")
-                    
-                return {
-                    "job_description": parsed.get("job_description", result),
-                    "apply_link": parsed.get("apply_link"),
-                    "company_name": parsed.get("company_name"),
-                    "job_title": parsed.get("job_title"),
-                    "location": parsed.get("location")
-                }
-            else:
-                raise ValueError("No JSON found in agent response")
-        except (json.JSONDecodeError, ValueError) as e:
-            # If it's just raw text that looks like a description, we might allow it,
-            # but if it was clearly meant to be JSON and failed, we should probably fail.
-            if len(result) > 100: # Looks like a description
-                return {
-                    "job_description": result,
-                    "apply_link": None,
-                    "company_name": None,
-                    "job_title": None,
-                    "location": None
-                }
-            raise ValueError(f"Failed to parse job details: {e}. Raw response: {result[:200]}...")
+
+        parsed = _extract_json_from_response(result, fallback_as_text=True)
+
+        # Validate we got useful data
+        has_data = any([
+            parsed.get("job_description"),
+            parsed.get("apply_link"),
+            parsed.get("company_name")
+        ])
+
+        if not has_data:
+            raise ValueError("Parsed response contains no useful job data")
+
+        return {
+            "job_description": parsed.get("job_description", result),
+            "apply_link": parsed.get("apply_link"),
+            "company_name": parsed.get("company_name"),
+            "job_title": parsed.get("job_title"),
+            "location": parsed.get("location")
+        }
 
     async def extract_form(self, job_link: str) -> dict:
         """
-        Opens a job application form and extracts its structure WITHOUT filling.
-        
-        This is the primary method for the new extraction-first workflow.
-        The agent only discovers form fields and extracts labels/xpaths.
-        A separate LLM step will generate the answers.
+        Extract form structure from a job application page WITHOUT filling.
 
         Args:
-            job_link: The URL of the job posting.
+            job_link: URL of the job application form.
 
         Returns:
-            A dict containing:
-            - status: "extracted" on success
-            - fields: List of field structures with xpath, label, field_type, options
-            - total_fields: Number of fields found
-            - notes: Any observations about the form
-            
+            Dict with status, fields (list of field structures), total_fields, notes.
+
         Raises:
-            Exception: If form extraction fails
-            json.JSONDecodeError: If agent returns malformed JSON
+            ValueError: If form extraction fails or returns invalid data.
         """
         task = self._create_extract_task(job_link)
         result = await self._run_agent(task)
-        
-        # Parse the JSON result from the agent
-        import re
-        try:
-            # Try direct parse first
-            return json.loads(result)
-        except json.JSONDecodeError:
-            # Try regex extraction - find the last JSON block
-            matches = re.findall(r"(\{.*\})", result, re.DOTALL)
-            if matches:
-                try:
-                    parsed = json.loads(matches[-1])
-                    if not parsed.get("fields") and parsed.get("status") != "no_form_found":
-                        raise ValueError("Extracted form contains no fields")
-                    return parsed
-                except (json.JSONDecodeError, ValueError) as e:
-                    raise ValueError(f"Agent returned malformed form data: {e}. Raw: {result[:200]}...")
-            
-            raise ValueError(f"Agent failed to return a structured form: {result[:500]}...")
 
-    async def prefill_form(self, job_link: str, resume_path: str, user_details: str) -> dict:
-        """
-        DEPRECATED: Use extract_form instead.
-        
-        This method now just calls extract_form for backwards compatibility.
-        The filling is now done by the extension using LLM-generated values.
-        """
-        return await self.extract_form(job_link)
+        parsed = _extract_json_from_response(result)
+
+        # Validate form data
+        if not parsed.get("fields") and parsed.get("status") != "no_form_found":
+            raise ValueError("Extracted form contains no fields")
+
+        return parsed
 
     async def open_draft(self, job_link: str, form_state: dict) -> dict:
         """
-        Opens a saved draft in the browser and rehydrates the form.
-        
-        This is a deferred action that can happen hours, days, or weeks after
-        the original draft was created. It opens the job URL and attempts to
-        restore all saved field values.
-        
-        After rehydration, browser automation ENDS. The user takes manual
-        control to review and submit.
+        Open a saved draft and restore form values.
+
+        This is used for deferred completion - days or weeks after initial extraction.
+        After restoration, browser automation ENDS and user takes control.
 
         Args:
-            job_link: The URL of the job posting.
+            job_link: URL of the job posting.
             form_state: Previously saved form state with field values.
 
         Returns:
-            A dict containing:
-            - status: "rehydrated" on success
-            - fields_restored: Number of fields successfully restored
-            - fields_failed: Number of fields that couldn't be restored
-            - notes: Any issues encountered
+            Dict with status, fields_restored, fields_failed, notes.
         """
         task = self._create_rehydrate_task(job_link, form_state)
         result = await self._run_agent(task)
-        
-        # Parse the JSON result from the agent
-        import re
-        try:
-            return json.loads(result)
-        except json.JSONDecodeError:
-            # Try regex extraction
-            matches = re.findall(r"(\{.*\})", result, re.DOTALL)
-            if matches:
-                try:
-                    return json.loads(matches[-1])
-                except json.JSONDecodeError:
-                    pass
-            
-            raise ValueError(f"Agent failed to rehydrate draft: {result[:500]}...")
 
-    # Legacy method alias for backwards compatibility during migration
-    async def apply_to_job(self, job_link: str, resume_path: str, user_details: str) -> str:
-        """
-        DEPRECATED: Use prefill_form instead.
-        
-        This method now calls prefill_form and returns a string result
-        for backwards compatibility with existing callers.
-        """
-        result = await self.prefill_form(job_link, resume_path, user_details)
-        return json.dumps(result)
+        return _extract_json_from_response(result)
 
 
 if __name__ == "__main__":
-    # Test stub
     pass
-

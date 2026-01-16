@@ -145,7 +145,7 @@ class TestHappyPathFullWorkflow:
             4. Real PDF is generated.
             5. Final status is Completed.
         """
-        from src.services import JobApplicationService
+        from src.services import DraftPreparationService
         
         # Track status transitions
         status_history = []
@@ -168,7 +168,7 @@ class TestHappyPathFullWorkflow:
         
         log_messages = []
         
-        service = JobApplicationService(
+        service = DraftPreparationService(
             job_manager=temp_job_manager,
             browser_agent=stub_browser_agent,
             resume_builder=temp_resume_builder
@@ -261,7 +261,7 @@ class TestWorkflowRobustness:
     @pytest.mark.asyncio
     async def test_malformed_llm_response_causes_failure(self, temp_data_dir, temp_job_manager, stub_browser_agent):
         """Verifies graceful failure when the LLM returns a malformed response."""
-        from src.services import JobApplicationService
+        from src.services import DraftPreparationService
         from src.resume_builder import ResumeBuilder
 
         class FailingResumeBuilder(ResumeBuilder):
@@ -276,7 +276,7 @@ class TestWorkflowRobustness:
 
         builder = FailingResumeBuilder(base_template_path=str(template_path), output_dir=str(output_dir))
         temp_job_manager.add_job(TEST_JOB_URL, status="Pending")
-        service = JobApplicationService(temp_job_manager, stub_browser_agent, builder)
+        service = DraftPreparationService(temp_job_manager, stub_browser_agent, builder)
 
         assert await service.process_job(TEST_JOB_URL, "Test User") is False
         assert temp_job_manager.get_all_jobs()[0]["status"] == "Failed"
@@ -285,7 +285,7 @@ class TestWorkflowRobustness:
     @pytest.mark.asyncio
     async def test_invalid_latex_template_causes_failure(self, temp_data_dir, temp_job_manager, stub_browser_agent):
         """Verifies failure handling when the LaTeX template is invalid."""
-        from src.services import JobApplicationService
+        from src.services import DraftPreparationService
         from src.resume_builder import ResumeBuilder
 
         template_path = Path(temp_data_dir) / "data" / "broken.tex"
@@ -295,7 +295,7 @@ class TestWorkflowRobustness:
 
         builder = ResumeBuilder(base_template_path=str(template_path), output_dir=str(output_dir))
         temp_job_manager.add_job(TEST_JOB_URL, status="Pending")
-        service = JobApplicationService(temp_job_manager, stub_browser_agent, builder)
+        service = DraftPreparationService(temp_job_manager, stub_browser_agent, builder)
 
         assert await service.process_job(TEST_JOB_URL, "Test User") is False
         job = temp_job_manager.get_all_jobs()[0]

@@ -164,29 +164,28 @@ def invalid_resume_builder(temp_data_dir, invalid_template_path):
 def stub_browser_agent(job_posting_html):
     """
     Create a stubbed BrowserAgent that:
-    - Returns the fixture HTML for scraping (simulates reading a job page)
-    - Returns success for apply_to_job (avoids touching real job boards)
-    
+    - Returns job details dict for scraping (simulates reading a job page)
+    - Returns form extraction result for extract_form
+
     This is the ONLY stubbed component in E2E tests.
-    The scraping "result" is actually the parsed job description content from the fixture.
     """
     agent = Mock()
-    
-    # For scrape_job_details: return a realistic job description parsed from fixture
+
+    # For scrape_job_details: return a realistic job details dict
     job_description = """
     Senior Software Engineer - Test Company Inc.
     Location: San Francisco, CA (Remote)
-    
+
     About the Role:
     We are looking for a Senior Software Engineer to join our team and help build
     scalable distributed systems.
-    
+
     Responsibilities:
     - Design and implement scalable backend services using Python and Go
     - Build and maintain CI/CD pipelines
     - Mentor junior engineers and conduct code reviews
     - Participate in on-call rotations
-    
+
     Requirements:
     - 5+ years of software engineering experience
     - Strong proficiency in Python, with experience in Django or FastAPI
@@ -195,17 +194,25 @@ def stub_browser_agent(job_posting_html):
     - Experience with PostgreSQL and Redis
     - Strong understanding of REST APIs and microservices architecture
     - Experience with Git and GitHub workflows
-    
+
     Nice to Have:
     - Experience with React or TypeScript
     - Familiarity with Terraform or infrastructure as code
     - Experience with GraphQL
     """
-    agent.scrape_job_details = AsyncMock(return_value=job_description)
-    
-    # For apply_to_job: simulate successful submission
-    agent.apply_to_job = AsyncMock(return_value="Application submitted successfully")
-    
+    agent.scrape_job_details = AsyncMock(return_value={
+        "job_description": job_description,
+        "apply_link": "https://example.com/jobs/apply",
+        "company_name": "Test Company Inc.",
+        "job_title": "Senior Software Engineer"
+    })
+
+    # For extract_form: return empty form structure
+    agent.extract_form = AsyncMock(return_value={
+        "status": "extracted",
+        "fields": []
+    })
+
     return agent
 
 
@@ -219,7 +226,7 @@ def failing_browser_agent():
     agent.scrape_job_details = AsyncMock(
         side_effect=Exception("Network timeout: Failed to load job page")
     )
-    agent.apply_to_job = AsyncMock(return_value="N/A")
+    agent.extract_form = AsyncMock(return_value={"status": "error", "fields": []})
     return agent
 
 

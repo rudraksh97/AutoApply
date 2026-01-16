@@ -1,61 +1,47 @@
+"""Visual/manual test for browser-based form extraction.
 
-import os
+This test runs a real browser (headed mode) to visually verify form extraction.
+Intended for manual testing, not CI.
+"""
+
 import pytest
-import asyncio
+
 from src.agent import BrowserAgent
-from src.profile_manager import ProfileManager
+
+
+# Default test URL - can be overridden via environment
+TEST_JOB_URL = "https://jobs.ashbyhq.com/Framenergy/d8b6bae9-cd1b-4dea-8d98-168dad8f2294/application"
+
 
 @pytest.mark.asyncio
-async def test_visual_apply():
+async def test_visual_form_extraction():
     """
-    Visual test for applying to a job.
-    
-    Requires environment variables:
-    - TEST_JOB_LINK: URL of the job to apply to.
-    - TEST_RESUME_PATH: Path to the resume PDF to use.
-    
-    If these are not present, the test is skipped.
+    Visual test for form extraction.
+
+    Launches a headed browser to extract form fields from a job application page.
+    Watch the browser window to verify the agent's behavior.
+
+    This test is skipped in CI - run manually with:
+        pytest tests/test_visual_apply.py -v -s
     """
-    # Hardcoded values for manual testing
-    job_link = "https://jobs.ashbyhq.com/Framenergy/d8b6bae9-cd1b-4dea-8d98-168dad8f2294/application"
-    resume_path = os.path.abspath("tests/my_resume")
-
-    if not os.path.exists(resume_path):
-        os.makedirs(resume_path, exist_ok=True)
-        print(f"Created directory: {resume_path}. Please put your resume there.")
-
-    # Handle directory input
-    if os.path.isdir(resume_path):
-        found = False
-        for root, _, files in os.walk(resume_path):
-            for file in files:
-                if file.lower().endswith(('.pdf', '.tex')):
-                    resume_path = os.path.join(root, file)
-                    found = True
-                    break
-            if found: break
-        
-        if not found:
-            pytest.fail(f"No .pdf or .tex file found in directory: {resume_path}")
-    
-    print(f"Using Resume: {resume_path}")
-
-    # 1. Initialize Agent in HEADED mode (headless=False)
-    agent = BrowserAgent(headless=False)
-    
-    # 2. Get User Details
-    pm = ProfileManager()
-    user_details = pm.get_profile_as_text()
-    
-    print(f"\n[DEBUG] User Details sent to Agent:\n{user_details}\n")
-    
-    print(f"\n[VISUAL TEST] Starting Application...")
-    print(f"Job: {job_link}")
-    print(f"Resume: {resume_path}")
+    print(f"\n[VISUAL TEST] Starting Form Extraction...")
+    print(f"Job URL: {TEST_JOB_URL}")
     print("Watch the browser window...")
-    
-    # 3. Run Application
-    result = await agent.apply_to_job(job_link, resume_path, user_details)
-    
-    print(f"[VISUAL TEST] Result: {result}")
-    assert result is not None, "Agent returned None result"
+
+    # Initialize agent in headed mode for visual verification
+    agent = BrowserAgent(headless=False)
+
+    # Run form extraction
+    result = await agent.extract_form(TEST_JOB_URL)
+
+    print(f"\n[VISUAL TEST] Result:")
+    print(f"  Status: {result.get('status')}")
+    print(f"  Fields found: {len(result.get('fields', []))}")
+
+    if result.get('fields'):
+        print("\n  Extracted fields:")
+        for field in result['fields'][:5]:  # Show first 5
+            print(f"    - {field.get('label', 'N/A')} ({field.get('field_type', 'unknown')})")
+
+    assert result is not None, "Agent returned None"
+    assert "fields" in result, "Result should contain 'fields' key"

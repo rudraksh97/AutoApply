@@ -98,20 +98,18 @@ class BrowserAgentProtocol(Protocol):
         """
         ...
 
-    async def prefill_form(self, job_link: str, resume_path: str, user_details: str) -> dict:
+    async def extract_form(self, job_link: str) -> dict:
         """
-        Opens a job application form and prefills it WITHOUT submitting.
-        
-        This method fills form fields but NEVER clicks submit. It returns
-        the extracted FormState for persistence.
+        Opens a job application form and extracts its structure WITHOUT filling.
+
+        This method discovers form fields and extracts labels/xpaths.
+        A separate LLM step generates the answers.
 
         Args:
-            job_link: The URL of the job posting.
-            resume_path: The local path to the resume PDF to upload.
-            user_details: Textual representation of the user's profile.
+            job_link: The URL of the job application form.
 
         Returns:
-            A dict containing form state with fields, values, and confidence.
+            A dict containing form structure with fields, labels, and xpaths.
         """
         ...
     

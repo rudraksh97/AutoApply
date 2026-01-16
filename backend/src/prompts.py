@@ -201,8 +201,6 @@ CRITICAL REMINDERS
 ⚠️  ALWAYS RETURN JSON OUTPUT
 """
 
-# Legacy alias - keeping for backwards compatibility
-FORM_FILLING_CONTEXT = FORM_EXTRACTION_CONTEXT
 
 SCRAPE_JOB_TASK_TEMPLATE = """
 TASK: Extract job details and find the apply link from {job_link}
@@ -552,10 +550,6 @@ REMEMBER
 ✗ DO NOT type into inputs
 ✗ DO NOT submit the form
 """
-
-# Legacy aliases for backwards compatibility
-PREFILL_JOB_TASK_TEMPLATE = EXTRACT_FORM_TASK_TEMPLATE
-APPLY_JOB_TASK_TEMPLATE = EXTRACT_FORM_TASK_TEMPLATE
 
 
 # =============================================================================
