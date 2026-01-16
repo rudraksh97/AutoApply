@@ -36,8 +36,7 @@
       "graduation_year": ""
     }
   ],
-  "experience": [
-  ],
+  "experience": [],
   "skills": "",
   "great_fit_pitch": "",
   "cover_letter_template": "",
@@ -48,26 +47,8 @@
   "uploaded_tex_path": "",
   "uploaded_tex_filename": "",
   "pdf_resumes": [
-    {
-      "id": "",
-      "filename": "",
-      "path": "",
-      "created_at": ""
-    }
   ],
   "text_resumes": [
-    {
-      "id": "",
-      "filename": "",
-      "path": "",
-      "created_at": ""
-    },
-    {
-      "id": "",
-      "filename": "",
-      "path": "",
-      "created_at": ""
-    }
   ],
   "current_pdf_resume_id": "",
   "current_text_resume_id": "",
