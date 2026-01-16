@@ -82,8 +82,9 @@ async def _extract_job_link_with_llm(entry: dict) -> dict:
                 "notes": "No API key for LLM extraction"
             }
         
+        config = ConfigManager()
         llm = ChatOpenAI(
-            model="google/gemini-2.0-flash-001",
+            model=config.get_selected_model(),
             openai_api_key=api_key,
             openai_api_base="https://openrouter.ai/api/v1",
             temperature=0.1

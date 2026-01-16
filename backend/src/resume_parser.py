@@ -1,10 +1,11 @@
-
 import os
 import json
 import logging
 import pypdf
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
+
+from src.config import ConfigManager
 
 class ResumeParser:
     """
@@ -57,9 +58,9 @@ class ResumeParser:
         if not self.api_key:
             raise RuntimeError("Missing API Key for LLM")
 
-        # Use a more capable model for parsing
+        config = ConfigManager()
         llm = ChatOpenAI(
-            model="google/gemini-2.0-flash-001",
+            model=config.get_selected_model(),
             api_key=self.api_key,
             base_url="https://openrouter.ai/api/v1"
         )

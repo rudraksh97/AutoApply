@@ -16,6 +16,7 @@ from browser_use import Agent, Browser
 from browser_use.llm.openrouter.chat import ChatOpenRouter
 from dotenv import load_dotenv
 
+from src.config import ConfigManager
 from src.prompts import (
     EXTRACT_FORM_TASK_TEMPLATE,
     FORM_EXTRACTION_CONTEXT,
@@ -28,8 +29,6 @@ load_dotenv()
 # =============================================================================
 # Constants
 # =============================================================================
-
-DEFAULT_MODEL = "google/gemini-2.0-flash-001"
 
 CHROME_ARGS = [
     "--no-sandbox",
@@ -153,7 +152,9 @@ class BrowserAgent:
         self.available_file_paths = []
 
         api_key = os.getenv("OPENROUTER_API_KEY")
-        self.llm = ChatOpenRouter(model=DEFAULT_MODEL, api_key=api_key)
+        config = ConfigManager()
+        model = config.get_selected_model()
+        self.llm = ChatOpenRouter(model=model, api_key=api_key)
 
     # -------------------------------------------------------------------------
     # Task Builders

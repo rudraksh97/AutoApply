@@ -31,6 +31,7 @@ from api.schemas.form_state import (
     FormState,
     ResumeVersion,
 )
+from src.config import ConfigManager
 from src.draft_manager import DraftManager
 from src.interfaces import (
     BrowserAgentProtocol,
@@ -561,8 +562,9 @@ class DraftPreparationService:
         )
 
         try:
+            config = ConfigManager()
             llm = ChatOpenAI(
-                model="google/gemini-2.0-flash-001",
+                model=config.get_selected_model(),
                 openai_api_key=os.getenv("OPENROUTER_API_KEY"),
                 openai_api_base="https://openrouter.ai/api/v1",
                 temperature=0.3
