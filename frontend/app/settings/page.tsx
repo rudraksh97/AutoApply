@@ -83,6 +83,7 @@ export default function SettingsPage() {
 
     const checkExtensionStatus = () => {
         setExtensionStatus('checking');
+        let resolved = false;
 
         // Check for the global marker set by content script
         if (typeof window !== 'undefined' && (window as any).__AUTOAPPLY_EXTENSION__) {
@@ -93,6 +94,7 @@ export default function SettingsPage() {
         // Send a ping message and wait for response
         const handlePong = (event: MessageEvent) => {
             if (event.data && event.data.type === 'AUTOAPPLY_PONG') {
+                resolved = true;
                 setExtensionStatus('installed');
                 window.removeEventListener('message', handlePong);
             }
@@ -104,7 +106,7 @@ export default function SettingsPage() {
         // Timeout - if no response after 500ms, extension is not installed
         setTimeout(() => {
             window.removeEventListener('message', handlePong);
-            if (extensionStatus === 'checking') {
+            if (!resolved) {
                 // Double check the global marker
                 if (typeof window !== 'undefined' && (window as any).__AUTOAPPLY_EXTENSION__) {
                     setExtensionStatus('installed');
