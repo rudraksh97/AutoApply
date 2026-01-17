@@ -277,13 +277,13 @@ export default function JobsPage() {
                                 <th className="px-4 py-3 font-bold">Job</th>
                                 <th className="px-4 py-3 font-bold text-center">Job Link</th>
                                 <th className="px-4 py-3 font-bold text-center">Apply Link</th>
-                                <th className="px-4 py-3 font-bold text-center">Fields</th>
-                                <th className="px-4 py-3 font-bold text-center">Preview</th>
-                                <th className="px-4 py-3 font-bold">Status</th>
-                                <th className="px-4 py-3 font-bold text-center">Restart</th>
-                                <th className="px-4 py-3 font-bold text-center">Open</th>
-                                <th className="px-4 py-3 font-bold text-center">Delete</th>
-                                <th className="px-4 py-3 font-bold text-center">JSON</th>
+                                <th className="px-4 py-3 font-bold text-center">Extracted Fields</th>
+                                <th className="px-4 py-3 font-bold text-center">Extracted JSON</th>
+                                <th className="px-4 py-3 font-bold text-center">Preview Resume</th>
+                                <th className="px-4 py-3 font-bold">Draft Status</th>
+                                <th className="px-4 py-3 font-bold text-center">Rerun</th>
+                                <th className="px-4 py-3 font-bold text-center">Open Draft</th>
+                                <th className="px-4 py-3 font-bold text-center">Delete Job</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border/40">
@@ -361,6 +361,23 @@ export default function JobsPage() {
                                                         <span className="text-muted-foreground"> / </span>
                                                         <span>{draft.field_count}</span>
                                                     </span>
+                                                ) : (
+                                                    <span className="text-muted-foreground/40">--</span>
+                                                )}
+                                            </td>
+
+                                            {/* Extracted JSON */}
+                                            <td className="px-4 py-3 text-center">
+                                                {draft ? (
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        onClick={() => viewDraft(draft.id)}
+                                                        className="h-7 w-7"
+                                                        title="View Extracted JSON"
+                                                    >
+                                                        <Code className="h-4 w-4" />
+                                                    </Button>
                                                 ) : (
                                                     <span className="text-muted-foreground/40">--</span>
                                                 )}
@@ -453,23 +470,6 @@ export default function JobsPage() {
                                                         <Trash2 className="h-4 w-4" />
                                                     )}
                                                 </Button>
-                                            </td>
-
-                                            {/* Extracted JSON */}
-                                            <td className="px-4 py-3 text-center">
-                                                {draft ? (
-                                                    <Button
-                                                        size="icon"
-                                                        variant="ghost"
-                                                        onClick={() => viewDraft(draft.id)}
-                                                        className="h-7 w-7"
-                                                        title="View Extracted JSON"
-                                                    >
-                                                        <Code className="h-4 w-4" />
-                                                    </Button>
-                                                ) : (
-                                                    <span className="text-muted-foreground/40">--</span>
-                                                )}
                                             </td>
                                         </tr>
                                     );

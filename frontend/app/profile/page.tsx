@@ -681,7 +681,7 @@ export default function ProfilePage() {
                 </div>
 
                 {/* Experience Section */}
-                <section className="space-y-6">
+                <section className="space-y-6 pt-6">
                     <div className="flex flex-col gap-1">
                         <div className="flex items-center justify-between">
                             <div>
