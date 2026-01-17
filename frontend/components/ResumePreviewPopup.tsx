@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { RefreshCw, Check, Clock, TrendingUp, AlertCircle, Loader2 } from 'lucide-react';
+import { RefreshCw, Check, Clock, TrendingUp, AlertCircle, Loader2, Copy, FileEdit, Save, Sparkles, ExternalLink, Download } from 'lucide-react';
 import { toast } from "sonner";
 
 interface ResumeVersion {
@@ -44,6 +44,13 @@ export function ResumePreviewPopup({ isOpen, onClose, draftId, jobUrl }: ResumeP
     const [refining, setRefining] = useState(false);
     const [refinementPrompt, setRefinementPrompt] = useState("");
     const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+
+    // NEW: Manual editing & Prompt extraction
+    const [isManualEditing, setIsManualEditing] = useState(false);
+    const [manualLatex, setManualLatex] = useState("");
+    const [savingManual, setSavingManual] = useState(false);
+    const [copyingPrompt, setCopyingPrompt] = useState(false);
+    const [versionLoading, setVersionLoading] = useState(false);
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -153,9 +160,57 @@ export function ResumePreviewPopup({ isOpen, onClose, draftId, jobUrl }: ResumeP
             await axios.post(`${API_URL}/drafts/${draftId}/resume/versions/${vId}/select`);
             toast.success("Resume version selected for submission");
             fetchVersions();
+            setIsManualEditing(false);
         } catch (e) {
             console.error(e);
             toast.error("Failed to select version");
+        }
+    };
+
+    const handleCopyPrompt = async () => {
+        if (!selectedVersionId) return;
+        setCopyingPrompt(true);
+        try {
+            const res = await axios.get(`${API_URL}/drafts/${draftId}/resume/versions/${selectedVersionId}/prompt`);
+            await navigator.clipboard.writeText(res.data.prompt);
+            toast.success("Prompt copied to clipboard!");
+        } catch (e) {
+            toast.error("Failed to copy prompt");
+        } finally {
+            setCopyingPrompt(false);
+        }
+    };
+
+    const handleGoToChatGPT = () => {
+        window.open("https://chatgpt.com", "_blank");
+    };
+
+    const handleStartManualEdit = async () => {
+        if (!selectedVersionId) return;
+        try {
+            const res = await axios.get(`${API_URL}/drafts/${draftId}/resume/versions/${selectedVersionId}/tex`);
+            setManualLatex(res.data.tex);
+            setIsManualEditing(true);
+        } catch (e) {
+            toast.error("Failed to load LaTeX source");
+        }
+    };
+
+    const handleSaveManualEdit = async () => {
+        if (!manualLatex) return;
+        setSavingManual(true);
+        try {
+            await axios.post(`${API_URL}/drafts/${draftId}/resume/versions/manual`, {
+                latex: manualLatex
+            });
+            toast.success("New version created! Compiling PDF in background...");
+            setIsManualEditing(false);
+            // Refresh versions after a short delay
+            setTimeout(fetchVersions, 1000);
+        } catch (e) {
+            toast.error("Failed to save manual edit");
+        } finally {
+            setSavingManual(false);
         }
     };
 
@@ -217,23 +272,71 @@ export function ResumePreviewPopup({ isOpen, onClose, draftId, jobUrl }: ResumeP
                                     Job Description
                                 </Button>
                             </div>
-                            <div className="text-[10px] text-muted-foreground font-mono truncate max-w-[200px]">
-                                {jobUrl}
+                            <div className="flex gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleCopyPrompt}
+                                    disabled={copyingPrompt}
+                                    className="h-7 text-[10px] gap-1 px-2"
+                                >
+                                    {copyingPrompt ? <Loader2 className="h-3 w-3 animate-spin" /> : <Copy className="h-3 w-3" />}
+                                    Copy Prompt
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleGoToChatGPT}
+                                    className="h-7 text-[10px] gap-1 px-2"
+                                >
+                                    <Sparkles className="h-3 w-3" />
+                                    ChatGPT
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleStartManualEdit}
+                                    className="h-7 text-[10px] gap-1 px-2"
+                                >
+                                    <FileEdit className="h-3 w-3" />
+                                    Manual Edit
+                                </Button>
                             </div>
                         </div>
 
                         <div className="flex-1 overflow-hidden relative">
                             {viewMode === 'resume' ? (
-                                selectedVersionId ? (
-                                    <iframe
-                                        src={`${API_URL}/drafts/${draftId}/resume/preview?version_id=${selectedVersionId}`}
-                                        className="w-full h-full border-none"
-                                        title="Resume Preview"
-                                    />
-                                ) : (
-                                    <div className="flex items-center justify-center h-full">
-                                        {loading ? <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /> : "No resume preview available"}
+                                isManualEditing ? (
+                                    <div className="flex-1 flex flex-col h-full bg-slate-950">
+                                        <div className="flex items-center justify-between p-2 bg-slate-900 border-b border-slate-800">
+                                            <span className="text-[10px] text-slate-400 font-mono">resume_source.tex</span>
+                                            <div className="flex gap-2">
+                                                <Button size="sm" variant="ghost" className="h-6 text-[10px] text-slate-300 hover:text-white" onClick={() => setIsManualEditing(false)}>Cancel</Button>
+                                                <Button size="sm" onClick={handleSaveManualEdit} disabled={savingManual} className="h-6 text-[10px] bg-blue-600 hover:bg-blue-700">
+                                                    {savingManual ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
+                                                    Save & Compile
+                                                </Button>
+                                            </div>
+                                        </div>
+                                        <textarea
+                                            className="w-full flex-1 p-4 font-mono text-[11px] resize-none focus:outline-none bg-slate-950 text-slate-200 border-none"
+                                            value={manualLatex}
+                                            onChange={(e) => setManualLatex(e.target.value)}
+                                            spellCheck={false}
+                                        />
                                     </div>
+                                ) : (
+                                    selectedVersionId ? (
+                                        <iframe
+                                            src={`${API_URL}/drafts/${draftId}/resume/preview?version_id=${selectedVersionId}&t=${new Date().getTime()}`}
+                                            className="w-full h-full border-none"
+                                            title="Resume Preview"
+                                        />
+                                    ) : (
+                                        <div className="flex items-center justify-center h-full">
+                                            {loading ? <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /> : "No resume preview available"}
+                                        </div>
+                                    )
                                 )
                             ) : (
                                 <ScrollArea className="h-full bg-white">

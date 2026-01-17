@@ -42,17 +42,22 @@
   "cover_letter_template": "",
   "why_us": "",
   "challenging_project": "",
-  "uploaded_pdf_path": "",
-  "uploaded_pdf_filename": "",
+  "uploaded_pdf_path": "data/resumes/Bhuvan_Thirwani_Software_Engineer_2026.pdf",
+  "uploaded_pdf_filename": "Bhuvan_Thirwani_Software_Engineer_2026.pdf",
   "uploaded_tex_path": "",
   "uploaded_tex_filename": "",
   "pdf_resumes": [
+    {
+      "id": "23a74286-106a-4170-82ec-44544a89232b",
+      "filename": "Bhuvan_Thirwani_Software_Engineer_2026.pdf",
+      "path": "data/resumes/Bhuvan_Thirwani_Software_Engineer_2026.pdf",
+      "created_at": "2026-01-17T02:18:02.988355"
+    }
   ],
-  "text_resumes": [
-  ],
-  "current_pdf_resume_id": "",
+  "text_resumes": [],
+  "current_pdf_resume_id": "23a74286-106a-4170-82ec-44544a89232b",
   "current_text_resume_id": "",
-  "resume_generation_mode": "",
+  "resume_generation_mode": "uploaded_pdf",
   "use_uploaded_resume": false,
   "custom_template_filename": "",
   "uploaded_resume_path": "",

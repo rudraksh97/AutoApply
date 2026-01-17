@@ -11,6 +11,14 @@ class APIKeyUpdate(BaseModel):
 class ModelSelection(BaseModel):
     model_id: str
 
+class PlanUpdate(BaseModel):
+    plan_type: str
+
+class FreeConfig(BaseModel):
+    sdk: str
+    model: str
+    api_key: str
+
 # Available models from OpenRouter (curated list of quality models)
 AVAILABLE_MODELS = [
     {"id": "anthropic/claude-sonnet-4", "name": "Claude Sonnet 4", "provider": "Anthropic", "description": "Latest Claude model, excellent for complex tasks"},
@@ -95,3 +103,66 @@ def set_ats_prompts(prompts: dict):
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/plan")
+def get_plan():
+    """Returns the current plan type."""
+    cm = ConfigManager()
+    return {"plan_type": cm.get_plan_type()}
+
+@router.post("/plan")
+def set_plan(payload: PlanUpdate):
+    """Sets the current plan type."""
+    if payload.plan_type not in ["paid", "free"]:
+        raise HTTPException(status_code=400, detail="Invalid plan type")
+    cm = ConfigManager()
+    cm.set_plan_type(payload.plan_type)
+    return {"status": "success", "plan_type": payload.plan_type}
+
+@router.get("/free-configs")
+def get_free_configs():
+    """Returns the list of model configurations for the free plan."""
+    cm = ConfigManager()
+    configs = cm.get_free_configs()
+    # Mask API keys for security
+    masked_configs = []
+    for c in configs:
+        masked = c.copy()
+        if masked.get("api_key"):
+            key = masked["api_key"]
+            if len(key) > 8:
+                masked["api_key"] = key[:4] + "..." + key[-4:]
+            else:
+                masked["api_key"] = "****"
+        masked_configs.append(masked)
+    return masked_configs
+
+@router.post("/free-configs")
+def add_free_config(config: FreeConfig):
+    """Adds a new model configuration to the free plan."""
+    cm = ConfigManager()
+    cm.add_free_config(config.sdk, config.model, config.api_key)
+    return {"status": "success"}
+
+@router.delete("/free-configs/{index}")
+def remove_free_config(index: int):
+    """Removes a model configuration from the free plan."""
+    cm = ConfigManager()
+    if cm.remove_free_config(index):
+        return {"status": "success"}
+    raise HTTPException(status_code=404, detail="Configuration not found")
+
+@router.get("/llm-options")
+def get_llm_options():
+    """Returns the list of supported SDKs and models for the free plan."""
+    import json
+    import os
+    # Priority: root data directory (mapped in Docker), then backend/data
+    options_file = "data/llm_options.json"
+    if not os.path.exists(options_file):
+        options_file = "backend/data/llm_options.json"
+        
+    if os.path.exists(options_file):
+        with open(options_file, 'r') as f:
+            return json.load(f)
+    return {"sdks": []}

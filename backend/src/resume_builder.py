@@ -102,11 +102,8 @@ class ResumeBuilder:
 
     def _setup_llm(self):
         """Initialize LLM client."""
-        self.llm = ChatOpenAI(
-            model="meta-llama/llama-3.3-70b-instruct:free",
-            api_key=os.getenv("OPENROUTER_API_KEY"),
-            base_url="https://openrouter.ai/api/v1"
-        )
+        from src.llm_factory import LLMFactory
+        self.llm = LLMFactory.get_llm()
 
     # -------------------------------------------------------------------------
     # ATS Score Calculation
@@ -160,6 +157,21 @@ class ResumeBuilder:
     # -------------------------------------------------------------------------
     # LaTeX Tailoring
     # -------------------------------------------------------------------------
+
+    async def get_formatted_prompt(
+        self,
+        latex_template: str,
+        job_description: str,
+        user_profile_text: str,
+        custom_prompt: str = None,
+        ats_context: dict = None
+    ) -> str:
+        """
+        Returns the formatted prompt that would be sent to the LLM.
+        """
+        return self._build_tailoring_prompt(
+            latex_template, job_description, user_profile_text, custom_prompt, ats_context
+        )
 
     async def tailor_latex(
         self,
@@ -373,7 +385,8 @@ class ResumeBuilder:
         draft_manager=None,
         ats_context: dict = None,
         job_manager=None,
-        job_url: str = None
+        job_url: str = None,
+        raw_latex: str = None
     ) -> Tuple[str, str, str, str]:
         """
         Orchestrate resume tailoring and PDF generation.
@@ -392,7 +405,8 @@ class ResumeBuilder:
                 # Tailor and compile
                 metadata = await self._tailor_resume(
                     paths, job_description, user_profile_text,
-                    template_path, tailoring_prompt, ats_context, log
+                    template_path, tailoring_prompt, ats_context, log,
+                    raw_latex=raw_latex
                 )
 
                 await self._compile_resume(paths, log)
@@ -450,7 +464,8 @@ class ResumeBuilder:
         template_path: str,
         tailoring_prompt: str,
         ats_context: dict,
-        log
+        log,
+        raw_latex: str = None
     ) -> dict:
         """Tailor resume content and write to tex file."""
         metadata = {"keywords": "", "summary": "", "score": 0}
@@ -460,7 +475,14 @@ class ResumeBuilder:
         with open(target_template, 'r', encoding='utf-8') as f:
             template_content = f.read()
 
-        if tailoring_prompt:
+        if raw_latex:
+            log("Using provided raw LaTeX content...")
+            latex_content = raw_latex
+            metadata["keywords"] = "Manual Edit"
+            metadata["summary"] = "User provided LaTeX manually"
+            metadata["score"] = ats_context.get("score", 0) if ats_context else 0
+
+        elif tailoring_prompt:
             log("Applying LLM-based LaTeX tailoring...")
             result = await self.tailor_latex(
                 template_content, job_description, user_profile_text,

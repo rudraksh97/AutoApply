@@ -1,5 +1,6 @@
 browser-use
 playwright
+langchain-google-genai
 langchain-openai
 pandas
 python-dotenv

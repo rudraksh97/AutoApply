@@ -129,6 +129,61 @@ class ConfigManager:
         data["selected_model"] = model_id
         self._save_config(data)
 
+    def get_plan_type(self):
+        """
+        Retrieves the current plan type ('paid' or 'free').
+        Defaults to 'paid'.
+        """
+        data = self._load_config()
+        return data.get("plan_type", "paid")
+
+    def set_plan_type(self, plan_type):
+        """
+        Sets the current plan type.
+        """
+        data = self._load_config()
+        data["plan_type"] = plan_type
+        self._save_config(data)
+
+    def get_free_configs(self):
+        """
+        Retrieves the list of model configurations for the free plan.
+        """
+        data = self._load_config()
+        return data.get("free_configs", [])
+
+    def set_free_configs(self, configs):
+        """
+        Saves the list of free model configurations.
+        """
+        data = self._load_config()
+        data["free_configs"] = configs
+        self._save_config(data)
+
+    def add_free_config(self, sdk, model, api_key):
+        """
+        Adds a new model configuration to the free plan.
+        """
+        configs = self.get_free_configs()
+        configs.append({
+            "sdk": sdk,
+            "model": model,
+            "api_key": api_key,
+            "usage_count": 0
+        })
+        self.set_free_configs(configs)
+
+    def remove_free_config(self, index):
+        """
+        Removes a model configuration from the free plan by index.
+        """
+        configs = self.get_free_configs()
+        if 0 <= index < len(configs):
+            configs.pop(index)
+            self.set_free_configs(configs)
+            return True
+        return False
+
     def set_api_key(self, key_name, key_value):
         """
         Updates an API key in the local .env file.
