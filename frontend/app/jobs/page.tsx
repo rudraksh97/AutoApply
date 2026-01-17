@@ -482,11 +482,11 @@ export default function JobsPage() {
 
             {/* View Draft JSON Dialog */}
             <Dialog open={viewDraftOpen} onOpenChange={setViewDraftOpen}>
-                <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+                <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Code className="h-5 w-5" />
-                            Draft State JSON
+                            Extracted Form Data
                         </DialogTitle>
                     </DialogHeader>
 
@@ -497,7 +497,7 @@ export default function JobsPage() {
                     ) : selectedDraft ? (
                         <div className="flex-1 overflow-hidden flex flex-col gap-4">
                             {/* Summary */}
-                            <div className="grid grid-cols-3 gap-4 text-sm">
+                            <div className="grid grid-cols-4 gap-4 text-sm">
                                 <div className="bg-muted/50 rounded-lg p-3">
                                     <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Status</div>
                                     <div className="font-medium">{selectedDraft.status}</div>
@@ -512,22 +512,33 @@ export default function JobsPage() {
                                         {selectedDraft.form_state?.fields?.filter(f => f.value && !f.skipped).length || 0}
                                     </div>
                                 </div>
+                                <div className="bg-muted/50 rounded-lg p-3">
+                                    <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Skipped Fields</div>
+                                    <div className="font-medium">
+                                        {selectedDraft.form_state?.fields?.filter(f => f.skipped).length || 0}
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Fields Table */}
                             {selectedDraft.form_state?.fields && selectedDraft.form_state.fields.length > 0 && (
-                                <div className="border rounded-lg overflow-hidden">
+                                <div className="flex-1 border rounded-lg overflow-hidden flex flex-col min-h-0">
                                     <div className="bg-muted/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide border-b">
                                         Form Fields
                                     </div>
-                                    <div className="max-h-[200px] overflow-y-auto">
+                                    <div className="flex-1 overflow-auto">
                                         <table className="w-full text-sm">
                                             <thead className="bg-muted/20 text-xs sticky top-0">
                                                 <tr>
-                                                    <th className="px-3 py-2 text-left">Label</th>
-                                                    <th className="px-3 py-2 text-left">Type</th>
-                                                    <th className="px-3 py-2 text-left">Value</th>
-                                                    <th className="px-3 py-2 text-left">XPath</th>
+                                                    <th className="px-3 py-2 text-left whitespace-nowrap">Label</th>
+                                                    <th className="px-3 py-2 text-left whitespace-nowrap">Type</th>
+                                                    <th className="px-3 py-2 text-left whitespace-nowrap">Value</th>
+                                                    <th className="px-3 py-2 text-left whitespace-nowrap">Options</th>
+                                                    <th className="px-3 py-2 text-center whitespace-nowrap">Confidence</th>
+                                                    <th className="px-3 py-2 text-center whitespace-nowrap">Required</th>
+                                                    <th className="px-3 py-2 text-center whitespace-nowrap">Skipped</th>
+                                                    <th className="px-3 py-2 text-left whitespace-nowrap">Skip Reason</th>
+                                                    <th className="px-3 py-2 text-left whitespace-nowrap">XPath</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y">
@@ -536,23 +547,53 @@ export default function JobsPage() {
                                                         "hover:bg-muted/20",
                                                         field.skipped && "bg-yellow-50/50"
                                                     )}>
-                                                        <td className="px-3 py-2 font-medium">
+                                                        <td className="px-3 py-2 font-medium whitespace-nowrap">
                                                             {field.label || <span className="text-muted-foreground italic">No label</span>}
-                                                            {field.required && <span className="text-red-500 ml-1">*</span>}
                                                         </td>
-                                                        <td className="px-3 py-2 text-muted-foreground">{field.field_type}</td>
+                                                        <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{field.field_type}</td>
                                                         <td className="px-3 py-2">
-                                                            {field.skipped ? (
-                                                                <span className="text-yellow-600 text-xs">
-                                                                    Skipped: {field.skip_reason}
-                                                                </span>
-                                                            ) : field.value ? (
+                                                            {field.value ? (
                                                                 <span className="text-green-700 truncate block max-w-[200px]" title={field.value}>
                                                                     {field.value}
                                                                 </span>
                                                             ) : (
                                                                 <span className="text-muted-foreground italic">Empty</span>
                                                             )}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-xs text-muted-foreground">
+                                                            {field.options && field.options.length > 0 ? (
+                                                                <span className="truncate block max-w-[150px]" title={field.options.join(', ')}>
+                                                                    {field.options.slice(0, 3).join(', ')}{field.options.length > 3 && '...'}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-muted-foreground/40">--</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-center">
+                                                            <span className={cn(
+                                                                "text-xs font-medium",
+                                                                field.confidence >= 0.8 ? "text-green-600" :
+                                                                field.confidence >= 0.5 ? "text-yellow-600" : "text-red-600"
+                                                            )}>
+                                                                {(field.confidence * 100).toFixed(0)}%
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-3 py-2 text-center">
+                                                            {field.required ? (
+                                                                <span className="text-red-500 font-bold">Yes</span>
+                                                            ) : (
+                                                                <span className="text-muted-foreground/40">No</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-center">
+                                                            {field.skipped ? (
+                                                                <span className="text-yellow-600 font-bold">Yes</span>
+                                                            ) : (
+                                                                <span className="text-muted-foreground/40">No</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-xs text-yellow-600">
+                                                            {field.skip_reason || <span className="text-muted-foreground/40">--</span>}
                                                         </td>
                                                         <td className="px-3 py-2 text-xs text-muted-foreground font-mono truncate max-w-[150px]" title={field.xpath}>
                                                             {field.xpath}
@@ -564,24 +605,6 @@ export default function JobsPage() {
                                     </div>
                                 </div>
                             )}
-
-                            {/* Raw JSON */}
-                            <div className="flex-1 min-h-0 flex flex-col border rounded-lg overflow-hidden">
-                                <div className="bg-muted/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide border-b flex items-center justify-between">
-                                    <span>Raw JSON</span>
-                                    <Button size="sm" variant="ghost" onClick={copyToClipboard} className="h-7 px-2">
-                                        {copied ? (
-                                            <Check className="h-3 w-3 mr-1 text-green-600" />
-                                        ) : (
-                                            <Copy className="h-3 w-3 mr-1" />
-                                        )}
-                                        {copied ? "Copied!" : "Copy"}
-                                    </Button>
-                                </div>
-                                <pre className="flex-1 overflow-auto p-4 text-xs bg-slate-950 text-slate-100 font-mono">
-                                    {JSON.stringify(selectedDraft, null, 2)}
-                                </pre>
-                            </div>
                         </div>
                     ) : (
                         <div className="text-center py-8 text-muted-foreground">
