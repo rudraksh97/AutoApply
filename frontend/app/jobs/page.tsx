@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { RefreshCw, Download, FileText, AlertTriangle, ExternalLink, Play, Trash2, Plus, Code, Copy, Check } from 'lucide-react';
+import { RefreshCw, FileText, ExternalLink, Play, Trash2, Plus, Code, Copy, Check, RotateCcw, Eye } from 'lucide-react';
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ResumePreviewPopup } from "@/components/ResumePreviewPopup";
@@ -270,26 +270,32 @@ export default function JobsPage() {
                     <CardTitle className="text-xl font-semibold">Application Drafts</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
-                    <table className="w-full text-sm text-left table-fixed">
+                    <table className="w-full text-sm text-left">
                         <thead className="bg-[#fdfdfd] text-muted-foreground uppercase text-[10px] tracking-widest font-bold border-b">
                             <tr>
-                                <th className="px-4 py-3 font-bold w-[90px]">Date</th>
-                                <th className="px-4 py-3 font-bold w-[250px]">Job</th>
-                                <th className="px-4 py-3 font-bold w-[100px]">Status</th>
-                                <th className="px-4 py-3 font-bold w-[100px]">Fields</th>
-                                <th className="px-4 py-3 font-bold text-right w-[250px]">Actions</th>
+                                <th className="px-4 py-3 font-bold">Date</th>
+                                <th className="px-4 py-3 font-bold">Job</th>
+                                <th className="px-4 py-3 font-bold text-center">Job Link</th>
+                                <th className="px-4 py-3 font-bold text-center">Apply Link</th>
+                                <th className="px-4 py-3 font-bold text-center">Fields</th>
+                                <th className="px-4 py-3 font-bold text-center">Preview</th>
+                                <th className="px-4 py-3 font-bold">Status</th>
+                                <th className="px-4 py-3 font-bold text-center">Restart</th>
+                                <th className="px-4 py-3 font-bold text-center">Open</th>
+                                <th className="px-4 py-3 font-bold text-center">Delete</th>
+                                <th className="px-4 py-3 font-bold text-center">JSON</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border/40">
                             {loading && jobs.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground italic">
+                                    <td colSpan={11} className="px-6 py-12 text-center text-muted-foreground italic">
                                         Loading jobs...
                                     </td>
                                 </tr>
                             ) : jobs.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
+                                    <td colSpan={11} className="px-6 py-12 text-center text-muted-foreground">
                                         No applications found yet. Add a job URL or configure RSS feeds to get started.
                                     </td>
                                 </tr>
@@ -301,28 +307,17 @@ export default function JobsPage() {
 
                                     return (
                                         <tr key={i} className="group hover:bg-muted/30 transition-colors">
-                                            <td className="px-4 py-3 text-muted-foreground text-xs">
+                                            {/* Date */}
+                                            <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">
                                                 {new Date(job.timestamp).toLocaleDateString()}
                                             </td>
+
+                                            {/* Job */}
                                             <td className="px-4 py-3">
                                                 <div className="flex flex-col gap-0.5 min-w-0">
-                                                    <div className="flex items-center gap-2 min-w-0">
-                                                        <span className="font-medium text-foreground truncate" title={job.job_title || job.url}>
-                                                            {job.job_title || 'Untitled Position'}
-                                                        </span>
-                                                        <a href={job.url} target="_blank" rel="noopener noreferrer"
-                                                            className="text-muted-foreground/60 hover:text-primary transition-colors flex-shrink-0"
-                                                            title="View Job Description">
-                                                            <FileText className="h-3 w-3" />
-                                                        </a>
-                                                        {job.apply_link && (
-                                                            <a href={job.apply_link} target="_blank" rel="noopener noreferrer"
-                                                                className="text-blue-500 hover:text-blue-700 transition-colors flex-shrink-0"
-                                                                title="Apply Page">
-                                                                <ExternalLink className="h-3 w-3" />
-                                                            </a>
-                                                        )}
-                                                    </div>
+                                                    <span className="font-medium text-foreground truncate max-w-[280px]" title={job.job_title || job.url}>
+                                                        {job.job_title || 'Untitled Position'}
+                                                    </span>
                                                     <div className="flex items-center gap-2 text-xs text-muted-foreground truncate">
                                                         {job.company_name && (
                                                             <span className="font-medium">{job.company_name}</span>
@@ -335,6 +330,64 @@ export default function JobsPage() {
                                                     </div>
                                                 </div>
                                             </td>
+
+                                            {/* Job Link */}
+                                            <td className="px-4 py-3 text-center">
+                                                <a href={job.url} target="_blank" rel="noopener noreferrer"
+                                                    className="inline-flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"
+                                                    title="View Job Description">
+                                                    <FileText className="h-4 w-4" />
+                                                </a>
+                                            </td>
+
+                                            {/* Application Link */}
+                                            <td className="px-4 py-3 text-center">
+                                                {job.apply_link ? (
+                                                    <a href={job.apply_link} target="_blank" rel="noopener noreferrer"
+                                                        className="inline-flex items-center justify-center text-blue-500 hover:text-blue-700 transition-colors"
+                                                        title="Apply Page">
+                                                        <ExternalLink className="h-4 w-4" />
+                                                    </a>
+                                                ) : (
+                                                    <span className="text-muted-foreground/40">--</span>
+                                                )}
+                                            </td>
+
+                                            {/* Fields Extracted / Total */}
+                                            <td className="px-4 py-3 text-center whitespace-nowrap">
+                                                {draft ? (
+                                                    <span className="text-sm font-medium">
+                                                        <span className="text-emerald-600">{draft.filled_field_count}</span>
+                                                        <span className="text-muted-foreground"> / </span>
+                                                        <span>{draft.field_count}</span>
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-muted-foreground/40">--</span>
+                                                )}
+                                            </td>
+
+                                            {/* Preview Resume */}
+                                            <td className="px-4 py-3 text-center">
+                                                {draft ? (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-7 w-7"
+                                                        onClick={() => {
+                                                            setPreviewDraftId(draft.id);
+                                                            setPreviewJobUrl(job.url);
+                                                            setPreviewOpen(true);
+                                                        }}
+                                                        title="Preview Resume"
+                                                    >
+                                                        <Eye className="h-4 w-4" />
+                                                    </Button>
+                                                ) : (
+                                                    <span className="text-muted-foreground/40">--</span>
+                                                )}
+                                            </td>
+
+                                            {/* Status */}
                                             <td className="px-4 py-3">
                                                 <span className={cn(
                                                     "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border gap-1",
@@ -349,97 +402,74 @@ export default function JobsPage() {
                                                     {displayStatus.replace('draft_', '').replace('_', ' ')}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-3 whitespace-nowrap">
-                                                {draft && (
-                                                    <div className="flex flex-col gap-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-[10px] font-bold text-muted-foreground w-12 uppercase">Initial:</span>
-                                                            <span className="text-sm font-semibold">{draft.initial_ats_score || '--'}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-[10px] font-bold text-muted-foreground w-12 uppercase">Final:</span>
-                                                            <span className="text-sm font-semibold text-emerald-600 font-bold">{draft.current_ats_score || '--'}</span>
-                                                        </div>
-                                                    </div>
-                                                )}
+
+                                            {/* Restart Workflow */}
+                                            <td className="px-4 py-3 text-center">
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    onClick={() => retryJob(job.url)}
+                                                    className="h-7 w-7 text-muted-foreground hover:text-orange-600 hover:bg-orange-50"
+                                                    title="Restart Workflow"
+                                                >
+                                                    <RotateCcw className="h-4 w-4" />
+                                                </Button>
                                             </td>
-                                            <td className="px-4 py-3 text-right whitespace-nowrap">
-                                                <div className="flex items-center justify-end gap-1">
-                                                    {draft && (
-                                                        <>
-                                                            <Button
-                                                                size="sm"
-                                                                variant="ghost"
-                                                                onClick={() => viewDraft(draft.id)}
-                                                                className="h-7 px-2 text-xs"
-                                                            >
-                                                                <Code className="h-3 w-3" />
-                                                            </Button>
-                                                            <Button
-                                                                variant="outline"
-                                                                size="sm"
-                                                                className="h-7 px-2 text-xs"
-                                                                onClick={() => {
-                                                                    setPreviewDraftId(draft.id);
-                                                                    setPreviewJobUrl(job.url);
-                                                                    setPreviewOpen(true);
-                                                                }}
-                                                            >
-                                                                <FileText className="h-3 w-3 mr-1" />
-                                                                Preview
-                                                            </Button>
-                                                        </>
-                                                    )}
 
-                                                    {(displayStatus === 'Failed' || displayStatus === 'Draft Failed') && (
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            onClick={() => retryJob(job.url)}
-                                                            className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
-                                                            title="Retry Job"
-                                                        >
-                                                            <RefreshCw className="h-3 w-3 mr-1" />
-                                                            Retry
-                                                        </Button>
-                                                    )}
-
-                                                    {isDraftReady && draft && (
-                                                        <Button
-                                                            size="sm"
-                                                            onClick={() => openDraft(draft.id, job.apply_link || job.url)}
-                                                            disabled={openingDraft === draft.id}
-                                                            className="h-7 px-2 bg-blue-600 hover:bg-blue-700 text-white text-xs"
-                                                        >
-                                                            {openingDraft === draft.id ? (
-                                                                <RefreshCw className="h-3 w-3 animate-spin" />
-                                                            ) : (
-                                                                <Play className="h-3 w-3 mr-1" />
-                                                            )}
-                                                            Open
-                                                        </Button>
-                                                    )}
-
-                                                    {job.pdf_path && (
-                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                                                            <Download className="h-3 w-3" />
-                                                        </Button>
-                                                    )}
-
+                                            {/* Open Draft */}
+                                            <td className="px-4 py-3 text-center">
+                                                {isDraftReady && draft ? (
                                                     <Button
-                                                        variant="ghost"
                                                         size="icon"
-                                                        className="h-7 w-7 text-muted-foreground hover:text-red-600 hover:bg-red-50"
-                                                        onClick={() => deleteJob(job.url)}
-                                                        disabled={deletingJob === job.url}
+                                                        onClick={() => openDraft(draft.id, job.apply_link || job.url)}
+                                                        disabled={openingDraft === draft.id}
+                                                        className="h-7 w-7 bg-blue-600 hover:bg-blue-700 text-white"
+                                                        title="Open Draft"
                                                     >
-                                                        {deletingJob === job.url ? (
-                                                            <RefreshCw className="h-3 w-3 animate-spin" />
+                                                        {openingDraft === draft.id ? (
+                                                            <RefreshCw className="h-4 w-4 animate-spin" />
                                                         ) : (
-                                                            <Trash2 className="h-3 w-3" />
+                                                            <Play className="h-4 w-4" />
                                                         )}
                                                     </Button>
-                                                </div>
+                                                ) : (
+                                                    <span className="text-muted-foreground/40">--</span>
+                                                )}
+                                            </td>
+
+                                            {/* Delete Job */}
+                                            <td className="px-4 py-3 text-center">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-7 w-7 text-muted-foreground hover:text-red-600 hover:bg-red-50"
+                                                    onClick={() => deleteJob(job.url)}
+                                                    disabled={deletingJob === job.url}
+                                                    title="Delete Job"
+                                                >
+                                                    {deletingJob === job.url ? (
+                                                        <RefreshCw className="h-4 w-4 animate-spin" />
+                                                    ) : (
+                                                        <Trash2 className="h-4 w-4" />
+                                                    )}
+                                                </Button>
+                                            </td>
+
+                                            {/* Extracted JSON */}
+                                            <td className="px-4 py-3 text-center">
+                                                {draft ? (
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        onClick={() => viewDraft(draft.id)}
+                                                        className="h-7 w-7"
+                                                        title="View Extracted JSON"
+                                                    >
+                                                        <Code className="h-4 w-4" />
+                                                    </Button>
+                                                ) : (
+                                                    <span className="text-muted-foreground/40">--</span>
+                                                )}
                                             </td>
                                         </tr>
                                     );

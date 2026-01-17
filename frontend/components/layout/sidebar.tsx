@@ -16,7 +16,7 @@ export function Sidebar({ className, ...props }: React.HTMLAttributes<HTMLDivEle
     ];
 
     return (
-        <div className={cn("pb-12 min-h-screen border-r border-border bg-sidebar text-sidebar-foreground w-64 hidden md:block", className)} {...props}>
+        <div className={cn("pb-12 min-h-screen border-r border-border bg-sidebar text-sidebar-foreground w-80 hidden md:block", className)} {...props}>
             <div className="space-y-4 py-4">
                 <div className="px-3 py-2">
                     <h2 className="mb-2 px-4 text-lg font-semibold tracking-tight">
