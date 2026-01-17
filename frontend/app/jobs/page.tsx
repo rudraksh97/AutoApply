@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { RefreshCw, FileText, ExternalLink, Play, Trash2, Plus, Code, Copy, Check, RotateCcw, Eye } from 'lucide-react';
+import { RefreshCw, FileText, ExternalLink, Play, Trash2, Plus, Code, Copy, Check, RotateCcw, Eye, CheckCircle2, Circle } from 'lucide-react';
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ResumePreviewPopup } from "@/components/ResumePreviewPopup";
@@ -22,6 +22,7 @@ interface Job {
     company_name?: string | null;
     job_title?: string | null;
     apply_link?: string | null;
+    sent?: boolean | number;
 }
 
 interface Draft {
@@ -82,6 +83,7 @@ export default function JobsPage() {
     const [previewOpen, setPreviewOpen] = useState(false);
     const [previewDraftId, setPreviewDraftId] = useState<string | null>(null);
     const [previewJobUrl, setPreviewJobUrl] = useState<string>("");
+    const [activeTab, setActiveTab] = useState<'drafts' | 'sent'>('drafts');
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -151,6 +153,17 @@ export default function JobsPage() {
         }
     };
 
+    const markAsSent = async (url: string, sent: boolean) => {
+        try {
+            await axios.post(`${API_URL}/jobs/sent`, { url, sent });
+            fetchJobs();
+            toast.success(sent ? "Marked as sent" : "Unmarked as sent");
+        } catch (e) {
+            console.error(e);
+            toast.error("Failed to update job");
+        }
+    };
+
     const viewDraft = async (draftId: string) => {
         setLoadingDraft(true);
         setViewDraftOpen(true);
@@ -205,6 +218,10 @@ export default function JobsPage() {
     const getDraftForJob = (jobUrl: string): Draft | undefined => {
         return drafts.find(d => d.job_url === jobUrl);
     };
+
+    // Filter jobs into pending and sent
+    const pendingJobs = jobs.filter(job => !job.sent);
+    const sentJobs = jobs.filter(job => job.sent);
 
     const getStatusColor = (status: string) => {
         if (status.includes('Running')) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
@@ -267,12 +284,38 @@ export default function JobsPage() {
 
             <Card className="shadow-sm border-border/60 overflow-hidden">
                 <CardHeader className="border-b bg-muted/30 pb-4">
-                    <CardTitle className="text-xl font-semibold">Application Drafts</CardTitle>
+                    <div className="flex items-center gap-4">
+                        <button
+                            onClick={() => setActiveTab('drafts')}
+                            className={cn(
+                                "text-xl font-semibold transition-colors",
+                                activeTab === 'drafts'
+                                    ? "text-foreground"
+                                    : "text-muted-foreground hover:text-foreground/70"
+                            )}
+                        >
+                            Application Drafts ({pendingJobs.length})
+                        </button>
+                        <span className="text-muted-foreground/30">|</span>
+                        <button
+                            onClick={() => setActiveTab('sent')}
+                            className={cn(
+                                "text-xl font-semibold transition-colors flex items-center gap-2",
+                                activeTab === 'sent'
+                                    ? "text-foreground"
+                                    : "text-muted-foreground hover:text-foreground/70"
+                            )}
+                        >
+                            <CheckCircle2 className={cn("h-5 w-5", activeTab === 'sent' ? "text-emerald-600" : "")} />
+                            Sent Applications ({sentJobs.length})
+                        </button>
+                    </div>
                 </CardHeader>
                 <CardContent className="p-0">
                     <table className="w-full text-sm text-left">
                         <thead className="bg-[#fdfdfd] text-muted-foreground uppercase text-[10px] tracking-widest font-bold border-b">
                             <tr>
+                                <th className="px-4 py-3 font-bold text-center">Sent</th>
                                 <th className="px-4 py-3 font-bold">Date</th>
                                 <th className="px-4 py-3 font-bold">Job</th>
                                 <th className="px-4 py-3 font-bold text-center">Job Link</th>
@@ -289,24 +332,45 @@ export default function JobsPage() {
                         <tbody className="divide-y divide-border/40">
                             {loading && jobs.length === 0 ? (
                                 <tr>
-                                    <td colSpan={11} className="px-6 py-12 text-center text-muted-foreground italic">
+                                    <td colSpan={12} className="px-6 py-12 text-center text-muted-foreground italic">
                                         Loading jobs...
                                     </td>
                                 </tr>
-                            ) : jobs.length === 0 ? (
+                            ) : (activeTab === 'drafts' ? pendingJobs : sentJobs).length === 0 ? (
                                 <tr>
-                                    <td colSpan={11} className="px-6 py-12 text-center text-muted-foreground">
-                                        No applications found yet. Add a job URL or configure RSS feeds to get started.
+                                    <td colSpan={12} className="px-6 py-12 text-center text-muted-foreground">
+                                        {activeTab === 'drafts'
+                                            ? "No pending applications. Add a job URL or configure RSS feeds to get started."
+                                            : "No sent applications yet. Mark jobs as sent after submitting them."}
                                     </td>
                                 </tr>
                             ) : (
-                                jobs.map((job, i) => {
+                                (activeTab === 'drafts' ? pendingJobs : sentJobs).map((job, i) => {
                                     const draft = getDraftForJob(job.url);
                                     const displayStatus = draft?.status || job.status;
                                     const isDraftReady = displayStatus === 'draft_saved' || displayStatus === 'user_opened';
+                                    const isSent = activeTab === 'sent';
 
                                     return (
-                                        <tr key={i} className="group hover:bg-muted/30 transition-colors">
+                                        <tr key={i} className={cn("group hover:bg-muted/30 transition-colors", isSent && "bg-emerald-50/30")}>
+                                            {/* Mark as Sent / Undo */}
+                                            <td className="px-4 py-3 text-center">
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    onClick={() => markAsSent(job.url, !isSent)}
+                                                    className={cn(
+                                                        "h-7 w-7",
+                                                        isSent
+                                                            ? "text-emerald-600 hover:text-muted-foreground hover:bg-muted"
+                                                            : "text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50"
+                                                    )}
+                                                    title={isSent ? "Undo - Mark as Not Sent" : "Mark as Sent"}
+                                                >
+                                                    {isSent ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                                                </Button>
+                                            </td>
+
                                             {/* Date */}
                                             <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">
                                                 {new Date(job.timestamp).toLocaleDateString()}

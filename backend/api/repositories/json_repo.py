@@ -25,6 +25,9 @@ class JsonJobRepository(JobRepository):
     def delete_job(self, url: str) -> bool:
         return self._manager.delete_job(url)
 
+    def mark_as_sent(self, url: str, sent: bool = True) -> bool:
+        return self._manager.mark_as_sent(url, sent)
+
 class JsonConfigRepository(ConfigRepository):
     def __init__(self):
         self._manager = ConfigManager()

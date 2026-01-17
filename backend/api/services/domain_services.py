@@ -26,6 +26,9 @@ class JobService:
     def delete_job(self, url: str):
         return self.repository.delete_job(url)
 
+    def mark_as_sent(self, url: str, sent: bool = True):
+        return self.repository.mark_as_sent(url, sent)
+
 class FeedService:
     def __init__(self, repository: ConfigRepository):
         self.repository = repository

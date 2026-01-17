@@ -1,9 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from api.services.domain_services import JobService
 from api.dependencies import get_job_service
 from api.schemas.models import Job, FeedURLOnly
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
+
+class MarkSentPayload(BaseModel):
+    url: str
+    sent: bool = True
 
 @router.get("/")
 def get_jobs(service: JobService = Depends(get_job_service)):
@@ -21,6 +26,12 @@ def add_job(payload: FeedURLOnly, service: JobService = Depends(get_job_service)
     if service.add_job(payload.url):
         return {"status": "added", "url": payload.url}
     return {"status": "exists", "url": payload.url}
+
+@router.post("/sent")
+def mark_job_sent(payload: MarkSentPayload, service: JobService = Depends(get_job_service)):
+    if service.mark_as_sent(payload.url, payload.sent):
+        return {"status": "updated", "url": payload.url, "sent": payload.sent}
+    raise HTTPException(status_code=404, detail="Job not found")
 
 @router.delete("/")
 def delete_job(url: str, service: JobService = Depends(get_job_service)):

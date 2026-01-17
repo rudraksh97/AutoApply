@@ -209,9 +209,28 @@ class JobManager:
 
         from src.draft_manager import DraftManager
         DraftManager().delete_draft_by_url(url)
-        
+
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM jobs WHERE url = ?", (url,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def mark_as_sent(self, url, sent=True):
+        """
+        Marks a job as sent (application submitted).
+
+        Args:
+            url (str): The unique URL of the job.
+            sent (bool): True to mark as sent, False to unmark.
+
+        Returns:
+            bool: True if the job was found and updated, False otherwise.
+        """
+        url = normalize_job_url(url)
+
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE jobs SET sent = ? WHERE url = ?", (1 if sent else 0, url))
             conn.commit()
             return cursor.rowcount > 0

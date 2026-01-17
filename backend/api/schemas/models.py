@@ -8,6 +8,7 @@ class Job(BaseModel):
     timestamp: str
     details: Optional[str] = None
     error_message: Optional[str] = None
+    sent: Optional[bool] = False
 
 class FeedURL(BaseModel):
     """Request model for adding a feed - requires both URL and name."""

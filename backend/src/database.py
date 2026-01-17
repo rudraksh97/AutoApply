@@ -105,6 +105,12 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
+    # Migration: Add sent column to jobs
+    try:
+        cursor.execute("ALTER TABLE jobs ADD COLUMN sent INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
     conn.commit()
     conn.close()
 
