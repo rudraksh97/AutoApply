@@ -277,12 +277,12 @@ export default function JobsPage() {
                                 <th className="px-4 py-3 font-bold">Job</th>
                                 <th className="px-4 py-3 font-bold text-center">Job Link</th>
                                 <th className="px-4 py-3 font-bold text-center">Apply Link</th>
+                                <th className="px-4 py-3 font-bold">Draft Status</th>
                                 <th className="px-4 py-3 font-bold text-center">Extracted Fields</th>
                                 <th className="px-4 py-3 font-bold text-center">Extracted JSON</th>
                                 <th className="px-4 py-3 font-bold text-center">Preview Resume</th>
-                                <th className="px-4 py-3 font-bold">Draft Status</th>
-                                <th className="px-4 py-3 font-bold text-center">Rerun</th>
                                 <th className="px-4 py-3 font-bold text-center">Open Draft</th>
+                                <th className="px-4 py-3 font-bold text-center">Rerun</th>
                                 <th className="px-4 py-3 font-bold text-center">Delete Job</th>
                             </tr>
                         </thead>
@@ -353,6 +353,22 @@ export default function JobsPage() {
                                                 )}
                                             </td>
 
+                                            {/* Status */}
+                                            <td className="px-4 py-3">
+                                                <span className={cn(
+                                                    "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border gap-1",
+                                                    getStatusColor(displayStatus)
+                                                )}>
+                                                    {displayStatus.includes('Running') && (
+                                                        <span className="relative flex h-1.5 w-1.5">
+                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                                                        </span>
+                                                    )}
+                                                    {displayStatus.replace('draft_', '').replace('_', ' ')}
+                                                </span>
+                                            </td>
+
                                             {/* Fields Extracted / Total */}
                                             <td className="px-4 py-3 text-center whitespace-nowrap">
                                                 {draft ? (
@@ -404,35 +420,6 @@ export default function JobsPage() {
                                                 )}
                                             </td>
 
-                                            {/* Status */}
-                                            <td className="px-4 py-3">
-                                                <span className={cn(
-                                                    "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border gap-1",
-                                                    getStatusColor(displayStatus)
-                                                )}>
-                                                    {displayStatus.includes('Running') && (
-                                                        <span className="relative flex h-1.5 w-1.5">
-                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                                                        </span>
-                                                    )}
-                                                    {displayStatus.replace('draft_', '').replace('_', ' ')}
-                                                </span>
-                                            </td>
-
-                                            {/* Restart Workflow */}
-                                            <td className="px-4 py-3 text-center">
-                                                <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    onClick={() => retryJob(job.url)}
-                                                    className="h-7 w-7 text-muted-foreground hover:text-orange-600 hover:bg-orange-50"
-                                                    title="Restart Workflow"
-                                                >
-                                                    <RotateCcw className="h-4 w-4" />
-                                                </Button>
-                                            </td>
-
                                             {/* Open Draft */}
                                             <td className="px-4 py-3 text-center">
                                                 {isDraftReady && draft ? (
@@ -452,6 +439,19 @@ export default function JobsPage() {
                                                 ) : (
                                                     <span className="text-muted-foreground/40">--</span>
                                                 )}
+                                            </td>
+
+                                            {/* Restart Workflow */}
+                                            <td className="px-4 py-3 text-center">
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    onClick={() => retryJob(job.url)}
+                                                    className="h-7 w-7 text-muted-foreground hover:text-orange-600 hover:bg-orange-50"
+                                                    title="Restart Workflow"
+                                                >
+                                                    <RotateCcw className="h-4 w-4" />
+                                                </Button>
                                             </td>
 
                                             {/* Delete Job */}
