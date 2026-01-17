@@ -430,7 +430,7 @@ export default function SettingsPage() {
                                     {freeConfigs.map((config, index) => (
                                         <div key={index} className="flex items-center justify-between p-3 rounded-md border bg-card">
                                             <div className="flex flex-col">
-                                                <span className="font-medium text-sm">{config.sdk.toUpperCase()} / {config.model}</span>
+                                                <span className="font-medium text-sm">{config.sdk.toUpperCase()} / {typeof config.model === 'object' ? config.model.name || config.model.id : config.model}</span>
                                                 <span className="text-xs text-muted-foreground font-mono">{config.api_key}</span>
                                             </div>
                                             <Button

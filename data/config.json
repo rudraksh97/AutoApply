@@ -14,10 +14,7 @@
   "free_configs": [
     {
       "sdk": "google",
-      "model": {
-        "id": "gemini-2.0-flash-exp",
-        "name": "Gemini 2.0 Flash (Experimental)"
-      },
+      "model": "gemini-2.0-flash-exp",
       "api_key": "fgdsgsdfgd",
       "usage_count": 0
     }
