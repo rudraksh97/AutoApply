@@ -170,8 +170,8 @@ class BrowserAgent:
         self.available_file_paths = []
 
         api_key = os.getenv("OPENROUTER_API_KEY")
-        config = ConfigManager()
-        model = config.get_selected_model()
+        # Hardcoded model for browser-use (Gemini doesn't wrap JSON in markdown)
+        model = "google/gemini-2.5-pro"
         self.llm = ChatOpenRouter(model=model, api_key=api_key)
 
     # -------------------------------------------------------------------------
