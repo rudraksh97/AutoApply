@@ -562,13 +562,8 @@ class DraftPreparationService:
         )
 
         try:
-            config = ConfigManager()
-            llm = ChatOpenAI(
-                model=config.get_selected_model(),
-                openai_api_key=os.getenv("OPENROUTER_API_KEY"),
-                openai_api_base="https://openrouter.ai/api/v1",
-                temperature=0.3
-            )
+            from src.llm_factory import LLMFactory
+            llm = LLMFactory.get_llm()
 
             log_callback("🤖 Generating form answers...")
             response = await llm.ainvoke(prompt)

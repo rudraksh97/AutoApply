@@ -449,6 +449,11 @@ class ResumeEditRequest(BaseModel):
     prompt: str
 
 
+class ManualResumeEditRequest(BaseModel):
+    """Request body for manual LaTeX edit."""
+    latex: str
+
+
 @router.get("/{draft_id}/resume/versions", response_model=List[ResumeVersion])
 async def get_resume_versions(draft_id: str):
     """Get all resume versions for a draft."""
@@ -606,3 +611,144 @@ async def preview_resume(draft_id: str, version_id: Optional[str] = None):
         raise HTTPException(status_code=404, detail=f"PDF file not found at {version.pdf_path}")
         
     return FileResponse(version.pdf_path, media_type="application/pdf")
+
+
+@router.get("/{draft_id}/resume/versions/{version_id}/prompt")
+async def get_version_prompt(draft_id: str, version_id: str):
+    """Reconstruct the prompt used for this version."""
+    from src.resume_builder import ResumeBuilder
+    from src.job_manager import JobManager
+    
+    draft = draft_manager.get_draft(draft_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+        
+    versions = draft_manager.get_resume_versions(draft_id)
+    # Find the requested version
+    version_idx = next((i for i, v in enumerate(versions) if v.id == version_id), None)
+    if version_idx is None:
+        raise HTTPException(status_code=404, detail="Version not found")
+        
+    version = versions[version_idx]
+
+    # USER FEEDBACK: Use the SOURCE LaTeX for the prompt.
+    # If it's v1, the source is the base template.
+    # If it's vN, the source is v(N-1).
+    source_latex = ""
+    if version.version_number == 1:
+        # Get base template
+        rb = ResumeBuilder()
+        if os.path.exists(rb.base_template_path):
+            with open(rb.base_template_path, 'r', encoding='utf-8') as f:
+                source_latex = f.read()
+    else:
+        # Find previous version
+        prev_version = next((v for v in versions if v.version_number == version.version_number - 1), None)
+        if prev_version and prev_version.tex_path and os.path.exists(prev_version.tex_path):
+            with open(prev_version.tex_path, 'r', encoding='utf-8') as f:
+                source_latex = f.read()
+
+    if not source_latex:
+         # Fallback to current version's LaTeX if source not found
+         if version.tex_path and os.path.exists(version.tex_path):
+             with open(version.tex_path, 'r', encoding='utf-8') as f:
+                 source_latex = f.read()
+
+    if not source_latex:
+         raise HTTPException(status_code=400, detail="LaTeX source not available")
+         
+    rb = ResumeBuilder()
+    
+    # Reconstruct prompt variables
+    ats_context = {
+        "missing_keywords": version.keywords_added.split(",") if version.keywords_added else [],
+        "matched_keywords": [],
+        "score": version.ats_score or 0,
+        "justification": version.justification or ""
+    }
+    
+    prompt = await rb.get_formatted_prompt(
+        latex_template=source_latex,
+        job_description=draft.job_details or "",
+        user_profile_text=get_user_profile_text(),
+        ats_context=ats_context
+    )
+    
+    return {"prompt": prompt}
+
+
+@router.post("/{draft_id}/resume/versions/manual")
+async def create_manual_version(draft_id: str, request: ManualResumeEditRequest, background_tasks: BackgroundTasks):
+    """Create a new resume version from provided LaTeX."""
+    from src.services import DraftPreparationService
+    from src.job_manager import JobManager
+    from src.resume_builder import ResumeBuilder
+    from src.agent import BrowserAgent
+    
+    draft = draft_manager.get_draft(draft_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+        
+    versions = draft_manager.get_resume_versions(draft_id)
+    new_version_num = (max(v.version_number for v in versions) + 1) if versions else 1
+    
+    # Initialize service
+    service = DraftPreparationService(
+        job_manager=JobManager(),
+        browser_agent=BrowserAgent(),
+        resume_builder=ResumeBuilder(),
+        draft_manager=draft_manager
+    )
+    
+    import uuid
+    version_id = str(uuid.uuid4())
+    
+    from src.url_utils import get_stable_job_id
+    job_id = get_stable_job_id(draft.job_url)
+
+    # Add build task to background
+    background_tasks.add_task(
+        service.resume_builder.build,
+        job_description=draft.job_details,
+        user_profile_text=get_user_profile_text(),
+        job_id=job_id,
+        raw_latex=request.latex,
+        version=f"v{new_version_num}",
+        version_id=version_id,
+        draft_manager=draft_manager,
+        job_manager=service.job_manager,
+        job_url=draft.job_url
+    )
+    
+    tex_path = f"data/tex_resumes/{job_id}/v{new_version_num}/Resume_{job_id}_v{new_version_num}.tex"
+    pdf_path = f"data/generated_resumes/{job_id}/v{new_version_num}/Resume_{job_id}_v{new_version_num}.pdf"
+    
+    new_v = ResumeVersion(
+        id=version_id,
+        draft_id=draft_id,
+        version_number=new_version_num,
+        tex_path=tex_path,
+        pdf_path=pdf_path,
+        ats_score=0,
+        justification="Manual Edit",
+        changes_summary="User provided LaTeX manually",
+        status="GENERATING",
+        is_current=True
+    )
+    draft_manager.create_resume_version(new_v)
+    return new_v
+
+
+@router.get("/{draft_id}/resume/versions/{version_id}/tex")
+async def get_version_tex(draft_id: str, version_id: str):
+    """Get the LaTeX source for a version."""
+    versions = draft_manager.get_resume_versions(draft_id)
+    version = next((v for v in versions if v.id == version_id), None)
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+        
+    if not version.tex_path or not os.path.exists(version.tex_path):
+         raise HTTPException(status_code=400, detail="LaTeX source not available")
+         
+    with open(version.tex_path, 'r', encoding='utf-8') as f:
+        return {"tex": f.read()}
