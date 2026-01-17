@@ -95,6 +95,12 @@ def _extract_json_from_response(response: str, fallback_as_text: bool = False) -
     Raises:
         ValueError: If no valid JSON found and fallback disabled.
     """
+    # Handle None or empty response
+    if response is None:
+        raise ValueError("Agent returned no result (None)")
+    if not response.strip():
+        raise ValueError("Agent returned empty result")
+
     # Try direct parse first
     try:
         return json.loads(response)
