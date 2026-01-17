@@ -150,7 +150,7 @@ export default function SettingsPage() {
                 setNewConfig(prev => ({
                     ...prev,
                     sdk: firstSdk.id,
-                    model: firstSdk.models[0]
+                    model: firstSdk.models[0].id
                 }));
             }
         } catch (e) {
@@ -175,7 +175,11 @@ export default function SettingsPage() {
         }
         setAddingConfig(true);
         try {
-            await axios.post(`${API_URL}/settings/free-configs`, newConfig);
+            await axios.post(`${API_URL}/settings/free-configs`, {
+                sdk: newConfig.sdk,
+                model: newConfig.model,
+                api_key: newConfig.api_key
+            });
             toast.success("Configuration added");
             setNewConfig(prev => ({ ...prev, api_key: "" }));
             fetchPlanAndConfigs();
@@ -375,7 +379,7 @@ export default function SettingsPage() {
                                             setNewConfig({
                                                 ...newConfig,
                                                 sdk: e.target.value,
-                                                model: sdk?.models[0] || ""
+                                                model: sdk?.models[0]?.id || ""
                                             });
                                         }}
                                     >

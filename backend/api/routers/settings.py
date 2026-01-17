@@ -1,7 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Body
 from pydantic import BaseModel
 from src.config import ConfigManager
+import logging
+import json
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
 class APIKeyUpdate(BaseModel):
@@ -138,11 +141,33 @@ def get_free_configs():
     return masked_configs
 
 @router.post("/free-configs")
-def add_free_config(config: FreeConfig):
+async def add_free_config(payload: dict = Body(...)):
     """Adds a new model configuration to the free plan."""
-    cm = ConfigManager()
-    cm.add_free_config(config.sdk, config.model, config.api_key)
-    return {"status": "success"}
+    import traceback
+    
+    logger.info(f"Received payload: {json.dumps(payload, indent=2)}")
+    
+    try:
+        # Validate required fields
+        sdk = payload.get("sdk")
+        model = payload.get("model")
+        api_key = payload.get("api_key")
+        
+        if not sdk or not model or not api_key:
+            logger.error(f"Missing required fields. sdk={sdk}, model={model}, api_key={'present' if api_key else 'missing'}")
+            raise HTTPException(status_code=400, detail="Missing required fields: sdk, model, api_key")
+        
+        logger.info(f"Parsed config: sdk={sdk}, model={model}, api_key={'***' if api_key else 'None'}")
+        cm = ConfigManager()
+        cm.add_free_config(sdk, model, api_key)
+        logger.info("Free config added successfully")
+        return {"status": "success"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding free config: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/free-configs/{index}")
 def remove_free_config(index: int):
