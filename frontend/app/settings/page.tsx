@@ -420,6 +420,18 @@ export default function SettingsPage() {
                             </Button>
                         </div>
 
+                        {/* API Key Sources Info */}
+                        <div className="p-4 rounded-lg border bg-blue-50/50 border-blue-100 flex gap-3">
+                            <Info className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
+                            <div className="space-y-2">
+                                <p className="text-sm font-medium text-blue-900">Where to get free API keys?</p>
+                                <div className="text-xs text-blue-700 leading-relaxed space-y-1">
+                                    <p><strong>Google AI:</strong> <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-900">aistudio.google.com/apikey</a></p>
+                                    <p><strong>Cerebras:</strong> <a href="https://cloud.cerebras.ai/" target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-900">cloud.cerebras.ai</a></p>
+                                </div>
+                            </div>
+                        </div>
+
                         {/* Config List */}
                         <div className="space-y-3">
                             <h3 className="font-medium text-sm">Active Configurations ({freeConfigs.length})</h3>
