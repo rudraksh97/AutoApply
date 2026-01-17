@@ -101,6 +101,18 @@ def _extract_json_from_response(response: str, fallback_as_text: bool = False) -
     if not response.strip():
         raise ValueError("Agent returned empty result")
 
+    # Strip markdown code fences if present (e.g., ```json ... ```)
+    stripped = response.strip()
+    if stripped.startswith("```"):
+        # Remove opening fence (```json or ```)
+        lines = stripped.split("\n", 1)
+        if len(lines) > 1:
+            stripped = lines[1]
+        # Remove closing fence
+        if stripped.rstrip().endswith("```"):
+            stripped = stripped.rstrip()[:-3].rstrip()
+        response = stripped
+
     # Try direct parse first
     try:
         return json.loads(response)
