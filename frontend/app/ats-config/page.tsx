@@ -97,13 +97,13 @@ export default function ATSConfigPage() {
     }
 
     return (
-        <div className="container max-w-4xl py-10 space-y-8 animate-in fade-in duration-500">
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight mb-2">ATS Configuration</h1>
+        <div className="space-y-8">
+            <header className="flex flex-col gap-2">
+                <h1 className="text-3xl font-bold tracking-tight font-serif text-foreground">ATS Configuration</h1>
                 <p className="text-muted-foreground">
                     Customize the AI prompts used for ATS scoring and resume tailoring.
                 </p>
-            </div>
+            </header>
 
             <div className="grid gap-6">
                 {/* SCORING PROMPT CARD */}
