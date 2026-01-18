@@ -75,7 +75,7 @@ class ResumeBuilder:
 
         self._ensure_directories()
         self._setup_jinja_env()
-        self._setup_llm()
+        # self.llm removed - we instantiate per-step LLMs now
 
     def _ensure_directories(self):
         """Create required directories."""
@@ -100,11 +100,6 @@ class ResumeBuilder:
             loader=jinja2.FileSystemLoader(os.path.dirname(self.base_template_path))
         )
 
-    def _setup_llm(self):
-        """Initialize LLM client."""
-        from src.llm_factory import LLMFactory
-        self.llm = LLMFactory.get_llm()
-
     # -------------------------------------------------------------------------
     # ATS Score Calculation
     # -------------------------------------------------------------------------
@@ -112,7 +107,7 @@ class ResumeBuilder:
     async def calculate_ats_score(self, job_description: str, resume_text: str) -> dict:
         """Calculate ATS compatibility score using structured LLM output."""
         from src.config import ConfigManager
-
+        
         config = ConfigManager()
         score_prompt = config.get_ats_prompts().get("calculate_score")
 
@@ -120,16 +115,25 @@ class ResumeBuilder:
                                         .replace("{{resume_text}}", resume_text)
 
         try:
-            return await self._invoke_ats_score(formatted_prompt)
+            from src.llm_factory import LLMFactory
+            from src.token_manager import TokenManager
+
+            llm = LLMFactory.get_llm_for_step("step_ats_scoring")
+            
+            # Deduct credits
+            if hasattr(llm, "config_id") and llm.config_id:
+                TokenManager().deduct_credits(llm.config_id, len(formatted_prompt) * 2)
+
+            return await self._invoke_ats_score(llm, formatted_prompt)
         except Exception as e:
             logger.error(f"Error calculating ATS score: {e}")
             return {"score": 0, "justification": f"Error: {e}", "missing_keywords": []}
 
-    async def _invoke_ats_score(self, prompt: str) -> dict:
+    async def _invoke_ats_score(self, llm, prompt: str) -> dict:
         """Invoke LLM for ATS score with structured output."""
-        if hasattr(self.llm, "with_structured_output"):
+        if hasattr(llm, "with_structured_output"):
             logger.info("Using structured output for ATS score")
-            chain = self.llm.with_structured_output(ATSScoreOutput)
+            chain = llm.with_structured_output(ATSScoreOutput)
             result = await chain.ainvoke(prompt)
 
             return {
@@ -141,7 +145,7 @@ class ResumeBuilder:
 
         # Fallback to JSON parsing
         parser = JsonOutputParser(pydantic_object=ATSScoreOutput)
-        chain = self.llm | parser
+        chain = llm | parser
         result = await chain.ainvoke(f"{prompt}\n\n{parser.get_format_instructions()}")
 
         justification = result.get("justification", {})
@@ -188,7 +192,16 @@ class ResumeBuilder:
         missing_str = self._format_keywords(ats_context, "missing_keywords")
 
         try:
-            return await self._invoke_tailoring(prompt, latex_template, missing_str)
+            from src.llm_factory import LLMFactory
+            from src.token_manager import TokenManager
+
+            llm = LLMFactory.get_llm_for_step("step_resume_tailoring")
+            
+            # Deduct credits
+            if hasattr(llm, "config_id") and llm.config_id:
+                TokenManager().deduct_credits(llm.config_id, len(prompt) * 2)
+
+            return await self._invoke_tailoring(llm, prompt, latex_template, missing_str)
         except Exception as e:
             logger.error(f"Error tailoring resume: {e}")
             return {"latex": latex_template, "keywords": "", "summary": f"Error: {e}"}
@@ -233,10 +246,10 @@ class ResumeBuilder:
         keywords = ats_context.get(key, [])
         return ", ".join(keywords) if keywords else "None"
 
-    async def _invoke_tailoring(self, prompt: str, fallback_latex: str, missing_str: str) -> dict:
+    async def _invoke_tailoring(self, llm, prompt: str, fallback_latex: str, missing_str: str) -> dict:
         """Invoke LLM for resume tailoring."""
-        if hasattr(self.llm, "with_structured_output"):
-            chain = self.llm.with_structured_output(TailoredResumeOutput)
+        if hasattr(llm, "with_structured_output"):
+            chain = llm.with_structured_output(TailoredResumeOutput)
             result = await chain.ainvoke(prompt)
             return {
                 "latex": result.new_latex_code,
@@ -246,7 +259,7 @@ class ResumeBuilder:
             }
 
         parser = JsonOutputParser(pydantic_object=TailoredResumeOutput)
-        chain = self.llm | parser
+        chain = llm | parser
         result = await chain.ainvoke(f"{prompt}\n\n{parser.get_format_instructions()}")
 
         return {
@@ -262,8 +275,11 @@ class ResumeBuilder:
 
     async def generate_resume_content(self, job_description: str, _current_resume_info: str) -> dict:
         """Extract keywords from job description (legacy method)."""
+        from src.llm_factory import LLMFactory
+        llm = LLMFactory.get_llm_for_step("step_resume_tailoring") # Reuse tailoring step
+        
         prompt = ChatPromptTemplate.from_template(RESUME_OPTIMIZER_PROMPT_TEMPLATE)
-        chain = prompt | self.llm | JsonOutputParser()
+        chain = prompt | llm | JsonOutputParser()
         return await chain.ainvoke({"job_description": job_description})
 
     # -------------------------------------------------------------------------

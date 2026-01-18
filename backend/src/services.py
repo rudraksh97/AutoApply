@@ -536,6 +536,25 @@ class DraftPreparationService:
                     field.value = pdf_path
                     field.skipped = False
 
+from typing import Callable, Optional, List
+from pydantic import BaseModel, Field
+
+# ... (existing imports)
+
+class FormAnswer(BaseModel):
+    """A structured answer for a form field."""
+    xpath: str = Field(description="The accurate xpath of the field as provided in the input")
+    value: Optional[str] = Field(None, description="The generated value to fill into the field. Use null if skipping.")
+    confidence: float = Field(..., description="Confidence score between 0.0 and 1.0")
+    skip: bool = Field(False, description="Whether to skip filling this field")
+    skip_reason: Optional[str] = Field(None, description="Reason for skipping if applicable")
+
+class FormAnswers(BaseModel):
+    """Collection of form answers."""
+    answers: List[FormAnswer] = Field(..., description="List of answers for the provided form fields")
+
+# ... (other code)
+
     async def _generate_form_answers(
         self,
         form_state: FormState,
@@ -543,56 +562,107 @@ class DraftPreparationService:
         user_profile_text: str,
         log_callback: Callable
     ) -> FormState:
-        """Generate answers for form fields using LLM."""
-        fields_for_llm = [
-            {
+        """Generate answers for form fields using LLM with structured output."""
+        
+        # Prepare valid JSON-serializable fields for the prompt
+        fields_for_llm = []
+        for f in form_state.fields:
+            fields_for_llm.append({
                 "xpath": f.xpath,
                 "field_type": f.field_type.value,
                 "label": f.label,
                 "required": f.required,
                 "options": f.options
-            }
-            for f in form_state.fields
-        ]
+            })
 
         prompt = GENERATE_FORM_ANSWERS_PROMPT.format(
-            job_description=job_description[:2000] if job_description else "No description",
+            job_description=job_description[:3000] if job_description else "No description",
             user_profile=user_profile_text,
             form_fields=json.dumps(fields_for_llm, indent=2)
         )
 
         try:
             from src.llm_factory import LLMFactory
-            llm = LLMFactory.get_llm()
+            from src.token_manager import TokenManager
+            
+            llm = LLMFactory.get_llm_for_step("step_form_answering")
 
-            log_callback("🤖 Generating form answers...")
-            response = await llm.ainvoke(prompt)
-            answers = self._parse_llm_answers(response.content)
+            # Deduct credits: len(prompt) * 2
+            if hasattr(llm, "config_id") and llm.config_id:
+                tm = TokenManager()
+                cost = len(prompt) * 2
+                tm.deduct_credits(llm.config_id, cost)
+                # log_callback(f"💰 Deducted {cost} credits")
 
-            self._apply_answers_to_form(form_state, answers)
+            log_callback("🤖 Generating form answers (Structured)...")
+            
+            # Use structured output for reliable parsing
+            try:
+                # Dynamically bind the schema
+                structured_llm = llm.with_structured_output(FormAnswers)
+                response = await structured_llm.ainvoke(prompt)
+                
+                # 'response' should be a FormAnswers object
+                if isinstance(response, FormAnswers):
+                    answers_data = [a.model_dump() for a in response.answers]
+                elif isinstance(response, dict):
+                     # Some providers might return dict if not fully typed? 
+                     # Should typically return model instance with LangChain
+                     answers_data = response.get("answers", [])
+                else:
+                    # Fallback for weird returns
+                    log_callback(f"⚠️ Unexpected return type: {type(response)}. Trying to parse.")
+                    answers_data = []
 
-            filled = sum(1 for f in form_state.fields if f.value and not f.skipped)
-            log_callback(f"✅ Generated answers for {filled}/{len(form_state.fields)} fields")
+                self._apply_answers_to_form(form_state, answers_data)
+
+                filled = sum(1 for f in form_state.fields if f.value and not f.skipped)
+                log_callback(f"✅ Generated answers for {filled}/{len(form_state.fields)} fields")
+
+            except Exception as e:
+                 log_callback(f"⚠️ Structured output failed: {e}. Falling back to raw generation.")
+                 # Fallback: Raw generation + Regex parse (Old method)
+                 # This handles models that might not support structured output strictly yet
+                 raw_response = await llm.ainvoke(prompt)
+                 answers = self._parse_llm_answers(raw_response.content)
+                 self._apply_answers_to_form(form_state, answers)
 
         except Exception as e:
-            log_callback(f"⚠️ LLM answer generation failed: {e}")
+            log_callback(f"⚠️ LLM answer generation entirely failed: {e}")
 
         return form_state
 
     def _parse_llm_answers(self, response_text: str) -> list:
-        """Parse LLM response to extract answers."""
+        """Parse LLM response to extract answers (Legacy/Fallback)."""
         try:
+            # Look for JSON array block
             json_match = re.search(r'\[.*\]', response_text, re.DOTALL)
             if json_match:
                 return json.loads(json_match.group())
+            
+            # Look for JSON object with "answers" key
+            json_obj_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            if json_obj_match:
+                data = json.loads(json_obj_match.group())
+                if "answers" in data and isinstance(data["answers"], list):
+                    return data["answers"]
+                
             return json.loads(response_text)
         except json.JSONDecodeError:
             raise ValueError(f"Failed to parse answers: {response_text[:200]}...")
 
     def _apply_answers_to_form(self, form_state: FormState, answers: list):
         """Apply parsed answers to form state."""
-        answer_map = {a.get("xpath"): a for a in answers}
-
+        # Normalize answers to a map
+        answer_map = {}
+        for a in answers:
+            # Handle both dict and Pydantic object (if mixed)
+            if hasattr(a, 'xpath'):
+                # It's a Pydantic object
+                answer_map[a.xpath] = a.model_dump()
+            elif isinstance(a, dict) and "xpath" in a:
+                 answer_map[a["xpath"]] = a
+        
         for field in form_state.fields:
             if field.xpath not in answer_map:
                 continue

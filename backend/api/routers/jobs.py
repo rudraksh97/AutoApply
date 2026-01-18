@@ -16,6 +16,15 @@ def get_jobs(service: JobService = Depends(get_job_service)):
 
 @router.post("/retry")
 def retry_job(payload: FeedURLOnly, service: JobService = Depends(get_job_service)):
+    from src.job_manager_state import JobManagerState
+    
+    # Validation: Job Manager must be running to retry
+    if not JobManagerState.is_running():
+        raise HTTPException(
+            status_code=400,
+            detail="Job Manager is stopped. Please start the Job Manager in Settings before retrying jobs."
+        )
+
     # Using FeedURLOnly for simple URL payload
     if service.retry_job(payload.url):
         return {"status": "retried", "url": payload.url}

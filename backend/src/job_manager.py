@@ -234,3 +234,20 @@ class JobManager:
             cursor.execute("UPDATE jobs SET sent = ? WHERE url = ?", (1 if sent else 0, url))
             conn.commit()
             return cursor.rowcount > 0
+
+    def increment_retry_count(self, url):
+        """
+        Increments the retry count for a job.
+        
+        Args:
+            url (str): The unique URL of the job.
+            
+        Returns:
+            bool: True if updated, False otherwise.
+        """
+        url = normalize_job_url(url)
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE jobs SET retry_count = retry_count + 1 WHERE url = ?", (url,))
+            conn.commit()
+            return cursor.rowcount > 0

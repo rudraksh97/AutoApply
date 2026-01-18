@@ -33,7 +33,11 @@ from src.services import DraftPreparationService, get_user_profile_text
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    force=True,
+    handlers=[
+        logging.StreamHandler()
+    ]
 )
 
 
@@ -152,19 +156,29 @@ async def automation_loop():
     """Background task to poll RSS feeds and process pending jobs."""
     logging.info("Starting background automation task...")
 
-    job_manager = JobManager()
-    config_manager = ConfigManager()
-    agent = BrowserAgent(headless=True)
-    builder = ResumeBuilder()
-    service = DraftPreparationService(job_manager, agent, builder)
-
-    event_publisher = JobManagerEventPublisher(job_manager)
-    deduplicator = JobManagerDeduplicator(job_manager)
-
     last_rss_poll = 0
 
     while True:
         try:
+            from src.job_manager_state import JobManagerState
+            
+            if not JobManagerState.is_running():
+                # If stopped, just wait effectively
+                await asyncio.sleep(5) 
+                continue
+
+            # Initialize components inside the loop for resilience
+            # This ensures that if initialization fails (e.g. no LLM keys), 
+            # the task doesn't die permanently.
+            job_manager = JobManager()
+            config_manager = ConfigManager()
+            agent = BrowserAgent(headless=True)
+            builder = ResumeBuilder()
+            service = DraftPreparationService(job_manager, agent, builder)
+
+            event_publisher = JobManagerEventPublisher(job_manager)
+            deduplicator = JobManagerDeduplicator(job_manager)
+
             now = time.time()
 
             # Poll RSS feeds hourly
@@ -179,6 +193,8 @@ async def automation_loop():
 
         except Exception as e:
             logging.error(f"Error in automation loop: {e}")
+            # Add a longer sleep if we hit a critical failure point
+            await asyncio.sleep(60)
 
         await asyncio.sleep(60)
 
@@ -249,20 +265,28 @@ async def _process_feed_entry(
 
 
 async def _process_pending_jobs(job_manager, service):
-    """Process all jobs with 'Pending' status."""
+    """Process all jobs with 'Pending' or 'Retried' status."""
     all_jobs = job_manager.get_all_jobs()
-    pending_jobs = [j for j in all_jobs if j.get('status') == 'Pending']
+    # Pick up both Pending (new) and Retried (requested retry)
+    processing_jobs = [j for j in all_jobs if j.get('status') in ['Pending', 'Retried']]
 
-    if not pending_jobs:
-        logging.debug("No pending jobs to process.")
+    if not processing_jobs:
+        logging.debug("No jobs to process.")
         return
     
-    logging.info(f"Processing {len(pending_jobs)} pending jobs...")
+    logging.info(f"Processing {len(processing_jobs)} jobs...")
 
-    for job in pending_jobs:
+    for job in processing_jobs:
         url = job.get('url')
+        status = job.get('status')
+        
         if url:
-            logging.info(f"Processing: {url}")
+            # If it's a retry, increment the counter
+            if status == 'Retried':
+                logging.info(f"🔄 Incrementing retry count for: {url}")
+                job_manager.increment_retry_count(url)
+
+            logging.info(f"🚀 Processing: {url}")
             user_profile_text = get_user_profile_text()
             await service.prepare_draft(url, user_profile_text, log_callback=logging.info)
 
@@ -281,6 +305,12 @@ def _ensure_directories():
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     _ensure_directories()
+
+    # Safety: Ensure Job Manager is stopped on startup
+    from src.job_manager_state import JobManagerState
+    if JobManagerState.is_running():
+        logging.info("Forcing Job Manager to STOPPED state on startup safety check.")
+        JobManagerState.set_running(False)
 
     task = asyncio.create_task(automation_loop())
     yield

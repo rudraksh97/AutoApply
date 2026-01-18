@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { RefreshCw, FileText, ExternalLink, Play, Trash2, Plus, Code, Copy, Check, RotateCcw, Eye, CheckCircle2, Circle } from 'lucide-react';
+import { RefreshCw, FileText, ExternalLink, Play, Trash2, Plus, Code, Copy, Check, RotateCcw, Eye, CheckCircle2, Circle, Activity, Loader2, Pause } from 'lucide-react';
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ResumePreviewPopup } from "@/components/ResumePreviewPopup";
@@ -23,6 +23,7 @@ interface Job {
     job_title?: string | null;
     apply_link?: string | null;
     sent?: boolean | number;
+    retry_count?: number;
 }
 
 interface Draft {
@@ -70,6 +71,8 @@ interface FullDraft {
 export default function JobsPage() {
     const [jobs, setJobs] = useState<Job[]>([]);
     const [drafts, setDrafts] = useState<Draft[]>([]);
+    const [jobManagerState, setJobManagerState] = useState({ is_running: false });
+    const [toggling, setToggling] = useState(false);
     const [loading, setLoading] = useState(true);
     const [openingDraft, setOpeningDraft] = useState<string | null>(null);
     const [newJobUrl, setNewJobUrl] = useState("");
@@ -89,12 +92,14 @@ export default function JobsPage() {
 
     const fetchJobs = async () => {
         try {
-            const [jobsRes, draftsRes] = await Promise.all([
+            const [jobsRes, draftsRes, statusRes] = await Promise.all([
                 axios.get(`${API_URL}/jobs`),
-                axios.get(`${API_URL}/drafts`)
+                axios.get(`${API_URL}/drafts`),
+                axios.get(`${API_URL}/settings/job-manager/status`)
             ]);
             setJobs(jobsRes.data);
             setDrafts(draftsRes.data);
+            setJobManagerState(statusRes.data);
         } catch (e) {
             console.error(e);
         } finally {
@@ -161,6 +166,25 @@ export default function JobsPage() {
         } catch (e) {
             console.error(e);
             toast.error("Failed to update job");
+        }
+    };
+
+    const handleToggleJobManager = async () => {
+        setToggling(true);
+        try {
+            if (jobManagerState.is_running) {
+                await axios.post(`${API_URL}/settings/job-manager/stop`);
+                toast.success("Job Manager Stopped");
+            } else {
+                await axios.post(`${API_URL}/settings/job-manager/start`);
+                toast.success("Job Manager Started");
+            }
+            fetchJobs(); // Refresh status
+        } catch (e: any) {
+            const msg = e.response?.data?.detail || "Failed to toggle Job Manager";
+            toast.error(msg);
+        } finally {
+            setToggling(false);
         }
     };
 
@@ -282,6 +306,54 @@ export default function JobsPage() {
                 </div>
             </header>
 
+            {/* Job Manager Status Banner */}
+            <div className={cn(
+                "rounded-lg border px-4 py-3 flex items-center justify-between shadow-sm transition-all",
+                jobManagerState.is_running
+                    ? "bg-gradient-to-r from-emerald-50 to-green-50 border-emerald-200"
+                    : "bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200"
+            )}>
+                <div className="flex items-center gap-3">
+                    <div className={cn(
+                        "p-2 rounded-full",
+                        jobManagerState.is_running ? "bg-emerald-100 text-emerald-600" : "bg-amber-100 text-amber-600"
+                    )}>
+                        <Activity className={cn("h-5 w-5", jobManagerState.is_running && "animate-pulse")} />
+                    </div>
+                    <div>
+                        <h3 className={cn("font-medium", jobManagerState.is_running ? "text-emerald-900" : "text-amber-900")}>
+                            {jobManagerState.is_running ? "AutoApply is Running" : "AutoApply is Paused"}
+                        </h3>
+                        <p className={cn("text-xs", jobManagerState.is_running ? "text-emerald-700" : "text-amber-700")}>
+                            {jobManagerState.is_running
+                                ? "The job manager is actively processing your application queue."
+                                : "Background processing is stopped. New jobs will not be processed until resumed."}
+                        </p>
+                    </div>
+                </div>
+                <Button
+                    size="sm"
+                    variant={jobManagerState.is_running ? "outline" : "default"}
+                    className={cn(
+                        "transition-colors",
+                        jobManagerState.is_running
+                            ? "border-emerald-300 text-emerald-800 hover:bg-emerald-100 bg-white/50"
+                            : "bg-amber-600 hover:bg-amber-700 text-white border-amber-600"
+                    )}
+                    onClick={handleToggleJobManager}
+                    disabled={toggling}
+                >
+                    {toggling ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : jobManagerState.is_running ? (
+                        <Pause className="h-4 w-4 mr-2" />
+                    ) : (
+                        <Play className="h-4 w-4 mr-2" />
+                    )}
+                    {jobManagerState.is_running ? "Pause" : "Start Processing"}
+                </Button>
+            </div>
+
             <Card className="shadow-sm border-border/60 overflow-hidden">
                 <CardHeader className="border-b bg-muted/30 pb-4">
                     <div className="flex items-center gap-4">
@@ -321,6 +393,7 @@ export default function JobsPage() {
                                 <th className="px-4 py-3 font-bold text-center">Job Link</th>
                                 <th className="px-4 py-3 font-bold text-center">Apply Link</th>
                                 <th className="px-4 py-3 font-bold">Draft Status</th>
+                                <th className="px-4 py-3 font-bold text-center">Retries</th>
                                 <th className="px-4 py-3 font-bold text-center">Extracted Fields</th>
                                 <th className="px-4 py-3 font-bold text-center">Extracted JSON</th>
                                 <th className="px-4 py-3 font-bold text-center">Preview Resume</th>
@@ -431,6 +504,17 @@ export default function JobsPage() {
                                                     )}
                                                     {displayStatus.replace('draft_', '').replace('_', ' ')}
                                                 </span>
+                                            </td>
+
+                                            {/* Retry Count */}
+                                            <td className="px-4 py-3 text-center">
+                                                {job.retry_count && job.retry_count > 0 ? (
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-50 text-orange-600 border border-orange-100">
+                                                        {job.retry_count}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-muted-foreground/30">0</span>
+                                                )}
                                             </td>
 
                                             {/* Fields Extracted / Total */}
@@ -545,7 +629,7 @@ export default function JobsPage() {
             </Card>
 
             {/* View Draft JSON Dialog */}
-            <Dialog open={viewDraftOpen} onOpenChange={setViewDraftOpen}>
+            < Dialog open={viewDraftOpen} onOpenChange={setViewDraftOpen} >
                 <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
@@ -637,7 +721,7 @@ export default function JobsPage() {
                                                             <span className={cn(
                                                                 "text-xs font-medium",
                                                                 field.confidence >= 0.8 ? "text-green-600" :
-                                                                field.confidence >= 0.5 ? "text-yellow-600" : "text-red-600"
+                                                                    field.confidence >= 0.5 ? "text-yellow-600" : "text-red-600"
                                                             )}>
                                                                 {(field.confidence * 100).toFixed(0)}%
                                                             </span>
@@ -676,7 +760,7 @@ export default function JobsPage() {
                         </div>
                     )}
                 </DialogContent>
-            </Dialog>
+            </Dialog >
 
             <ResumePreviewPopup
                 isOpen={previewOpen}
@@ -684,6 +768,6 @@ export default function JobsPage() {
                 draftId={previewDraftId || ""}
                 jobUrl={previewJobUrl}
             />
-        </div>
+        </div >
     );
 }

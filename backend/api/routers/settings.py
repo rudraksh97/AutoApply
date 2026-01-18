@@ -62,6 +62,12 @@ def get_llm_inventory():
     masked = []
     for c in configs:
         m = c.copy()
+        
+        # Inject dynamic limit from SDK
+        if "daily_token_limit" not in m:
+            sdk = cm.get_sdk_definition(m.get("sdk_id"))
+            m["daily_token_limit"] = sdk.get("daily_token_limit", 1000000) if sdk else 1000000
+
         if m.get("api_key"):
             key = m["api_key"]
             if len(key) > 8:
@@ -137,6 +143,52 @@ def unlink_workflow(payload: LinkWorkflow):
     cm = ConfigManager()
     cm.unlink_llm_from_workflow(payload.workflow_id, payload.llm_config_id)
     return {"status": "success"}
+
+# -----------------------------------------------------------------------------
+# Job Manager Control
+# -----------------------------------------------------------------------------
+
+@router.get("/job-manager/status")
+def get_job_manager_status():
+    from src.job_manager_state import JobManagerState
+    return JobManagerState.get_status()
+
+@router.post("/job-manager/start")
+def start_job_manager():
+    from src.job_manager_state import JobManagerState
+    from src.config import ConfigManager
+
+    cm = ConfigManager()
+    links = cm.get_workflow_links()
+    
+    # Validation: Ensure all 4 required steps have at least one LLM
+    required_steps = [
+        "step_browser_automation",
+        "step_ats_scoring",
+        "step_resume_tailoring",
+        "step_form_answering"
+    ]
+    
+    missing_steps = []
+    for step in required_steps:
+        # Check if any link exists for this step
+        if not any(link["workflow_id"] == step for link in links):
+            missing_steps.append(step)
+            
+    if missing_steps:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot start: Missing LLM for steps: {', '.join(missing_steps)}"
+        )
+
+    JobManagerState.set_running(True)
+    return {"status": "started"}
+
+@router.post("/job-manager/stop")
+def stop_job_manager():
+    from src.job_manager_state import JobManagerState
+    JobManagerState.set_running(False)
+    return {"status": "stopped"}
 
 # =============================================================================
 # Legacy / Other

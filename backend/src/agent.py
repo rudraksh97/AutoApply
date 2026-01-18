@@ -169,10 +169,8 @@ class BrowserAgent:
         self.headless = headless
         self.available_file_paths = []
 
-        api_key = os.getenv("OPENROUTER_API_KEY")
-        # Hardcoded model for browser-use (Gemini doesn't wrap JSON in markdown)
-        model = "google/gemini-2.5-pro"
-        self.llm = ChatOpenRouter(model=model, api_key=api_key)
+        from src.llm_factory import LLMFactory
+        self.llm = LLMFactory.get_llm_for_step("step_browser_automation")
 
     # -------------------------------------------------------------------------
     # Task Builders
@@ -208,6 +206,14 @@ class BrowserAgent:
             Final result string from the agent.
         """
         from playwright.async_api import async_playwright
+        from src.token_manager import TokenManager
+
+        # Deduct fixed credit cost for browser operation
+        # This covers all internal LLM calls made by browser-use
+        if hasattr(self.llm, "config_id"):
+             tm = TokenManager()
+             if self.llm.config_id:
+                  tm.deduct_credits(self.llm.config_id, 10000)
 
         playwright = await async_playwright().start()
         browser_app = None

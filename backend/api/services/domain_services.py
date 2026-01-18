@@ -13,7 +13,7 @@ class JobService:
 
     def retry_job(self, url: str):
         if self.repository.job_exists(url):
-            self.repository.update_job(url, status="Pending", error_message="")
+            self.repository.update_job(url, status="Retried", error_message="")
             return True
         return False
 

@@ -2,6 +2,7 @@ browser-use
 playwright
 langchain-google-genai
 langchain-openai
+langchain-cerebras
 pandas
 python-dotenv
 jinja2

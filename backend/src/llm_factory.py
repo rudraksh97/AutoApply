@@ -2,6 +2,11 @@ import logging
 from typing import Optional
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
+try:
+    from langchain_cerebras import ChatCerebras
+except ImportError:
+    ChatCerebras = None
+    
 from src.config import ConfigManager
 from src.token_manager import TokenManager
 
@@ -17,12 +22,6 @@ class LLMFactory:
     def get_llm_for_step(cls, step_id: str):
         """
         Returns an LLM instance optimized for the specific workflow step.
-        
-        Algorithm:
-        1. Get all LLM configs linked to this step.
-        2. Filter out keys that have exceeded their daily limit.
-        3. Sort by (Limit - Used) descending -> "Highest Unused Tokens First".
-        4. Return the top candidate.
         """
         cm = ConfigManager()
         tm = TokenManager()
@@ -40,8 +39,11 @@ class LLMFactory:
         
         for cfg in all_configs:
             if cfg["id"] in linked_config_ids:
-                # 2. Check Limits
-                limit = cfg.get("daily_token_limit", 0)
+                # 2. Check Limits (Dynamic from SDK)
+                sdk_id = cfg.get("sdk_id")
+                sdk = cm.get_sdk_definition(sdk_id)
+                limit = sdk.get("daily_token_limit", 1000000) if sdk else 1000000
+                
                 used = cfg.get("tokens_used_today", 0)
                 remaining = limit - used
                 
@@ -68,76 +70,91 @@ class LLMFactory:
         sdk = cm.get_sdk_definition(sdk_id)
         
         if not sdk:
-            # Fallback for manual configs without SDK ref (shouldn't happen often)
             logger.warning(f"Config {config['name']} has invalid SDK ID {sdk_id}")
             return cls._create_generic_llm(config)
 
-        provider = sdk.get("provider")
+        provider = sdk.get("provider", "openai_compatible")
         model = sdk.get("model_name")
         api_key = config.get("api_key")
-
-        # Wrapper to track usage on invoke logic? 
-        # For now, we return the raw LangChain object, but ideally we wrap it to count tokens.
-        # Since LangChain objects don't transparently support callback hooks for *our* specific logic easily 
-        # without complex callback handlers, we assume the CALLER will report usage or we use a CallbackHandler.
-        # To keep it simple, we just return the LLM. 
-        # TODO: Add UsageTrackingCallbackHandler here.
         
+        llm = None
+
         if provider == "google":
-            return ChatGoogleGenerativeAI(
+            llm = ChatGoogleGenerativeAI(
                 model=model, 
                 google_api_key=api_key, 
-                temperature=0.3
+                temperature=0.1
             )
             
         elif provider == "cerebras":
-            return ChatOpenAI(
-                model=model,
-                openai_api_key=api_key,
-                openai_api_base="https://api.cerebras.ai/v1",
-                temperature=0.3
-            )
+            if ChatCerebras:
+                # Cerebras SDK picks up key from env if not passed, but we pass it explicitly here if supported
+                # Note: langchain_cerebras might expect env var CEREBRAS_API_KEY
+                # We sets the env var temporarily or pass it if constructor allows
+                # Checking constructor signature usually allows api_key.
+                # Assuming standard langchain pattern:
+                llm = ChatCerebras(
+                    model=model,
+                    api_key=api_key,
+                    temperature=0.1
+                )
+            else:
+                 # Fallback if library missing
+                logger.error("langchain_cerebras not installed. Falling back to OpenAI compatible.")
+                llm = ChatOpenAI(
+                    model=model,
+                    openai_api_key=api_key,
+                    openai_api_base="https://api.cerebras.ai/v1",
+                    temperature=0.1
+                )
             
         elif provider == "openrouter":
-            return ChatOpenAI(
+            llm = ChatOpenAI(
                 model=model,
                 openai_api_key=api_key,
                 openai_api_base="https://openrouter.ai/api/v1",
-                temperature=0.3
+                temperature=0.1
             )
             
         else: # openai_compatible
-            # Fallback for generic OpenAI compatible providers (e.g. self-hosted, other services)
-            # If the user manually provided a base URL in the config, it would be passed here if we supported it.
-            # For now, this defaults to OpenAI's standard API unless 'openrouter' is in the name (legacy check).
             base_url = "https://openrouter.ai/api/v1" if "openrouter" in model else None
-            return ChatOpenAI(
+            llm = ChatOpenAI(
                 model=model,
                 openai_api_key=api_key,
                 openai_api_base=base_url,
-                temperature=0.3
+                temperature=0.1
             )
+            
+        # CRITICAL FIX: Attach provider attribute to prevent AttributeError in downstream agents
+        # Also attach config_id for credit usage tracking
+        if llm:
+            llm.provider = provider
+            llm.config_id = config.get("id")
+            
+        return llm
 
     @classmethod
     def _get_fallback_llm(cls, cm: ConfigManager):
         """Last resort fallback."""
-        # Try to find *any* free key with credit
         all_configs = cm.get_user_configs()
         for cfg in all_configs:
             if cfg.get("plan_type") == "free":
                  return cls._create_llm_instance(cfg)
         
-        # Absolute despair fallback (will likely fail if no keys)
-        return ChatOpenAI(model="gpt-3.5-turbo")
+        fallback = ChatOpenAI(model="gpt-3.5-turbo")
+        fallback.provider = "openai"
+        return fallback
 
     @classmethod
     def _create_generic_llm(cls, config):
-        return ChatOpenAI(
+        llm = ChatOpenAI(
             model="gpt-3.5-turbo",
             openai_api_key=config.get("api_key")
         )
+        llm.provider = "openai"
+        return llm
 
-    # Backwards compatibility for code not yet updated
+    # Backwards compatibility
     @classmethod
     def get_llm(cls):
         logger.warning("Legacy get_llm() called. Defaulting to 'Browser Automation' step.")

@@ -127,18 +127,12 @@ class ConfigManager:
         data = self._load_json(CONFIG_FILE)
         configs = data.get("user_llm_configs", [])
 
-        # Get default limit from SDK if not provided
-        sdk = self.get_sdk_definition(sdk_id)
-        if daily_limit is None and sdk:
-            daily_limit = sdk.get("daily_token_limit", 1000000)
-
         new_config = {
             "id": str(uuid.uuid4()),
             "sdk_id": sdk_id,
             "name": name,
             "api_key": api_key,
             "plan_type": plan_type,
-            "daily_token_limit": daily_limit,
             "tokens_used_today": 0,
             "last_used_at": None,
             "reset_at": None # Will be set by TokenManager

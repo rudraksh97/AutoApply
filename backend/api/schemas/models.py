@@ -9,6 +9,7 @@ class Job(BaseModel):
     details: Optional[str] = None
     error_message: Optional[str] = None
     sent: Optional[bool] = False
+    retry_count: Optional[int] = 0
 
 class FeedURL(BaseModel):
     """Request model for adding a feed - requires both URL and name."""

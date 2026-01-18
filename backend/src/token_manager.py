@@ -39,6 +39,10 @@ class TokenManager:
             })
             logger.info(f"Recorded {tokens_used} tokens for {target_config['name']}. Total today: {new_usage}")
 
+    def deduct_credits(self, llm_config_id: str, amount: int):
+        """Alias for record_usage to support credit-based logic."""
+        self.record_usage(llm_config_id, amount)
+
     def _check_and_reset(self, llm_config_id: str):
         """
         Checks if the daily reset time has passed and resets counters if needed.

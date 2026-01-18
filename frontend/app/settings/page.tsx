@@ -16,9 +16,9 @@ import {
     Loader2,
     AlertCircle,
     CheckCircle2,
-    XCircle,
+    Settings2,
     Activity,
-    Settings2
+    XCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -62,6 +62,10 @@ export default function SettingsPage() {
     const [workflows, setWorkflows] = useState<WorkflowStep[]>([]);
     const [links, setLinks] = useState<WorkflowLink[]>([]);
 
+
+
+    // Loading State
+
     // Loading State
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
@@ -73,8 +77,7 @@ export default function SettingsPage() {
         sdk_id: "",
         name: "",
         api_key: "",
-        plan_type: "free",
-        daily_token_limit: 0
+        plan_type: "free"
     });
 
     // Derived Data
@@ -84,6 +87,7 @@ export default function SettingsPage() {
     // Extension State
     const [extensionStatus, setExtensionStatus] = useState<'checking' | 'installed' | 'not_installed'>('checking');
 
+    // Initial Data Fetch
     // Initial Data Fetch
     const fetchData = async () => {
         try {
@@ -125,7 +129,7 @@ export default function SettingsPage() {
             await axios.post(`${API_URL}/settings/llm-inventory`, newConfig);
             toast.success("LLM Added Successfully");
             setIsAddDialogOpen(false);
-            setNewConfig({ sdk_id: "", name: "", api_key: "", plan_type: "free", daily_token_limit: 0 });
+            setNewConfig({ sdk_id: "", name: "", api_key: "", plan_type: "free" });
             setSelectedProvider("");
             fetchData();
         } catch (e) {
@@ -172,6 +176,10 @@ export default function SettingsPage() {
             toast.error("Failed to unlink LLM");
         }
     };
+
+    // ------------------------------------------------------------------------
+    // Job Manager Actions
+    // ------------------------------------------------------------------------
 
     // ------------------------------------------------------------------------
     // Helpers
@@ -246,8 +254,7 @@ export default function SettingsPage() {
                                             const sdk = getSdk(e.target.value);
                                             setNewConfig({
                                                 ...newConfig,
-                                                sdk_id: e.target.value,
-                                                daily_token_limit: sdk ? sdk.daily_token_limit : 0
+                                                sdk_id: e.target.value
                                             });
                                         }}
                                     >
