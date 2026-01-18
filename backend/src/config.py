@@ -7,271 +7,225 @@ RSS feed URLs and API keys, stored in local JSON and .env files.
 
 import os
 import json
-from dotenv import set_key
+import uuid
+from dotenv import set_key, load_dotenv
 
-CONFIG_FILE = "data/config.json"
-ENV_FILE = ".env"
+# Load env vars
+load_dotenv()
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
+LLMS_FILE = os.path.join(DATA_DIR, "llms.json")
+WORKFLOWS_FILE = os.path.join(DATA_DIR, "workflows.json")
+WORKFLOW_LLM_FILE = os.path.join(DATA_DIR, "workflow_llm.json")
+ENV_FILE = os.path.join(BASE_DIR, ".env")
 
 class ConfigManager:
     """
-    Manages application configuration and API keys.
-
-    Handles discovery, addition, and removal of RSS feeds, as well as
-    securely persisting environment variables like API keys.
+    Manages application configuration, including LLM inventory, workflows, and keys.
     """
     def __init__(self):
-        """Initializes the manager and ensures the config data file exists."""
         self._ensure_config()
 
     def _ensure_config(self):
-        """Creates the data directory and config JSON file if they do not exist."""
-        if not os.path.exists("data"):
-            os.makedirs("data")
+        """Creates data directory and config files if they do not exist."""
+        if not os.path.exists(DATA_DIR):
+            os.makedirs(DATA_DIR)
+        
+        # Ensure config.json exists
         if not os.path.exists(CONFIG_FILE):
             with open(CONFIG_FILE, 'w') as f:
-                json.dump({"rss_feeds": []}, f)
+                json.dump({"rss_feeds": [], "user_llm_configs": []}, f)
+        
+        # Ensure we have user_llm_configs structure
+        data = self._load_json(CONFIG_FILE)
+        if "user_llm_configs" not in data:
+            data["user_llm_configs"] = []
+            self._save_json(CONFIG_FILE, data)
+
+    def _load_json(self, path):
+        if not os.path.exists(path):
+            return [] if path.endswith("s.json") else {} # List for definitions, Dict for config
+        with open(path, 'r') as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                return [] if path.endswith("s.json") else {}
+
+    def _save_json(self, path, data):
+        with open(path, 'w') as f:
+            json.dump(data, f, indent=2)
+
+    # =========================================================================
+    # RSS Feeds (Legacy but kept)
+    # =========================================================================
 
     def get_feeds(self):
-        """
-        Retrieves the list of configured RSS feeds.
-
-        Returns:
-            list: A list of feed objects with 'url' and 'name' fields.
-                  For backwards compatibility, string entries are converted to objects.
-        """
-        with open(CONFIG_FILE, 'r') as f:
-            data = json.load(f)
+        data = self._load_json(CONFIG_FILE)
         feeds = data.get("rss_feeds", [])
-        # Handle backwards compatibility: convert old string entries to objects
+        # Normalization
         normalized = []
         for feed in feeds:
             if isinstance(feed, str):
-                # Old format - user will need to re-add with a name
                 normalized.append({"url": feed, "name": ""})
             else:
                 normalized.append(feed)
         return normalized
 
     def add_feed(self, url, name):
-        """
-        Adds a new RSS feed to the configuration.
-
-        Args:
-            url (str): The URL of the RSS feed to add.
-            name (str): The distinct name for this feed.
-
-        Returns:
-            bool: True if the feed was added, False if URL or name already exists.
-        """
         feeds = self.get_feeds()
-        # Check for duplicate URL or name
         for feed in feeds:
-            if feed["url"] == url:
-                return False  # URL already exists
-            if feed["name"] == name:
-                return False  # Name already exists
+            if feed["url"] == url: return False
+            if feed["name"] == name: return False
         feeds.append({"url": url, "name": name})
-        self._save_feeds(feeds)
+        
+        data = self._load_json(CONFIG_FILE)
+        data["rss_feeds"] = feeds
+        self._save_json(CONFIG_FILE, data)
         return True
 
     def remove_feed(self, url):
-        """
-        Removes an RSS feed from the configuration by URL.
-
-        Args:
-            url (str): The URL of the RSS feed to remove.
-
-        Returns:
-            bool: True if the feed was removed, False if it was not found.
-        """
         feeds = self.get_feeds()
         for i, feed in enumerate(feeds):
             if feed["url"] == url:
                 feeds.pop(i)
-                self._save_feeds(feeds)
+                data = self._load_json(CONFIG_FILE)
+                data["rss_feeds"] = feeds
+                self._save_json(CONFIG_FILE, data)
                 return True
         return False
 
-    def _save_feeds(self, feeds):
-        """Saves the feed list to the config JSON file."""
-        data = self._load_config()
-        data["rss_feeds"] = feeds
-        self._save_config(data)
+    # =========================================================================
+    # LLM SDK Definitions (llms.json)
+    # =========================================================================
 
-    def _load_config(self):
-        """Loads the full config from the JSON file."""
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
+    def get_sdk_definitions(self):
+        """Returns the list of supported LLM SDKs."""
+        return self._load_json(LLMS_FILE)
 
-    def _save_config(self, data):
-        """Saves the full config to the JSON file."""
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(data, f, indent=2)
+    def get_sdk_definition(self, sdk_id):
+        sdks = self.get_sdk_definitions()
+        for sdk in sdks:
+            if sdk["id"] == sdk_id:
+                return sdk
+        return None
 
-    def get_selected_model(self):
-        """
-        Retrieves the currently selected LLM model.
+    # =========================================================================
+    # User LLM Configuration (config.json -> user_llm_configs)
+    # =========================================================================
 
-        Returns:
-            str: The model identifier, or default if not set.
-        """
-        data = self._load_config()
-        return data.get("selected_model", "anthropic/claude-sonnet-4")
+    def get_user_configs(self):
+        """Returns the user's configured LLM keys."""
+        data = self._load_json(CONFIG_FILE)
+        return data.get("user_llm_configs", [])
 
-    def set_selected_model(self, model_id):
+    def add_user_config(self, sdk_id, name, api_key, plan_type, daily_limit=None):
         """
-        Sets the selected LLM model.
+        Adds a new LLM configuration.
+        """
+        data = self._load_json(CONFIG_FILE)
+        configs = data.get("user_llm_configs", [])
 
-        Args:
-            model_id (str): The OpenRouter model identifier.
-        """
-        data = self._load_config()
-        data["selected_model"] = model_id
-        self._save_config(data)
+        # Get default limit from SDK if not provided
+        sdk = self.get_sdk_definition(sdk_id)
+        if daily_limit is None and sdk:
+            daily_limit = sdk.get("daily_token_limit", 1000000)
 
-    def get_plan_type(self):
-        """
-        Retrieves the current plan type ('paid' or 'free').
-        Defaults to 'paid'.
-        """
-        data = self._load_config()
-        return data.get("plan_type", "paid")
-
-    def set_plan_type(self, plan_type):
-        """
-        Sets the current plan type.
-        """
-        data = self._load_config()
-        data["plan_type"] = plan_type
-        self._save_config(data)
-
-    def get_free_configs(self):
-        """
-        Retrieves the list of model configurations for the free plan.
-        """
-        data = self._load_config()
-        return data.get("free_configs", [])
-
-    def set_free_configs(self, configs):
-        """
-        Saves the list of free model configurations.
-        """
-        data = self._load_config()
-        data["free_configs"] = configs
-        self._save_config(data)
-
-    def add_free_config(self, sdk, model, api_key):
-        """
-        Adds a new model configuration to the free plan.
-        """
-        configs = self.get_free_configs()
-        configs.append({
-            "sdk": sdk,
-            "model": model,
+        new_config = {
+            "id": str(uuid.uuid4()),
+            "sdk_id": sdk_id,
+            "name": name,
             "api_key": api_key,
-            "usage_count": 0
-        })
-        self.set_free_configs(configs)
+            "plan_type": plan_type,
+            "daily_token_limit": daily_limit,
+            "tokens_used_today": 0,
+            "last_used_at": None,
+            "reset_at": None # Will be set by TokenManager
+        }
+        
+        configs.append(new_config)
+        data["user_llm_configs"] = configs
+        self._save_json(CONFIG_FILE, data)
+        return new_config
 
-    def remove_free_config(self, index):
-        """
-        Removes a model configuration from the free plan by index.
-        """
-        configs = self.get_free_configs()
-        if 0 <= index < len(configs):
-            configs.pop(index)
-            self.set_free_configs(configs)
+    def update_user_config(self, config_id, updates: dict):
+        """Updates an existing config."""
+        data = self._load_json(CONFIG_FILE)
+        configs = data.get("user_llm_configs", [])
+        
+        found = False
+        for cfg in configs:
+            if cfg["id"] == config_id:
+                cfg.update(updates)
+                found = True
+                break
+        
+        if found:
+            self._save_json(CONFIG_FILE, data)
             return True
         return False
 
-    def set_api_key(self, key_name, key_value):
-        """
-        Updates an API key in the local .env file.
+    def remove_user_config(self, config_id):
+        data = self._load_json(CONFIG_FILE)
+        configs = data.get("user_llm_configs", [])
+        
+        initial_len = len(configs)
+        configs = [c for c in configs if c["id"] != config_id]
+        
+        if len(configs) < initial_len:
+            data["user_llm_configs"] = configs
+            self._save_json(CONFIG_FILE, data)
+            return True
+        return False
 
-        Args:
-            key_name (str): The name of the environment variable.
-            key_value (str): The secret value to store.
-        """
-        # Create .env if not exists
-        if not os.path.exists(ENV_FILE):
-             with open(ENV_FILE, 'w') as f:
-                 pass
-        set_key(ENV_FILE, key_name, key_value)
+    # =========================================================================
+    # Workflows (workflows.json & workflow_llm.json)
+    # =========================================================================
 
+    def get_workflows(self):
+        """Returns available workflow steps."""
+        return self._load_json(WORKFLOWS_FILE)
+
+    def get_workflow_links(self):
+        """Returns mappings between workflows and user configs."""
+        return self._load_json(WORKFLOW_LLM_FILE)
+
+    def link_llm_to_workflow(self, workflow_id, llm_config_id):
+        """Links a user LLM config to a workflow step."""
+        links = self.get_workflow_links()
+        
+        # Check if already linked
+        for link in links:
+            if link["workflow_id"] == workflow_id and link["llm_config_id"] == llm_config_id:
+                return True
+                
+        links.append({"workflow_id": workflow_id, "llm_config_id": llm_config_id})
+        self._save_json(WORKFLOW_LLM_FILE, links)
+        return True
+
+    def unlink_llm_from_workflow(self, workflow_id, llm_config_id):
+        links = self.get_workflow_links()
+        new_links = [l for l in links if not (l["workflow_id"] == workflow_id and l["llm_config_id"] == llm_config_id)]
+        
+        if len(new_links) < len(links):
+            self._save_json(WORKFLOW_LLM_FILE, new_links)
+            return True
+        return False
+    
+    # =========================================================================
+    # Helpers
+    # =========================================================================
+    
     def get_api_key(self, key_name):
-        """
-        Retrieves an API key from environmental variables.
-
-        Args:
-            key_name (str): The name of the key to fetch.
-
-        Returns:
-            str: The value of the key, or None if not found.
-        """
+        """Legacy helper for code that still checks env vars directly."""
         return os.getenv(key_name)
 
     def get_ats_prompts(self):
-        """
-        Retrieves the custom ATS prompts from configuration.
-        """
-        data = self._load_config()
-        defaults = {
-            "calculate_score": (
-                "You are an ATS (Applicant Tracking System) expert. "
-                "Evaluate the provided Resume against the Job Description.\n\n"
-                "--- JOB DESCRIPTION ---\n{{job_description}}\n\n"
-                "--- RESUME TEXT ---\n{{resume_text}}\n\n"
-                "Analyze the match and provide:\n"
-                "1. A list of missing keywords (crucial skills found in JD but not in Resume).\n"
-                "2. A list of matched keywords (skills found in both).\n"
-                "3. A score from 0 to 100 based on keyword density and relevance.\n"
-                "4. A detailed justification object with keys: keyword_match, skill_depth, role_fit, experience_relevance, education_fit, parsing_quality."
-            ),
-            "tailor_resume": (
-                "You are an ATS-optimization engine used by Big Tech recruiting platforms.\n"
-                "Your task is to rewrite a LaTeX resume so that its ATS score becomes at least 90% for a given job description, while preserving structure, honesty, and formatting.\n\n"
-                "You will be given:\n"
-                "- initial_ats_score: {{initial_ats_score}}\n"
-                "- missing_keywords: {{missing_keywords}}\n"
-                "- matched_keywords: {{matched_keywords}}\n"
-                "- justification: {{justification}}\n"
-                "- job_description: {{job_description}}\n"
-                "- old_resume_code (LaTeX): {{resume_text}}\n\n"
-                "You must modify ONLY the LaTeX content, not the section structure.\n\n"
-                "--------------------------------\n"
-                "STRICT RULES\n\n"
-                "1) DO NOT:\n"
-                "- Add new sections\n"
-                "- Remove any existing section\n"
-                "- Rename section headers\n"
-                "- Change the structure of the Skills section subheadings\n"
-                "- Delete any existing skills\n\n"
-                "2) YOU MUST:\n"
-                "- Add all missing_keywords into appropriate places:\n"
-                "  - Skills section (correct subheading)\n"
-                "  - Experience bullet points\n"
-                "  - Project descriptions\n"
-                "- If a missing skill is critical (core job requirement), then you MUST:\n"
-                "  - Replace or enhance technologies used in experience/projects to include that skill\n"
-                "  - Add appropriate frameworks if language matches (e.g. Java -> Spring Boot)\n\n"
-                "3) The resume must remain:\n"
-                "- Technically believable\n"
-                "- Internally consistent\n"
-                "- ATS-readable\n"
-                "- Optimized for keyword density and semantic matching\n\n"
-                "--------------------------------\n"
-                "OPTIMIZATION TARGET\n"
-                "You must simulate ATS scoring internally and ensure final_score >= 90.\n"
-                "If the rewritten resume would not reach 90, you must further optimize until it does.\n"
-            )
-        }
-        return data.get("ats_prompts", defaults)
+        data = self._load_json(CONFIG_FILE)
+        return data.get("ats_prompts", {})
 
     def set_ats_prompts(self, prompts):
-        """
-        Updates the custom ATS prompts in configuration.
-        """
-        data = self._load_config()
+        data = self._load_json(CONFIG_FILE)
         data["ats_prompts"] = prompts
-        self._save_config(data)
-
+        self._save_json(CONFIG_FILE, data)

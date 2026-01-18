@@ -256,7 +256,7 @@ async def _process_pending_jobs(job_manager, service):
     if not pending_jobs:
         logging.debug("No pending jobs to process.")
         return
-
+    
     logging.info(f"Processing {len(pending_jobs)} pending jobs...")
 
     for job in pending_jobs:

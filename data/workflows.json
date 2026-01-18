@@ -1,0 +1,30 @@
+[
+    {
+        "id": "step_browser_automation",
+        "name": "Browser Automation",
+        "description": "Job scraping, form extraction (browser-use)",
+        "required_capabilities": [
+            "supports_tool_calling"
+        ]
+    },
+    {
+        "id": "step_ats_scoring",
+        "name": "ATS Score Calculation",
+        "description": "Resume analysis against job description",
+        "required_capabilities": [
+            "supports_structured_output"
+        ]
+    },
+    {
+        "id": "step_resume_tailoring",
+        "name": "Resume Tailoring",
+        "description": "Rewriting LaTeX code with keywords",
+        "required_capabilities": []
+    },
+    {
+        "id": "step_form_answering",
+        "name": "Form Answer Generation",
+        "description": "Generates answers for application questions",
+        "required_capabilities": []
+    }
+]

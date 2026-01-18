@@ -10,13 +10,29 @@
     "tailor_resume": "You are an ATS-optimization engine used by Big Tech recruiting platforms.\n\nYour task is to rewrite a LaTeX resume so that its ATS score becomes at least 90% for a given job description, while preserving structure, honesty, and formatting.\n\nYou will be given:\n- initial_ats_score\n- missing_keywords\n- matched_keywords\n- justification\n- job_description\n- old_resume_code (LaTeX)\n\nYou must modify ONLY the LaTeX content, not the section structure.\n\n--------------------------------\nSTRICT RULES\n\n1) DO NOT:\n- Add new sections\n- Remove any existing section\n- Rename section headers\n- Change the structure of the Skills section subheadings\n- Delete any existing skills\n\n2) YOU MUST:\n- Add all missing_keywords into appropriate places:\n  - Skills section (correct subheading)\n  - Experience bullet points\n  - Project descriptions\n- If a missing skill is critical (core job requirement), then you MUST:\n  - Replace or enhance technologies used in experience/projects to include that skill\n  - Add appropriate frameworks:\n    - Java \u2192 Spring Boot\n    - Python \u2192 Django / Flask / FastAPI\n    - JavaScript \u2192 Node.js / React\n    - Go \u2192 Gin / Fiber\n    - .NET \u2192 C# / ASP.NET\n    - Data \u2192 Spark, Kafka, SQL, Airflow, etc\n\n3) The resume must remain:\n- Technically believable\n- Internally consistent\n- ATS-readable\n- Optimized for keyword density and semantic matching\n\n4) You must increase:\n- Keyword frequency\n- Skill coverage across multiple sections\n- Role relevance\n- Tool & framework alignment\n\n--------------------------------\nOPTIMIZATION TARGET\n\nYou must simulate ATS scoring internally and ensure:\n\nfinal_score \u2265 90\n\nIf the rewritten resume would not reach 90, you must further optimize until it does.\n\n--------------------------------\nOUTPUT FORMAT (STRICT JSON \u2014 NO EXTRA TEXT)\n\n{\n  \"final_score\": number between 0 and 100,\n  \"new_latex_code\": \"FULL optimized LaTeX resume\",\n  \"summary\": [\n     \"Where skills were added\",\n     \"Which experience bullets were modified\",\n     \"Which projects were updated\",\n     \"Which keywords were injected and where\"\n  ]\n}\n\n--------------------------------\nINPUTS BEGIN BELOW\n\ninitial_ats_score:\n{{initial_ats_score}}\n\nmissing_keywords:\n{{missing_keywords}}\n\nmatched_keywords:\n{{matched_keywords}}\n\njustification:\n{{justification}}\n\njob_description:\n{{job_description}}\n\nold_resume_code (LaTeX):\n{{resume_text}}\n"
   },
   "selected_model": "openai/gpt-oss-120b:free",
-  "plan_type": "free",
-  "free_configs": [
+  "plan_type": "paid",
+  "user_llm_configs": [
     {
-      "sdk": "google",
-      "model": "gemini-2.0-flash-exp",
-      "api_key": "fgdsgsdfgd",
-      "usage_count": 0
+      "id": "4fc8d6c3-f293-4aed-a382-a15b7ee65fa6",
+      "sdk_id": "a1b2c3d4-e5f6-7g8h-9i0j-k1l2m3n4o5p6",
+      "name": "GF-1",
+      "api_key": "AIzaSyB2JSDqZhPMROCO07LsGapCN3gtttudi84",
+      "plan_type": "free",
+      "daily_token_limit": 1000000,
+      "tokens_used_today": 0,
+      "last_used_at": null,
+      "reset_at": null
+    },
+    {
+      "id": "eaad8fd1-3285-43e8-b724-7aafd2cdd1b7",
+      "sdk_id": "q1w2e3r4-t5y6-u7i8-o9p0-a1s2d3f4g5h6",
+      "name": "GP-1",
+      "api_key": "AIzaSyBJrJSGF4QKCRTBlpj2b2P1AF6E0o2yewM",
+      "plan_type": "free",
+      "daily_token_limit": 1000000,
+      "tokens_used_today": 0,
+      "last_used_at": null,
+      "reset_at": null
     }
   ]
 }

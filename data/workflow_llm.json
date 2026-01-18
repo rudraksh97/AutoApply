@@ -1,0 +1,34 @@
+[
+  {
+    "workflow_id": "step_browser_automation",
+    "llm_config_id": "eaad8fd1-3285-43e8-b724-7aafd2cdd1b7"
+  },
+  {
+    "workflow_id": "step_browser_automation",
+    "llm_config_id": "4fc8d6c3-f293-4aed-a382-a15b7ee65fa6"
+  },
+  {
+    "workflow_id": "step_ats_scoring",
+    "llm_config_id": "4fc8d6c3-f293-4aed-a382-a15b7ee65fa6"
+  },
+  {
+    "workflow_id": "step_ats_scoring",
+    "llm_config_id": "eaad8fd1-3285-43e8-b724-7aafd2cdd1b7"
+  },
+  {
+    "workflow_id": "step_resume_tailoring",
+    "llm_config_id": "4fc8d6c3-f293-4aed-a382-a15b7ee65fa6"
+  },
+  {
+    "workflow_id": "step_resume_tailoring",
+    "llm_config_id": "eaad8fd1-3285-43e8-b724-7aafd2cdd1b7"
+  },
+  {
+    "workflow_id": "step_form_answering",
+    "llm_config_id": "4fc8d6c3-f293-4aed-a382-a15b7ee65fa6"
+  },
+  {
+    "workflow_id": "step_form_answering",
+    "llm_config_id": "eaad8fd1-3285-43e8-b724-7aafd2cdd1b7"
+  }
+]
