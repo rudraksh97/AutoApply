@@ -85,8 +85,21 @@ def create_browser_use_llm(provider: str, model: str, api_key: str):
         return ChatGoogle(model=model, api_key=api_key, temperature=0.1)
     
     elif provider == "openrouter":
-        from browser_use.llm.openrouter.chat import ChatOpenRouter
-        return ChatOpenRouter(model=model, api_key=api_key, temperature=0.1)
+        # Use ChatOpenAI with OpenRouter base URL (more compatible)
+        from browser_use.llm.openai.chat import ChatOpenAI
+        
+        # Claude models need special handling for structured output
+        is_claude = "claude" in model.lower()
+        
+        return ChatOpenAI(
+            model=model,
+            api_key=api_key,
+            base_url="https://openrouter.ai/api/v1",
+            temperature=0.3,
+            # For Claude: add schema to system prompt instead of using response_format
+            add_schema_to_system_prompt=is_claude,
+            dont_force_structured_output=is_claude
+        )
     
     elif provider == "cerebras":
         from browser_use.llm.cerebras.chat import ChatCerebras

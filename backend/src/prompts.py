@@ -206,6 +206,14 @@ SCRAPE_JOB_TASK_TEMPLATE = """
 TASK: Extract job details and find the apply link from {job_link}
 
 ═══════════════════════════════════════════════════════════════════════════════
+🚨 CRITICAL: RETURN ONLY VALID JSON IN THE DONE ACTION!
+═══════════════════════════════════════════════════════════════════════════════
+• Your done action MUST contain ONLY a valid JSON object
+• DO NOT include explanatory text like "I'll extract" or "Here's the data"
+• Start directly with the JSON object - no conversational preamble
+• The system expects pure JSON, not text with JSON embedded
+
+═══════════════════════════════════════════════════════════════════════════════
 ⚠️  CRITICAL OUTPUT RULES - READ FIRST!
 ═══════════════════════════════════════════════════════════════════════════════
 • DO NOT use write_file action - return all data directly in the done action
@@ -217,7 +225,7 @@ TASK: Extract job details and find the apply link from {job_link}
 STEP 1: Navigate and wait
 ═══════════════════════════════════════════════════════════════════════════════
 1. Go to {job_link}
-2. Wait 3 seconds for page load
+2. Wait 15 seconds for page load
 3. Dismiss any cookie banners or popups
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -248,7 +256,7 @@ CASE A - Application form is ALREADY visible:
 CASE B - There is an Apply button (no form visible yet):
   → Find button with text like "Apply", "Apply Now", "Apply for this job"
   → CLICK the button
-  → Wait 3 seconds
+  → Wait 15 seconds
   → Check what happened:
   
     If URL changed → apply_link = the NEW URL
@@ -311,7 +319,7 @@ EXECUTION STEPS
 
 STEP 1 — NAVIGATE (DO THIS FIRST!)
   • Navigate to {job_link} using the navigate action
-  • Wait 5 seconds for page to fully load
+  • Wait 15 seconds for page to fully load
   • Dismiss any cookie/popup dialogs (click X or "Accept")
   • DO NOT interact with form fields
 

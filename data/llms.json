@@ -136,6 +136,18 @@
         "supports_structured_output": true
     },
     {
+        "id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t954",
+        "provider": "openrouter",
+        "model_name": "openai/gpt-4o-mini",
+        "display_name": "GPT-4o Mini (OpenRouter)",
+        "daily_token_limit": 1000000,
+        "plans_supported": [
+            "paid"
+        ],
+        "supports_tool_calling": true,
+        "supports_structured_output": true
+    },
+    {
         "id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t432",
         "provider": "openrouter",
         "model_name": "z-ai/glm-4.5-air:free",

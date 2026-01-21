@@ -46,5 +46,29 @@
   {
     "workflow_id": "step_resume_parsing",
     "llm_config_id": "1f921e4d-4eff-4325-a4e4-6b2b0cca730c"
+  },
+  {
+    "workflow_id": "step_browser_automation",
+    "llm_config_id": "d5a48cac-6eae-4397-9291-f86e1937226e"
+  },
+  {
+    "workflow_id": "step_ats_scoring",
+    "llm_config_id": "d5a48cac-6eae-4397-9291-f86e1937226e"
+  },
+  {
+    "workflow_id": "step_resume_tailoring",
+    "llm_config_id": "d5a48cac-6eae-4397-9291-f86e1937226e"
+  },
+  {
+    "workflow_id": "step_form_answering",
+    "llm_config_id": "d5a48cac-6eae-4397-9291-f86e1937226e"
+  },
+  {
+    "workflow_id": "step_rss_link_extraction",
+    "llm_config_id": "d5a48cac-6eae-4397-9291-f86e1937226e"
+  },
+  {
+    "workflow_id": "step_resume_parsing",
+    "llm_config_id": "d5a48cac-6eae-4397-9291-f86e1937226e"
   }
 ]

@@ -34,13 +34,13 @@
       "reset_at": "2026-01-21T03:01:00-05:00"
     },
     {
-      "id": "1f921e4d-4eff-4325-a4e4-6b2b0cca730c",
-      "sdk_id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t896",
-      "name": "OR2-haiku",
-      "api_key": "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",
+      "id": "d5a48cac-6eae-4397-9291-f86e1937226e",
+      "sdk_id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t954",
+      "name": "OR2-GPT",
+      "api_key": "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",
       "plan_type": "paid",
-      "tokens_used_today": 80000,
-      "last_used_at": "2026-01-20T22:59:48.143695-05:00",
+      "tokens_used_today": 13114,
+      "last_used_at": "2026-01-21T00:45:08.584323-05:00",
       "reset_at": "2026-01-21T03:01:00-05:00"
     }
   ]
