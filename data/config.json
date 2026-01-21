@@ -39,8 +39,8 @@
       "name": "OR2-haiku",
       "api_key": "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",
       "plan_type": "paid",
-      "tokens_used_today": 20000,
-      "last_used_at": "2026-01-20T21:53:21.897426-05:00",
+      "tokens_used_today": 60000,
+      "last_used_at": "2026-01-20T22:34:54.328855-05:00",
       "reset_at": "2026-01-21T03:01:00-05:00"
     }
   ]

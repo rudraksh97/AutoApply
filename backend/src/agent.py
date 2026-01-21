@@ -9,6 +9,7 @@ for later manual submission by the user.
 """
 
 import json
+import logging
 import os
 import re
 
@@ -24,6 +25,8 @@ from src.prompts import (
 )
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -241,7 +244,16 @@ class BrowserAgent:
             )
 
             result = await agent.run()
-            return result.final_result()
+            final_res = result.final_result()
+            
+            # VALIDATION: Check for early returns or empty results
+            if not final_res or len(str(final_res).strip()) < 50:
+                logger.warning("Agent returned suspiciously short result. Might have terminated too early.")
+                # If it's a scrape task and we got nothing, it's a failure
+                if "Extract job details" in task and (not final_res or not any(k in str(final_res).lower() for k in ["description", "responsibilities"])):
+                     raise ValueError("Agent returned incomplete job description. Likely reasoning failure.")
+
+            return final_res
 
         except Exception as e:
             import traceback
@@ -251,7 +263,11 @@ class BrowserAgent:
             raise
         finally:
             if browser_app:
-                await browser_app.close()
+                # Playwright's browser.close() is standard
+                try:
+                    await browser_app.close()
+                except Exception:
+                    pass
             await playwright.stop()
 
     # -------------------------------------------------------------------------

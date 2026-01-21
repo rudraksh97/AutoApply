@@ -171,7 +171,9 @@ class LLMFactory:
                 llm = ChatOpenAI(
                     model=model,
                     api_key=api_key,
+                    openai_api_key=api_key,
                     base_url="https://api.cerebras.ai/v1",
+                    openai_api_base="https://api.cerebras.ai/v1",
                     temperature=0.1
                 )
             
@@ -179,7 +181,9 @@ class LLMFactory:
             llm = ChatOpenAI(
                 model=model,
                 api_key=api_key,
+                openai_api_key=api_key,
                 base_url="https://openrouter.ai/api/v1",
+                openai_api_base="https://openrouter.ai/api/v1",
                 temperature=0.1
             )
             
@@ -188,7 +192,9 @@ class LLMFactory:
             llm = ChatOpenAI(
                 model=model,
                 api_key=api_key,
+                openai_api_key=api_key,
                 base_url=base_url,
+                openai_api_base=base_url,
                 temperature=0.1
             )
             
@@ -210,7 +216,8 @@ class LLMFactory:
     def _create_generic_llm(cls, config):
         llm = ChatOpenAI(
             model="gpt-3.5-turbo",
-            api_key=config.get("api_key")
+            api_key=config.get("api_key"),
+            openai_api_key=config.get("api_key")
         )
         return adapt_llm(llm, "openai", config.get("id"), "gpt-3.5-turbo")
 

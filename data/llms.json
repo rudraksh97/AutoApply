@@ -126,8 +126,8 @@
     {
         "id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t896",
         "provider": "openrouter",
-        "model_name": "anthropic/claude-haiku-4.5",
-        "display_name": "Claude Haiku 4.5 (OpenRouter)",
+        "model_name": "anthropic/claude-3.5-haiku",
+        "display_name": "Claude 3.5 Haiku (OpenRouter)",
         "daily_token_limit": 1000000,
         "plans_supported": [
             "paid"
