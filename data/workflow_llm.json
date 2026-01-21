@@ -49,26 +49,30 @@
   },
   {
     "workflow_id": "step_browser_automation",
-    "llm_config_id": "d5a48cac-6eae-4397-9291-f86e1937226e"
-  },
-  {
-    "workflow_id": "step_ats_scoring",
-    "llm_config_id": "d5a48cac-6eae-4397-9291-f86e1937226e"
+    "llm_config_id": "1241e19f-cf3a-4be0-a163-f91632c8257e"
   },
   {
     "workflow_id": "step_resume_tailoring",
-    "llm_config_id": "d5a48cac-6eae-4397-9291-f86e1937226e"
+    "llm_config_id": "4fc8d6c3-f293-4aed-a382-a15b7ee65fa6"
   },
   {
     "workflow_id": "step_form_answering",
-    "llm_config_id": "d5a48cac-6eae-4397-9291-f86e1937226e"
+    "llm_config_id": "4fc8d6c3-f293-4aed-a382-a15b7ee65fa6"
   },
   {
     "workflow_id": "step_rss_link_extraction",
-    "llm_config_id": "d5a48cac-6eae-4397-9291-f86e1937226e"
+    "llm_config_id": "4fc8d6c3-f293-4aed-a382-a15b7ee65fa6"
   },
   {
     "workflow_id": "step_resume_parsing",
-    "llm_config_id": "d5a48cac-6eae-4397-9291-f86e1937226e"
+    "llm_config_id": "4fc8d6c3-f293-4aed-a382-a15b7ee65fa6"
+  },
+  {
+    "workflow_id": "step_browser_automation",
+    "llm_config_id": "4fc8d6c3-f293-4aed-a382-a15b7ee65fa6"
+  },
+  {
+    "workflow_id": "step_ats_scoring",
+    "llm_config_id": "4fc8d6c3-f293-4aed-a382-a15b7ee65fa6"
   }
 ]

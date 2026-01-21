@@ -38,10 +38,60 @@
       "sdk_id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t954",
       "name": "OR2-GPT",
       "api_key": "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",
-      "plan_type": "paid",
-      "tokens_used_today": 13114,
-      "last_used_at": "2026-01-21T00:45:08.584323-05:00",
+      "plan_type": "free",
+      "tokens_used_today": 160356,
+      "last_used_at": "2026-01-21T02:02:02.562190-05:00",
       "reset_at": "2026-01-21T03:01:00-05:00"
+    },
+    {
+      "id": "76b54596-7d50-4121-b963-f83c92d43bc7",
+      "sdk_id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t888",
+      "name": "OR3-Haiku",
+      "api_key": "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",
+      "plan_type": "paid",
+      "tokens_used_today": 0,
+      "last_used_at": null,
+      "reset_at": null
+    },
+    {
+      "id": "f39f38ed-b70e-4b2d-8b92-d3b81c9adc16",
+      "sdk_id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t896",
+      "name": "OR4-Haiku3.5",
+      "api_key": "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",
+      "plan_type": "paid",
+      "tokens_used_today": 0,
+      "last_used_at": null,
+      "reset_at": null
+    },
+    {
+      "id": "6ec4afc8-a1a0-487e-879c-b5413d21262c",
+      "sdk_id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t499",
+      "name": "OR6-Trinity",
+      "api_key": "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",
+      "plan_type": "free",
+      "tokens_used_today": 0,
+      "last_used_at": null,
+      "reset_at": null
+    },
+    {
+      "id": "791c7f9f-7160-4337-a5ae-828b48a096c8",
+      "sdk_id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t111",
+      "name": "OR7-Mistral",
+      "api_key": "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",
+      "plan_type": "free",
+      "tokens_used_today": 0,
+      "last_used_at": null,
+      "reset_at": null
+    },
+    {
+      "id": "5cf6fb4e-a0cf-46df-9c50-bcdb7d820daf",
+      "sdk_id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t222",
+      "name": "OR8-Qwen",
+      "api_key": "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",
+      "plan_type": "free",
+      "tokens_used_today": 0,
+      "last_used_at": null,
+      "reset_at": null
     }
   ]
 }

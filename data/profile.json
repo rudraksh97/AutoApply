@@ -1,20 +1,20 @@
 {
   "basics": {
-    "first_name": "",
-    "last_name": "",
-    "email": "",
-    "phone": "",
-    "location": ""
+    "first_name": "Bhuvan",
+    "last_name": "Thirwani",
+    "email": "bhuvanth@buffalo.edu",
+    "phone": "(716) 228-4256",
+    "location": "San Francisco, Bay Area, CA, USA"
   },
   "urls": {
-    "linkedin": "",
-    "github": "",
-    "portfolio": ""
+    "linkedin": "http://www.linkedin.com/in/dev-hax-codes",
+    "github": "https://github.com/bhuvanthirwani",
+    "portfolio": "http://www.leetcode.com/bhuvanthirwani"
   },
   "demographics": {
     "gender": "",
-    "race": "",
-    "nationality": "",
+    "race": "Asian",
+    "nationality": "Indian",
     "veteran": "",
     "disability": ""
   },
@@ -24,28 +24,57 @@
   },
   "education": [
     {
-      "degree": "",
-      "university": "",
-      "field_of_study": "",
-      "graduation_year": ""
+      "degree": "Master of Science in Computer Science",
+      "university": "University at Buffalo, State University of New York",
+      "field_of_study": "Computer Science",
+      "graduation_year": "August 2024 - Present"
     },
     {
-      "degree": "",
-      "university": "",
-      "field_of_study": "",
-      "graduation_year": ""
+      "degree": "Bachelor of Technology in Computer Science & Engineering",
+      "university": "Indian Institute of Information Technology Pune",
+      "field_of_study": "Computer Science & Engineering",
+      "graduation_year": "August 2018 - June 2022"
     }
   ],
-  "experience": [],
-  "skills": "",
+  "experience": [
+    {
+      "company": "Salesforce",
+      "role": "Software AI Intern",
+      "start_date": "May 2025",
+      "end_date": "August 2025",
+      "description": "Designed and implemented scalable ETL pipelines using Apache Airflow and Apache Spark to process over 2 Billion weekly metrics for reporting, governance, and capacity planning. Automated root cause analysis for distributed servers managing 19,000 TB of cloud data, reducing operational downtime by 50%. Engineered interactive dashboards to visualize incident patterns, improving observability and accelerating issue resolution time by 40%. Designed feedback-based Agentic AI system using GPT models to perform root cause diagnostics, enabling infrastructure intelligence."
+    },
+    {
+      "company": "Euler Motors",
+      "role": "Member of Technical Staff-1",
+      "start_date": "July 2022",
+      "end_date": "August 2024",
+      "description": "Led end-to-end development of 2 AI-based Software Products, designing scalable backend services with Python and Java to meet strict correctness and scalability standards. Developed a pioneering feature for vehicle hardware data extraction and boosted electrical components testing by 300% using Computer Vision system for stakeholders. Collaborated on advanced analytics to monitor vehicle performance and detect issues remotely via cloud, minimizing downtime by 30%. Engineered real-time data pipeline using Apache Kafka and Flink for processing real-time telemetry data of vehicles, handling high-throughput streaming workloads. Orchestrated Docker and Kubernetes pipelines for project deployment, elevating platform efficiency and scalability by 5 times."
+    },
+    {
+      "company": "Paytm Money",
+      "role": "Software Engineer Intern",
+      "start_date": "January 2022",
+      "end_date": "June 2022",
+      "description": "Implemented live feed data of 7000 stocks using asynchronous Node.js and WebSocket technology, ensuring real-time data delivery. Enhanced system capacity through load testing for 100,000 shadow customers simultaneously, utilizing quantitative methods and networking protocols to optimize data delivery and product performance. Optimized real-time stock market data latency from 400ms to 2ms using SpringBoot (MVC), MySQL, and Redis cache with Java 8, significantly improving system responsiveness. Developed and maintained product-facing features and platform enhancements that met strict correctness and scalability standards."
+    },
+    {
+      "company": "DRDO",
+      "role": "Research Intern",
+      "start_date": "April 2021",
+      "end_date": "July 2021",
+      "description": "Utilized Oversampling and Undersampling techniques, GRID CV with weighted Decision Tree model for landslide prediction, demonstrating strong problem-solving skills. Innovated Frequency Ratio & Multi-Criteria Decision techniques for generating vulnerability map with 99% accuracy, applying machine learning to real-world problems."
+    }
+  ],
+  "skills": "Python, Java, Go, JavaScript, TypeScript, SQL, C++, HTML, CSS, AWS, GCP, Docker, Kubernetes, Apache Kafka, Apache Airflow, Apache Spark, Apache Flink, Redis, PostgreSQL, Grafana, CI/CD, Machine Learning, System Design, Flask, Django, Node.js, Spring, React.js, Next.js, MongoDB, NoSQL, Git, Langchain, MCP, A2A, FAISS, Object-oriented Design Solutions, Open-Source Best practices, Technical Documentation, Communication Skills, Leadership, Teamwork, Data Analysis, Problem Solving Skills, Backend Development, Scalable Systems",
   "great_fit_pitch": "",
   "cover_letter_template": "",
   "why_us": "",
   "challenging_project": "",
   "uploaded_pdf_path": "data/resumes/Bhuvan_Thirwani_Software_Engineer_2026.pdf",
   "uploaded_pdf_filename": "Bhuvan_Thirwani_Software_Engineer_2026.pdf",
-  "uploaded_tex_path": "",
-  "uploaded_tex_filename": "",
+  "uploaded_tex_path": "data/resumes/templates/Bhuvan_Thirwani_Software_Engineer_Robinhood_2026.tex",
+  "uploaded_tex_filename": "Bhuvan_Thirwani_Software_Engineer_Robinhood_2026.tex",
   "pdf_resumes": [
     {
       "id": "23a74286-106a-4170-82ec-44544a89232b",
@@ -54,12 +83,19 @@
       "created_at": "2026-01-17T02:18:02.988355"
     }
   ],
-  "text_resumes": [],
+  "text_resumes": [
+    {
+      "id": "367bef04-abbc-422f-b1a3-422c6a502a28",
+      "filename": "Bhuvan_Thirwani_Software_Engineer_Robinhood_2026.tex",
+      "path": "data/resumes/templates/Bhuvan_Thirwani_Software_Engineer_Robinhood_2026.tex",
+      "created_at": "2026-01-21T06:09:18.262580"
+    }
+  ],
   "current_pdf_resume_id": "23a74286-106a-4170-82ec-44544a89232b",
-  "current_text_resume_id": "",
-  "resume_generation_mode": "uploaded_pdf",
+  "current_text_resume_id": "367bef04-abbc-422f-b1a3-422c6a502a28",
+  "resume_generation_mode": "ats_generated",
   "use_uploaded_resume": false,
-  "custom_template_filename": "",
+  "custom_template_filename": "Bhuvan_Thirwani_Software_Engineer_Robinhood_2026.tex",
   "uploaded_resume_path": "",
   "uploaded_resume_filename": ""
 }
