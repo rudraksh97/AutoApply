@@ -12,6 +12,64 @@ from src.token_manager import TokenManager
 
 logger = logging.getLogger(__name__)
 
+class PrincipalLLMAdapter:
+    """
+    Principal Engineer solution: Transparent Proxy.
+    This class does NOT inherit from BaseChatModel to avoid Pydantic corruption.
+    Instead, it uses the __class__ property hack to satisfy isinstance(proxy, BaseChatModel).
+    """
+    def __init__(self, real_llm, provider, config_id, model_name):
+        # Use __dict__ directly to avoid any potential __setattr__ logic
+        self.__dict__['real_llm'] = real_llm
+        self.__dict__['provider'] = provider
+        self.__dict__['config_id'] = config_id
+        self.__dict__['model_name'] = model_name
+        self.__dict__['model'] = model_name # Alias for browser-use compatibility
+
+    @property
+    def __class__(self):
+        # This hack makes isinstance(adapter, BaseChatModel) True
+        return self.real_llm.__class__
+
+    def __getattr__(self, name):
+        # Delegate everything to the real LLM
+        return getattr(self.real_llm, name)
+
+    def __dir__(self):
+        # Ensure our extra attributes show up in dir()
+        return list(set(dir(self.real_llm) + ['provider', 'config_id', 'model_name', 'model']))
+
+    def __repr__(self):
+        return f"PrincipalLLMAdapter(provider={self.provider}, model={self.model_name}, real_llm={repr(self.real_llm)})"
+
+def adapt_llm(llm, provider: str, config_id: str, model_name: str):
+    """
+    Wraps the LLM in a Transparent PrincipalLLMAdapter.
+    """
+    if not llm:
+        return llm
+    
+    # Avoid double-wrapping
+    if isinstance(llm, PrincipalLLMAdapter):
+        return llm
+        
+    logger.info(f"Wrapping {type(llm).__name__} in Transparent PrincipalLLMAdapter for '{provider}'")
+    
+    # Update internal metadata as well for redundancy
+    if hasattr(llm, 'metadata'):
+        meta = {"provider": provider, "config_id": config_id, "model_name": model_name}
+        if llm.metadata is None:
+            llm.metadata = meta
+        else:
+            llm.metadata.update(meta)
+            
+    return PrincipalLLMAdapter(
+        real_llm=llm,
+        provider=provider,
+        config_id=config_id,
+        model_name=model_name
+    )
+
 class LLMFactory:
     """
     Factory for creating LLM instances with intelligent load balancing.
@@ -31,7 +89,20 @@ class LLMFactory:
         linked_config_ids = [l["llm_config_id"] for l in links if l["workflow_id"] == step_id]
         
         if not linked_config_ids:
-            logger.warning(f"No LLMs linked to step '{step_id}'. Falling back to any available free key.")
+            # Check if this is a known internal step and log it
+            internal_steps = [
+                "step_browser_automation", 
+                "step_form_answering", 
+                "step_ats_scoring", 
+                "step_resume_tailoring",
+                "step_rss_link_extraction",
+                "step_resume_parsing"
+            ]
+            if step_id in internal_steps:
+                 logger.warning(f"No LLMs linked to internal step '{step_id}'. Falling back.")
+            else:
+                 logger.warning(f"Unknown step '{step_id}'. Falling back.")
+                 
             return cls._get_fallback_llm(cm)
 
         all_configs = cm.get_user_configs()
@@ -80,19 +151,15 @@ class LLMFactory:
         llm = None
 
         if provider == "google":
+            from langchain_google_genai import ChatGoogleGenerativeAI
             llm = ChatGoogleGenerativeAI(
-                model=model, 
-                google_api_key=api_key, 
+                model=model,
+                google_api_key=api_key,
                 temperature=0.1
             )
             
         elif provider == "cerebras":
             if ChatCerebras:
-                # Cerebras SDK picks up key from env if not passed, but we pass it explicitly here if supported
-                # Note: langchain_cerebras might expect env var CEREBRAS_API_KEY
-                # We sets the env var temporarily or pass it if constructor allows
-                # Checking constructor signature usually allows api_key.
-                # Assuming standard langchain pattern:
                 llm = ChatCerebras(
                     model=model,
                     api_key=api_key,
@@ -103,16 +170,16 @@ class LLMFactory:
                 logger.error("langchain_cerebras not installed. Falling back to OpenAI compatible.")
                 llm = ChatOpenAI(
                     model=model,
-                    openai_api_key=api_key,
-                    openai_api_base="https://api.cerebras.ai/v1",
+                    api_key=api_key,
+                    base_url="https://api.cerebras.ai/v1",
                     temperature=0.1
                 )
             
         elif provider == "openrouter":
             llm = ChatOpenAI(
                 model=model,
-                openai_api_key=api_key,
-                openai_api_base="https://openrouter.ai/api/v1",
+                api_key=api_key,
+                base_url="https://openrouter.ai/api/v1",
                 temperature=0.1
             )
             
@@ -120,18 +187,13 @@ class LLMFactory:
             base_url = "https://openrouter.ai/api/v1" if "openrouter" in model else None
             llm = ChatOpenAI(
                 model=model,
-                openai_api_key=api_key,
-                openai_api_base=base_url,
+                api_key=api_key,
+                base_url=base_url,
                 temperature=0.1
             )
             
-        # CRITICAL FIX: Attach provider attribute to prevent AttributeError in downstream agents
-        # Also attach config_id for credit usage tracking
-        if llm:
-            llm.provider = provider
-            llm.config_id = config.get("id")
-            
-        return llm
+        # Unified Adaptation Pattern (Decorator Pattern)
+        return adapt_llm(llm, provider, config.get("id"), model)
 
     @classmethod
     def _get_fallback_llm(cls, cm: ConfigManager):
@@ -142,17 +204,15 @@ class LLMFactory:
                  return cls._create_llm_instance(cfg)
         
         fallback = ChatOpenAI(model="gpt-3.5-turbo")
-        fallback.provider = "openai"
-        return fallback
+        return adapt_llm(fallback, "openai", "fallback", "gpt-3.5-turbo")
 
     @classmethod
     def _create_generic_llm(cls, config):
         llm = ChatOpenAI(
             model="gpt-3.5-turbo",
-            openai_api_key=config.get("api_key")
+            api_key=config.get("api_key")
         )
-        llm.provider = "openai"
-        return llm
+        return adapt_llm(llm, "openai", config.get("id"), "gpt-3.5-turbo")
 
     # Backwards compatibility
     @classmethod

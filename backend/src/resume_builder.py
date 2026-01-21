@@ -15,47 +15,19 @@ import subprocess
 import traceback
 from datetime import datetime
 from typing import List, Tuple
+from pydantic import BaseModel
 
 import jinja2
 from dotenv import load_dotenv
-from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, Field
-
 from src.prompts import RESUME_OPTIMIZER_PROMPT_TEMPLATE
+from src.schemas import (
+    ATSScoreOutput,
+    TailoredResumeOutput,
+    JustificationDetail
+)
 
 load_dotenv()
 logger = logging.getLogger(__name__)
-
-
-# =============================================================================
-# Pydantic Models for Structured Output
-# =============================================================================
-
-class JustificationDetail(BaseModel):
-    """Detailed breakdown of ATS score justification."""
-    keyword_match: str = Field(description="Analysis of matched and missing keywords")
-    skill_depth: str = Field(description="Evaluation of skill proficiency and relevance")
-    role_fit: str = Field(description="Assessment of overall fit for the role")
-    experience_relevance: str = Field(description="Alignment of past experience")
-    education_fit: str = Field(description="Alignment of education and certifications")
-    parsing_quality: str = Field(description="Quality of content structure")
-
-
-class ATSScoreOutput(BaseModel):
-    """Output schema for ATS score calculation."""
-    missing_keywords: List[str] = Field(description="Keywords in job but not resume")
-    matched_keywords: List[str] = Field(description="Keywords in both job and resume")
-    score: int = Field(description="ATS score from 0 to 100")
-    justification: JustificationDetail = Field(description="Score breakdown")
-
-
-class TailoredResumeOutput(BaseModel):
-    """Output schema for resume tailoring."""
-    final_score: int = Field(description="Simulated ATS score 0-100")
-    new_latex_code: str = Field(description="Full optimized LaTeX code")
-    summary: List[str] = Field(description="List of changes made")
 
 
 # =============================================================================
@@ -121,40 +93,36 @@ class ResumeBuilder:
             llm = LLMFactory.get_llm_for_step("step_ats_scoring")
             
             # Deduct credits
-            if hasattr(llm, "config_id") and llm.config_id:
-                TokenManager().deduct_credits(llm.config_id, len(formatted_prompt) * 2)
+            config_id = getattr(llm, "config_id", None)
+
+            if config_id:
+                TokenManager().deduct_credits(config_id, len(formatted_prompt) * 2)
 
             return await self._invoke_ats_score(llm, formatted_prompt)
         except Exception as e:
-            logger.error(f"Error calculating ATS score: {e}")
+            tb = traceback.format_exc()
+            logger.error(f"Error calculating ATS score: {e}\nStack trace:\n{tb}")
             return {"score": 0, "justification": f"Error: {e}", "missing_keywords": []}
 
     async def _invoke_ats_score(self, llm, prompt: str) -> dict:
         """Invoke LLM for ATS score with structured output."""
-        if hasattr(llm, "with_structured_output"):
-            logger.info("Using structured output for ATS score")
-            chain = llm.with_structured_output(ATSScoreOutput)
-            result = await chain.ainvoke(prompt)
+        logger.info("Using structured output for ATS score")
+        chain = llm.with_structured_output(ATSScoreOutput)
+        result = await chain.ainvoke(prompt)
 
-            return {
-                "missing_keywords": result.missing_keywords,
-                "matched_keywords": result.matched_keywords,
-                "score": result.score,
-                "justification": result.justification.json()
-            }
+        # Handle both Pydantic model and dict
+        if hasattr(result, "model_dump"):
+            data = result.model_dump()
+        else:
+            data = result
 
-        # Fallback to JSON parsing
-        parser = JsonOutputParser(pydantic_object=ATSScoreOutput)
-        chain = llm | parser
-        result = await chain.ainvoke(f"{prompt}\n\n{parser.get_format_instructions()}")
-
-        justification = result.get("justification", {})
+        justification = data.get("justification", {})
         just_str = json.dumps(justification) if isinstance(justification, dict) else str(justification)
 
         return {
-            "missing_keywords": result.get("missing_keywords", []),
-            "matched_keywords": result.get("matched_keywords", []),
-            "score": result.get("score", 0),
+            "missing_keywords": data.get("missing_keywords", []),
+            "matched_keywords": data.get("matched_keywords", []),
+            "score": data.get("score", 0),
             "justification": just_str
         }
 
@@ -198,12 +166,15 @@ class ResumeBuilder:
             llm = LLMFactory.get_llm_for_step("step_resume_tailoring")
             
             # Deduct credits
-            if hasattr(llm, "config_id") and llm.config_id:
-                TokenManager().deduct_credits(llm.config_id, len(prompt) * 2)
+            config_id = getattr(llm, "config_id", None)
+
+            if config_id:
+                TokenManager().deduct_credits(config_id, len(prompt) * 2)
 
             return await self._invoke_tailoring(llm, prompt, latex_template, missing_str)
         except Exception as e:
-            logger.error(f"Error tailoring resume: {e}")
+            tb = traceback.format_exc()
+            logger.error(f"Error tailoring resume: {e}\nStack trace:\n{tb}")
             return {"latex": latex_template, "keywords": "", "summary": f"Error: {e}"}
 
     def _build_tailoring_prompt(
@@ -248,25 +219,20 @@ class ResumeBuilder:
 
     async def _invoke_tailoring(self, llm, prompt: str, fallback_latex: str, missing_str: str) -> dict:
         """Invoke LLM for resume tailoring."""
-        if hasattr(llm, "with_structured_output"):
-            chain = llm.with_structured_output(TailoredResumeOutput)
-            result = await chain.ainvoke(prompt)
-            return {
-                "latex": result.new_latex_code,
-                "final_score": result.final_score,
-                "keywords": missing_str,
-                "summary": "; ".join(result.summary)
-            }
+        logger.info("Using structured output for resume tailoring")
+        chain = llm.with_structured_output(TailoredResumeOutput)
+        result = await chain.ainvoke(prompt)
 
-        parser = JsonOutputParser(pydantic_object=TailoredResumeOutput)
-        chain = llm | parser
-        result = await chain.ainvoke(f"{prompt}\n\n{parser.get_format_instructions()}")
+        if hasattr(result, "model_dump"):
+            data = result.model_dump()
+        else:
+            data = result
 
         return {
-            "latex": result.get("new_latex_code", fallback_latex),
-            "final_score": result.get("final_score", 0),
+            "latex": data.get("new_latex_code", fallback_latex),
+            "final_score": data.get("final_score", 0),
             "keywords": missing_str,
-            "summary": "; ".join(result.get("summary", []))
+            "summary": "; ".join(data.get("summary", []))
         }
 
     # -------------------------------------------------------------------------
@@ -278,9 +244,16 @@ class ResumeBuilder:
         from src.llm_factory import LLMFactory
         llm = LLMFactory.get_llm_for_step("step_resume_tailoring") # Reuse tailoring step
         
-        prompt = ChatPromptTemplate.from_template(RESUME_OPTIMIZER_PROMPT_TEMPLATE)
-        chain = prompt | llm | JsonOutputParser()
-        return await chain.ainvoke({"job_description": job_description})
+        # Define a temporary schema for this legacy call to use with_structured_output
+        class SkillsList(BaseModel):
+            skills_list: List[str]
+
+        structured_llm = llm.with_structured_output(SkillsList)
+        result = await structured_llm.ainvoke(RESUME_OPTIMIZER_PROMPT_TEMPLATE.format(job_description=job_description))
+        
+        if hasattr(result, "model_dump"):
+            return result.model_dump()
+        return result
 
     # -------------------------------------------------------------------------
     # LaTeX Rendering

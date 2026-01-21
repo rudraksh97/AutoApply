@@ -12,9 +12,7 @@ class ResumeParser:
     Parses resume files (PDF, TEX, TXT) into structured JSON using an LLM.
     """
     def __init__(self):
-        self.api_key = os.getenv("OPENROUTER_API_KEY")
-        if not self.api_key:
-            logging.warning("OPENROUTER_API_KEY not set. Resume parsing will fail.")
+        pass
 
     async def parse_file(self, file_path: str) -> dict:
         """
@@ -54,57 +52,31 @@ class ResumeParser:
             raise RuntimeError(f"Failed to read file: {e}")
 
     async def _parse_text_with_llm(self, text: str) -> dict:
-        """Invokes the LLM to parse raw text into JSON."""
-        if not self.api_key:
-            raise RuntimeError("Missing API Key for LLM")
-
-        config = ConfigManager()
-        llm = ChatOpenAI(
-            model=config.get_selected_model(),
-            api_key=self.api_key,
-            base_url="https://openrouter.ai/api/v1"
-        )
-        
-        system_prompt = """You are an expert resume parser. Extract structured data from the resume text into JSON format matching this exact schema:
-        {
-            "basics": {
-                "first_name": "", "last_name": "", "email": "", "phone": "", "location": ""
-            },
-            "urls": {
-                "linkedin": "", "github": "", "portfolio": ""
-            },
-            "demographics": {
-                "gender": "", "race": "", "nationality": "", "veteran": "", "disability": ""
-            },
-            "work_auth": {
-                "authorized_in_us": true/false,
-                "requires_sponsorship": true/false
-            },
-            "skills": ["skill1", "skill2"],
-             "education": [
-                {"degree": "", "university": "", "field_of_study": "", "graduation_year": ""}
-             ],
-            "experience": [
-                {"company": "", "role": "", "start_date": "", "end_date": "", "description": ""}
-            ]
-        }
-        Return ONLY the raw JSON block. Do not include any conversational text or markdown formatting markers."""
-        
-        response = await llm.ainvoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=f"Extract resume data from this text:\n\n{text[:12000]}")
-        ])
-        
-        # Robust JSON extraction using regex
-        import re
-        content = response.content
-        match = re.search(r"(\{.*\})", content, re.DOTALL)
-        if not match:
-            raise RuntimeError(f"Could not find JSON block in LLM response: {content[:200]}...")
-            
-        json_str = match.group(1).strip()
+        """Invokes the LLM to parse raw text into structured JSON."""
+        from src.llm_factory import LLMFactory
+        from src.schemas import ResumeParserOutput
         
         try:
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            raise RuntimeError(f"LLM returned invalid JSON structure: {json_str[:200]}...")
+            llm = LLMFactory.get_llm_for_step("step_resume_parsing")
+            
+            system_prompt = "You are an expert resume parser. Extract structured data from the resume text into the required JSON format."
+            
+            structured_llm = llm.with_structured_output(ResumeParserOutput)
+            result = await structured_llm.ainvoke([
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=f"Extract resume data from this text:\n\n{text[:12000]}")
+            ])
+            # Deduct credits
+            from src.token_manager import TokenManager
+            config_id = getattr(llm, "config_id", None)
+            if config_id:
+                TokenManager().deduct_credits(config_id, len(text[:12000]) * 2)
+
+            if hasattr(result, "model_dump"):
+                return result.model_dump()
+            return result
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            logging.error(f"Resume parsing LLM call failed: {e}\nStack trace:\n{tb}")
+            raise RuntimeError(f"Failed to parse resume with AI: {e}")

@@ -26,5 +26,21 @@
         "name": "Form Answer Generation",
         "description": "Generates answers for application questions",
         "required_capabilities": []
+    },
+    {
+        "id": "step_rss_link_extraction",
+        "name": "RSS Job Link Extraction",
+        "description": "Extracts direct application links from aggregator feeds (HN, Reddit)",
+        "required_capabilities": [
+            "supports_structured_output"
+        ]
+    },
+    {
+        "id": "step_resume_parsing",
+        "name": "Resume Parsing",
+        "description": "Parses resume text into structured persona data",
+        "required_capabilities": [
+            "supports_structured_output"
+        ]
     }
 ]

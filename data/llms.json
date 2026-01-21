@@ -100,6 +100,54 @@
         "supports_structured_output": true
     },
     {
+        "id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t765",
+        "provider": "openrouter",
+        "model_name": "xiaomi/mimo-v2-flash:free",
+        "display_name": "Mimo V2 Flash (OpenRouter)",
+        "daily_token_limit": 1000000,
+        "plans_supported": [
+            "free"
+        ],
+        "supports_tool_calling": true,
+        "supports_structured_output": true
+    },
+    {
+        "id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t123",
+        "provider": "openrouter",
+        "model_name": "tngtech/deepseek-r1t2-chimera:free",
+        "display_name": "DeepSeek R1T2 Chimera (OpenRouter)",
+        "daily_token_limit": 1000000,
+        "plans_supported": [
+            "free"
+        ],
+        "supports_tool_calling": true,
+        "supports_structured_output": true
+    },
+    {
+        "id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t896",
+        "provider": "openrouter",
+        "model_name": "anthropic/claude-haiku-4.5",
+        "display_name": "Claude Haiku 4.5 (OpenRouter)",
+        "daily_token_limit": 1000000,
+        "plans_supported": [
+            "paid"
+        ],
+        "supports_tool_calling": true,
+        "supports_structured_output": true
+    },
+    {
+        "id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t432",
+        "provider": "openrouter",
+        "model_name": "z-ai/glm-4.5-air:free",
+        "display_name": "GLM 4.5 Air (OpenRouter)",
+        "daily_token_limit": 1000000,
+        "plans_supported": [
+            "free"
+        ],
+        "supports_tool_calling": true,
+        "supports_structured_output": true
+    },
+    {
         "id": "e3c7e5da-8f0a-6b4c-1a3d-9c7e5f4a3b2d",
         "provider": "cerebras",
         "model_name": "llama3.1-8b",

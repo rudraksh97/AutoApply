@@ -210,10 +210,11 @@ class BrowserAgent:
 
         # Deduct fixed credit cost for browser operation
         # This covers all internal LLM calls made by browser-use
-        if hasattr(self.llm, "config_id"):
+        config_id = getattr(self.llm, "config_id", None)
+
+        if config_id:
              tm = TokenManager()
-             if self.llm.config_id:
-                  tm.deduct_credits(self.llm.config_id, 10000)
+             tm.deduct_credits(config_id, 10000)
 
         playwright = await async_playwright().start()
         browser_app = None
@@ -242,6 +243,12 @@ class BrowserAgent:
             result = await agent.run()
             return result.final_result()
 
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            import logging
+            logging.error(f"Browser agent execution failed: {e}\nStack trace:\n{tb}")
+            raise
         finally:
             if browser_app:
                 await browser_app.close()
