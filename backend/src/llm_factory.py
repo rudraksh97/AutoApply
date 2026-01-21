@@ -31,9 +31,14 @@ class PrincipalLLMAdapter:
         # This hack makes isinstance(adapter, BaseChatModel) True
         return self.real_llm.__class__
 
-    def __getattr__(self, name):
-        # Delegate everything to the real LLM
-        return getattr(self.real_llm, name)
+    def __getattribute__(self, name):
+        # Check our custom attributes first
+        if name in ('real_llm', 'provider', 'config_id', 'model_name', 'model', '__class__', '__dict__', '__getattribute__'):
+            return object.__getattribute__(self, name)
+        
+        # Delegate everything else to the real LLM
+        real_llm = object.__getattribute__(self, 'real_llm')
+        return getattr(real_llm, name)
 
     def __dir__(self):
         # Ensure our extra attributes show up in dir()
@@ -69,6 +74,28 @@ def adapt_llm(llm, provider: str, config_id: str, model_name: str):
         config_id=config_id,
         model_name=model_name
     )
+
+def create_browser_use_llm(provider: str, model: str, api_key: str):
+    """
+    Create a browser-use compatible LLM wrapper.
+    browser-use has its own LLM wrappers that handle message conversion.
+    """
+    if provider == "google":
+        from browser_use.llm.google.chat import ChatGoogle
+        return ChatGoogle(model=model, api_key=api_key, temperature=0.1)
+    
+    elif provider == "openrouter":
+        from browser_use.llm.openrouter.chat import ChatOpenRouter
+        return ChatOpenRouter(model=model, api_key=api_key, temperature=0.1)
+    
+    elif provider == "cerebras":
+        from browser_use.llm.cerebras.chat import ChatCerebras
+        return ChatCerebras(model=model, api_key=api_key, temperature=0.1)
+    
+    else:
+        # Fallback to OpenAI-compatible
+        from browser_use.llm.openai.chat import ChatOpenAI as BrowserUseChatOpenAI
+        return BrowserUseChatOpenAI(model=model, api_key=api_key, temperature=0.1)
 
 class LLMFactory:
     """

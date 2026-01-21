@@ -172,8 +172,45 @@ class BrowserAgent:
         self.headless = headless
         self.available_file_paths = []
 
-        from src.llm_factory import LLMFactory
-        self.llm = LLMFactory.get_llm_for_step("step_browser_automation")
+        from src.llm_factory import create_browser_use_llm
+        from src.config import ConfigManager
+        
+        # Get the LLM config for browser automation (same pattern as LLMFactory)
+        cm = ConfigManager()
+        links = cm.get_workflow_links()
+        linked_config_ids = [l["llm_config_id"] for l in links if l["workflow_id"] == "step_browser_automation"]
+        
+        if linked_config_ids:
+            # Get all user configs and find the linked one
+            all_configs = cm.get_user_configs()
+            user_config = None
+            for cfg in all_configs:
+                if cfg["id"] in linked_config_ids:
+                    user_config = cfg
+                    break
+            
+            if user_config:
+                # Get SDK definition to find provider and model
+                sdk_id = user_config.get("sdk_id")
+                sdk = cm.get_sdk_definition(sdk_id)
+                
+                if sdk:
+                    # Create browser-use compatible LLM
+                    self.llm = create_browser_use_llm(
+                        provider=sdk["provider"],
+                        model=sdk["model_name"],
+                        api_key=user_config["api_key"]
+                    )
+                    logger.info(f"BrowserAgent initialized with browser-use {sdk['provider']} LLM: {sdk['model_name']}")
+                else:
+                    logger.error(f"SDK definition not found for sdk_id: {sdk_id}")
+                    raise ValueError(f"SDK definition not found for sdk_id: {sdk_id}")
+            else:
+                logger.error("User config not found for linked config IDs")
+                raise ValueError("User config not found for linked config IDs")
+        else:
+            logger.error("No LLM config linked to step_browser_automation")
+            raise ValueError("No LLM config linked to step_browser_automation. Please configure an LLM for browser automation in the settings.")
 
     # -------------------------------------------------------------------------
     # Task Builders
@@ -246,11 +283,15 @@ class BrowserAgent:
             result = await agent.run()
             final_res = result.final_result()
             
+            # Log the actual response for debugging
+            logger.info(f"Agent returned result (length={len(str(final_res)) if final_res else 0}): {str(final_res)[:500]}...")
+            
             # VALIDATION: Check for early returns or empty results
             if not final_res or len(str(final_res).strip()) < 50:
                 logger.warning("Agent returned suspiciously short result. Might have terminated too early.")
                 # If it's a scrape task and we got nothing, it's a failure
                 if "Extract job details" in task and (not final_res or not any(k in str(final_res).lower() for k in ["description", "responsibilities"])):
+                     logger.error(f"VALIDATION FAILED: Agent response was: {final_res}")
                      raise ValueError("Agent returned incomplete job description. Likely reasoning failure.")
 
             return final_res

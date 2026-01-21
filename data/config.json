@@ -19,8 +19,8 @@
       "api_key": "AIzaSyB2JSDqZhPMROCO07LsGapCN3gtttudi84",
       "plan_type": "free",
       "daily_token_limit": 1000000,
-      "tokens_used_today": 110000,
-      "last_used_at": "2026-01-20T21:15:22.148204-05:00",
+      "tokens_used_today": 140000,
+      "last_used_at": "2026-01-20T23:22:29.630489-05:00",
       "reset_at": "2026-01-21T03:01:00-05:00"
     },
     {
@@ -39,8 +39,8 @@
       "name": "OR2-haiku",
       "api_key": "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",
       "plan_type": "paid",
-      "tokens_used_today": 60000,
-      "last_used_at": "2026-01-20T22:34:54.328855-05:00",
+      "tokens_used_today": 80000,
+      "last_used_at": "2026-01-20T22:59:48.143695-05:00",
       "reset_at": "2026-01-21T03:01:00-05:00"
     }
   ]
