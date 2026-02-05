@@ -4,7 +4,7 @@ import { Plus, Play, Pause, ExternalLink, Eye, FileText, RotateCw, Trash2, Code,
 import { toast } from 'sonner';
 
 import { AddJobDialog } from '@/components/jobs/AddJobDialog';
-import { JobJsonModal } from '@/components/jobs/JobJsonModal';
+import { DraftDetailsModal, FullDraft } from '@/components/jobs/DraftDetailsModal';
 import { ResumePreviewPopup } from '@/components/jobs/ResumePreviewPopup';
 import { API_URL } from '@/lib/env';
 
@@ -35,16 +35,17 @@ export default function JobsPage() {
   const [managerLoading, setManagerLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'drafts' | 'sent'>('drafts');
   
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [selectedJobForJson, setSelectedJobForJson] = useState<any | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [previewJob, setPreviewJob] = useState<Job | null>(null);
   
+  // Draft Details State
+  const [viewDraftOpen, setViewDraftOpen] = useState(false);
+  const [selectedDraft, setSelectedDraft] = useState<FullDraft | null>(null);
+  const [loadingDraft, setLoadingDraft] = useState(false);
+
   const [jobs, setJobs] = useState<Job[]>([]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [loading, setLoading] = useState(true);
-
-
 
   const fetchJobs = async () => {
     try {
@@ -132,6 +133,21 @@ export default function JobsPage() {
     } catch {
         toast.error("Failed to add job");
     }
+  };
+
+  const viewDraft = async (draftId: string) => {
+      setLoadingDraft(true);
+      setViewDraftOpen(true);
+      try {
+          const res = await axios.get(`${API_URL}/drafts/${draftId}`);
+          setSelectedDraft(res.data);
+      } catch (e) {
+          console.error(e);
+          toast.error("Failed to load draft details");
+          setViewDraftOpen(false);
+      } finally {
+          setLoadingDraft(false);
+      }
   };
 
   const getDraftForJob = (jobUrl: string) => {
@@ -340,7 +356,7 @@ export default function JobsPage() {
                         <div className="flex justify-center gap-1">
                           {draft && (
                               <button
-                                onClick={() => setSelectedJobForJson(draft)}
+                                onClick={() => viewDraft(draft.id)}
                                 className="p-1.5 text-[#296374] hover:bg-[#629FAD]/10 rounded transition-colors"
                                 title="View Data"
                               >
@@ -381,9 +397,13 @@ export default function JobsPage() {
       </div>
 
       {/* Modals */}
-      {selectedJobForJson && (
-        <JobJsonModal job={selectedJobForJson} onClose={() => setSelectedJobForJson(null)} />
-      )}
+      <DraftDetailsModal 
+        draft={selectedDraft} 
+        isOpen={viewDraftOpen} 
+        onClose={() => setViewDraftOpen(false)}
+        loading={loadingDraft}
+      />
+
       {showAddDialog && (
         <AddJobDialog 
           onClose={() => setShowAddDialog(false)}
@@ -392,13 +412,9 @@ export default function JobsPage() {
       )}
       {previewJob && (
         <ResumePreviewPopup 
-          job={{
-            id: previewJob.url,
-            title: previewJob.job_title || 'Untitled',
-            company: previewJob.company_name || 'Unknown',
-            jobDescription: previewJob.details || 'No details available.'
-          }} 
-          onClose={() => setPreviewJob(null)} 
+          isOpen={!!previewJob}
+          onClose={() => setPreviewJob(null)}
+          draftId={getDraftForJob(previewJob.url)?.id || ''}
           jobUrl={previewJob.url}
         />
       )}

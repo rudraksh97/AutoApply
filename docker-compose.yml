@@ -37,3 +37,14 @@ services:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
       - backend
+
+  frontend-revamp:
+    build:
+      context: ./frontend-revamp
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend

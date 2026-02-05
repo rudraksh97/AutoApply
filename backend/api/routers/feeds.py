@@ -169,11 +169,11 @@ async def poll_single_feed(feed: FeedURLOnly):
             }
         
         # Check if this feed needs LLM-based extraction
-        use_llm = _needs_llm_extraction(feed_url)
+        use_llm = needs_llm_extraction(feed_url)
         
         # Extract company name from feed
         feed_title = parsed_feed.feed.get("title", "")
-        company_name = _extract_company_from_feed(feed_url, feed_title)
+        company_name = extract_company_from_feed(feed_url, feed_title)
         
         skipped_entries = 0
         for entry in parsed_feed.entries:
@@ -183,7 +183,7 @@ async def poll_single_feed(feed: FeedURLOnly):
             
             # Use LLM to extract actual job URL if needed
             if use_llm:
-                extraction = await _extract_job_link_with_llm(entry)
+                extraction = await extract_job_link_with_llm(entry)
                 job_link = extraction.get("job_url")
                 
                 # Skip if no valid job URL found
