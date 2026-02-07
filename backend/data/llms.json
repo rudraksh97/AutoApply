@@ -1,0 +1,30 @@
+[
+    {
+        "id": "openai_gpt4o",
+        "name": "GPT-4o",
+        "provider": "openai_compatible",
+        "model_name": "gpt-4o",
+        "daily_token_limit": 1000000
+    },
+    {
+        "id": "openai_gpt4_turbo",
+        "name": "GPT-4 Turbo",
+        "provider": "openai_compatible",
+        "model_name": "gpt-4-turbo",
+        "daily_token_limit": 1000000
+    },
+    {
+        "id": "google_gemini_pro",
+        "name": "Gemini Pro",
+        "provider": "google",
+        "model_name": "gemini-pro",
+        "daily_token_limit": 500000
+    },
+    {
+        "id": "mistral_large_latest",
+        "name": "Mistral Large (Native)",
+        "provider": "mistral_sdk",
+        "model_name": "mistral-large-latest",
+        "daily_token_limit": 1000000
+    }
+]

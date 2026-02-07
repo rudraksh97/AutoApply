@@ -13,81 +13,30 @@
   "plan_type": "paid",
   "user_llm_configs": [
     {
-      "id": "4fc8d6c3-f293-4aed-a382-a15b7ee65fa6",
-      "sdk_id": "a1b2c3d4-e5f6-7g8h-9i0j-k1l2m3n4o5p6",
-      "name": "GF-1",
-      "api_key": "AIzaSyB2JSDqZhPMROCO07LsGapCN3gtttudi84",
+      "id": "6e71ad27-35df-47e2-963e-e05050915d1f",
+      "sdk_id": "z9x8c7v6-b5n4-m3l2-k1j0-h9g8f7d6s5a4",
+      "name": "OR-GPT40",
+      "api_key": "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",
       "plan_type": "free",
-      "daily_token_limit": 1000000,
-      "tokens_used_today": 140000,
-      "last_used_at": "2026-01-20T23:22:29.630489-05:00",
-      "reset_at": "2026-01-21T03:01:00-05:00"
+      "tokens_used_today": 177492,
+      "last_used_at": "2026-02-05T00:23:41.924316-05:00",
+      "reset_at": "2026-02-05T03:01:00-05:00"
     },
     {
-      "id": "215c3205-1a6b-4b1a-a789-d38984efc56d",
-      "sdk_id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t765",
-      "name": "OR1-Xiami",
-      "api_key": "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",
-      "plan_type": "free",
-      "tokens_used_today": 20000,
-      "last_used_at": "2026-01-20T21:36:11.192921-05:00",
-      "reset_at": "2026-01-21T03:01:00-05:00"
-    },
-    {
-      "id": "d5a48cac-6eae-4397-9291-f86e1937226e",
+      "id": "7acfc35e-2368-439b-80de-1433e198e46d",
       "sdk_id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t954",
-      "name": "OR2-GPT",
-      "api_key": "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",
-      "plan_type": "free",
-      "tokens_used_today": 160356,
-      "last_used_at": "2026-01-21T02:02:02.562190-05:00",
-      "reset_at": "2026-01-21T03:01:00-05:00"
-    },
-    {
-      "id": "76b54596-7d50-4121-b963-f83c92d43bc7",
-      "sdk_id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t888",
-      "name": "OR3-Haiku",
+      "name": "40mini",
       "api_key": "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",
-      "plan_type": "paid",
-      "tokens_used_today": 0,
-      "last_used_at": null,
-      "reset_at": null
-    },
-    {
-      "id": "f39f38ed-b70e-4b2d-8b92-d3b81c9adc16",
-      "sdk_id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t896",
-      "name": "OR4-Haiku3.5",
-      "api_key": "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",
-      "plan_type": "paid",
-      "tokens_used_today": 0,
-      "last_used_at": null,
-      "reset_at": null
-    },
-    {
-      "id": "6ec4afc8-a1a0-487e-879c-b5413d21262c",
-      "sdk_id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t499",
-      "name": "OR6-Trinity",
-      "api_key": "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",
       "plan_type": "free",
-      "tokens_used_today": 0,
-      "last_used_at": null,
-      "reset_at": null
+      "tokens_used_today": 45634,
+      "last_used_at": "2026-02-05T01:57:26.722731-05:00",
+      "reset_at": "2026-02-05T03:01:00-05:00"
     },
     {
-      "id": "791c7f9f-7160-4337-a5ae-828b48a096c8",
-      "sdk_id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t111",
-      "name": "OR7-Mistral",
-      "api_key": "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",
-      "plan_type": "free",
-      "tokens_used_today": 0,
-      "last_used_at": null,
-      "reset_at": null
-    },
-    {
-      "id": "5cf6fb4e-a0cf-46df-9c50-bcdb7d820daf",
-      "sdk_id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t222",
-      "name": "OR8-Qwen",
-      "api_key": "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",
+      "id": "cdd35def-fb35-4eb0-adf0-72549dcb64ec",
+      "sdk_id": "mistral_large_latest",
+      "name": "mistral",
+      "api_key": "hKvCTWdDV44JYPglf2fL7D9YOyzWSkP1",
       "plan_type": "free",
       "tokens_used_today": 0,
       "last_used_at": null,

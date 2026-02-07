@@ -171,7 +171,6 @@
         "supports_tool_calling": true,
         "supports_structured_output": true
     },
-    
     {
         "id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t499",
         "provider": "openrouter",
@@ -228,6 +227,19 @@
         "daily_token_limit": 1000000,
         "plans_supported": [
             "free"
+        ],
+        "supports_tool_calling": true,
+        "supports_structured_output": true
+    },
+    {
+        "id": "mistral_large_latest",
+        "provider": "mistral_sdk",
+        "model_name": "mistral-large-2512",
+        "display_name": "Mistral Large",
+        "daily_token_limit": 1000000,
+        "plans_supported": [
+            "free",
+            "paid"
         ],
         "supports_tool_calling": true,
         "supports_structured_output": true

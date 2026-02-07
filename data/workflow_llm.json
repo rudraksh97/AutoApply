@@ -74,5 +74,77 @@
   {
     "workflow_id": "step_ats_scoring",
     "llm_config_id": "4fc8d6c3-f293-4aed-a382-a15b7ee65fa6"
+  },
+  {
+    "workflow_id": "step_browser_automation",
+    "llm_config_id": "fe3e56be-2e02-4a06-9844-58386de8bd1e"
+  },
+  {
+    "workflow_id": "step_ats_scoring",
+    "llm_config_id": "fe3e56be-2e02-4a06-9844-58386de8bd1e"
+  },
+  {
+    "workflow_id": "step_resume_tailoring",
+    "llm_config_id": "fe3e56be-2e02-4a06-9844-58386de8bd1e"
+  },
+  {
+    "workflow_id": "step_form_answering",
+    "llm_config_id": "fe3e56be-2e02-4a06-9844-58386de8bd1e"
+  },
+  {
+    "workflow_id": "step_rss_link_extraction",
+    "llm_config_id": "fe3e56be-2e02-4a06-9844-58386de8bd1e"
+  },
+  {
+    "workflow_id": "step_resume_parsing",
+    "llm_config_id": "fe3e56be-2e02-4a06-9844-58386de8bd1e"
+  },
+  {
+    "workflow_id": "step_browser_automation",
+    "llm_config_id": "2cca2b1f-00b6-4d50-8c84-30c9e099d51e"
+  },
+  {
+    "workflow_id": "step_ats_scoring",
+    "llm_config_id": "2cca2b1f-00b6-4d50-8c84-30c9e099d51e"
+  },
+  {
+    "workflow_id": "step_resume_tailoring",
+    "llm_config_id": "2cca2b1f-00b6-4d50-8c84-30c9e099d51e"
+  },
+  {
+    "workflow_id": "step_form_answering",
+    "llm_config_id": "2cca2b1f-00b6-4d50-8c84-30c9e099d51e"
+  },
+  {
+    "workflow_id": "step_rss_link_extraction",
+    "llm_config_id": "2cca2b1f-00b6-4d50-8c84-30c9e099d51e"
+  },
+  {
+    "workflow_id": "step_resume_parsing",
+    "llm_config_id": "2cca2b1f-00b6-4d50-8c84-30c9e099d51e"
+  },
+  {
+    "workflow_id": "step_browser_automation",
+    "llm_config_id": "cdd35def-fb35-4eb0-adf0-72549dcb64ec"
+  },
+  {
+    "workflow_id": "step_ats_scoring",
+    "llm_config_id": "cdd35def-fb35-4eb0-adf0-72549dcb64ec"
+  },
+  {
+    "workflow_id": "step_resume_tailoring",
+    "llm_config_id": "cdd35def-fb35-4eb0-adf0-72549dcb64ec"
+  },
+  {
+    "workflow_id": "step_form_answering",
+    "llm_config_id": "cdd35def-fb35-4eb0-adf0-72549dcb64ec"
+  },
+  {
+    "workflow_id": "step_rss_link_extraction",
+    "llm_config_id": "cdd35def-fb35-4eb0-adf0-72549dcb64ec"
+  },
+  {
+    "workflow_id": "step_resume_parsing",
+    "llm_config_id": "cdd35def-fb35-4eb0-adf0-72549dcb64ec"
   }
 ]

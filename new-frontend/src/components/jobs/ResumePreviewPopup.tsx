@@ -1,21 +1,11 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import {
-    Sheet,
-    SheetContent,
-    SheetHeader,
-    SheetTitle,
-    SheetDescription,
-} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
-    RefreshCw,
     Clock,
-    TrendingUp,
     AlertCircle,
     Loader2,
     Copy,
@@ -46,7 +36,7 @@ interface ResumePreviewPopupProps {
     jobUrl: string;
 }
 
-export function ResumePreviewPopup({ isOpen, onClose, draftId, jobUrl }: ResumePreviewPopupProps) {
+export function ResumePreviewPopup({ isOpen, onClose, draftId }: ResumePreviewPopupProps) {
     const [versions, setVersions] = useState<ResumeVersion[]>([]);
     const [jobDetails, setJobDetails] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<'resume' | 'description'>('resume');
@@ -232,267 +222,314 @@ export function ResumePreviewPopup({ isOpen, onClose, draftId, jobUrl }: ResumeP
         }
     };
 
-    const currentVersion = versions.find(v => v.id === selectedVersionId);
+    // Helper for status badge
+    const getStatusBadge = (status: string) => {
+        const styles: Record<string, string> = {
+            COMPLETED: "bg-green-100 text-green-700",
+            GENERATING: "bg-blue-100 text-blue-700 animate-pulse",
+            FAILED: "bg-red-100 text-red-700",
+            ARCHIVED: "bg-gray-100 text-gray-700",
+        };
+        const style = styles[status] || styles.ARCHIVED;
+        
+        return (
+            <Badge className={cn("border-none h-5 text-[10px] px-1.5 font-medium", style)}>
+                {status}
+            </Badge>
+        );
+    };
+
+    if (!isOpen) return null;
 
     return (
-        <Sheet open={isOpen} onOpenChange={onClose}>
-            <SheetContent side="right" className="sm:max-w-4xl w-[90vw] p-0 flex flex-col bg-white">
-                <SheetHeader className="p-6 border-b border-border/40">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <SheetTitle className="text-[#0C2C55]">Resume Preview & Refinement</SheetTitle>
-                            <SheetDescription className="text-[#296374]">
-                                Preview your tailored resume and its job description.
-                            </SheetDescription>
-                        </div>
-                        {currentVersion && (
-                            <div className="flex items-center gap-2">
-                                <Badge variant="secondary" className="h-8 px-3 text-sm font-semibold flex items-center gap-1.5 bg-[#E8E2DB] text-[#0C2C55]">
-                                    <TrendingUp className="h-3.5 w-3.5" />
-                                    ATS Score: {currentVersion.ats_score || 'N/A'}/100
-                                </Badge>
-                            </div>
-                        )}
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+            <div className="bg-white rounded-lg w-full max-w-[1400px] h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                {/* Header */}
+                <div className="flex items-center justify-between p-4 px-6 border-b border-[#629FAD]/30 bg-white shrink-0">
+                    <div>
+                        <h2 className="text-xl font-semibold text-[#0C2C55]">Resume Preview</h2>
+                        <p className="text-sm text-[#296374] mt-1">Manage versions and refine content</p>
                     </div>
-                </SheetHeader>
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={onClose}
+                        className="text-[#629FAD] hover:text-[#0C2C55] hover:bg-[#E8E2DB]/50 rounded-lg"
+                    >
+                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 18 18"/></svg>
+                    </Button>
+                </div>
 
                 <div className="flex-1 flex overflow-hidden">
-                    {/* Left: PDF Preview or JD */}
-                    <div className="flex-[3] bg-muted/20 relative border-r flex flex-col">
-                        <div className="bg-background border-b px-4 h-12 flex items-center justify-between shrink-0">
-                            <div className="flex gap-1 p-1 bg-muted rounded-md h-9">
-                                <Button
-                                    variant={viewMode === 'resume' ? 'default' : 'ghost'}
-                                    size="sm"
-                                    className={cn(
-                                        "h-7 text-xs",
-                                        viewMode === 'resume' ? "bg-[#0C2C55] text-white hover:bg-[#0C2C55]/90" : "text-[#296374]"
-                                    )}
-                                    onClick={() => setViewMode('resume')}
-                                >
-                                    Resume Preview
-                                </Button>
-                                <Button
-                                    variant={viewMode === 'description' ? 'default' : 'ghost'}
-                                    size="sm"
-                                    className={cn(
-                                        "h-7 text-xs",
-                                        viewMode === 'description' ? "bg-[#0C2C55] text-white hover:bg-[#0C2C55]/90" : "text-[#296374]"
-                                    )}
-                                    onClick={() => setViewMode('description')}
-                                >
-                                    Job Description
-                                </Button>
+                    {/* Left Sidebar: Version History */}
+                    <div className="w-80 border-r border-[#629FAD]/30 bg-[#E8E2DB]/20 flex flex-col shrink-0">
+                        <div className="p-4 border-b border-[#629FAD]/20 flex items-center justify-between bg-[#E8E2DB]/30">
+                            <h3 className="font-semibold text-[#0C2C55] flex items-center gap-2">
+                                <Clock className="h-4 w-4" /> History
+                            </h3>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-[10px] px-2 bg-white border-[#629FAD]/30 text-[#0C2C55] hover:bg-[#E8E2DB]"
+                                onClick={handleUseOriginal}
+                            >
+                                Use Original
+                            </Button>
+                        </div>
+                        
+                        <ScrollArea className="flex-1">
+                            <div className="p-3 space-y-3">
+                                {versions.map((v) => (
+                                    <div
+                                        key={v.id}
+                                        onClick={() => setSelectedVersionId(v.id)}
+                                        className={cn(
+                                            "p-3 rounded-lg border-2 cursor-pointer transition-all hover:shadow-sm",
+                                            selectedVersionId === v.id
+                                                ? "border-[#0C2C55] bg-[#0C2C55]/5"
+                                                : "border-[#629FAD]/20 bg-white hover:border-[#629FAD]/50"
+                                        )}
+                                    >
+                                        <div className="flex items-start justify-between mb-2">
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-semibold text-sm text-[#0C2C55]">v{v.version_number}</span>
+                                                    {v.is_current && <Badge className="bg-green-600 text-[9px] h-4 px-1">Active</Badge>} 
+                                                    {getStatusBadge(v.status)}
+                                                </div>
+                                                <div className="text-[10px] text-[#629FAD]">
+                                                    {new Date(v.created_at).toLocaleString()}
+                                                </div>
+                                            </div>
+                                            {v.ats_score && (
+                                                <div className={cn(
+                                                    "font-bold text-sm",
+                                                    v.ats_score > 80 ? "text-green-600" : "text-amber-600"
+                                                )}>
+                                                    {v.ats_score}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {v.changes_summary && (
+                                            <p className="text-xs text-[#296374] line-clamp-2 my-2 italic">
+                                                "{v.changes_summary}"
+                                            </p>
+                                        )}
+
+                                        {v.keywords_added && v.keywords_added.length > 0 && (
+                                            <div className="flex flex-wrap gap-1 mt-2">
+                                                {v.keywords_added.split(',').slice(0, 3).map((kw, i) => (
+                                                    <span key={i} className="text-[9px] px-1.5 py-0.5 bg-[#629FAD]/10 text-[#296374] rounded-full border border-[#629FAD]/20">
+                                                        {kw.trim()}
+                                                    </span>
+                                                ))}
+                                                {v.keywords_added.split(',').length > 3 && (
+                                                    <span className="text-[9px] text-[#629FAD] px-1">...</span>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {selectedVersionId === v.id && !v.is_current && v.status === 'COMPLETED' && (
+                                           <Button
+                                                size="sm"
+                                                variant="default"
+                                                className="w-full mt-3 h-7 text-xs bg-[#0C2C55] hover:bg-[#0C2C55]/90"
+                                                onClick={(e) => { e.stopPropagation(); handleSelectVersion(v.id); }}
+                                            >
+                                                Use This Version
+                                            </Button>
+                                        )}
+                                    </div>
+                                ))}
                             </div>
+                        </ScrollArea>
+                    </div>
+
+                    {/* Main Content Area */}
+                    <div className="flex-1 flex flex-col bg-[#F8F9FA] min-w-0">
+                        {/* Toolbar */}
+                        <div className="flex items-center justify-between p-3 border-b border-[#629FAD]/20 bg-white">
+                            <div className="flex gap-2">
+                                <div className="bg-[#E8E2DB]/30 p-1 rounded-lg flex gap-1">
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setViewMode('resume')}
+                                        className={cn(
+                                            "h-8 text-xs font-medium transition-all",
+                                            viewMode === 'resume' 
+                                                ? "bg-[#0C2C55] text-white shadow-sm hover:bg-[#0C2C55]/90" 
+                                                : "text-[#296374] hover:bg-[#E8E2DB]/50"
+                                        )}
+                                    >
+                                        Resume Preview
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setViewMode('description')}
+                                        className={cn(
+                                            "h-8 text-xs font-medium transition-all",
+                                            viewMode === 'description' 
+                                                ? "bg-[#0C2C55] text-white shadow-sm hover:bg-[#0C2C55]/90" 
+                                                : "text-[#296374] hover:bg-[#E8E2DB]/50"
+                                        )}
+                                    >
+                                        Job Description
+                                    </Button>
+                                </div>
+                            </div>
+
                             <div className="flex gap-2">
                                 <Button
                                     variant="outline"
                                     size="sm"
                                     onClick={handleCopyPrompt}
                                     disabled={copyingPrompt}
-                                    className="h-7 text-[10px] gap-1 px-2 border-[#629FAD]/30 text-[#0C2C55]"
+                                    className="h-8 text-xs gap-1.5 border-[#629FAD]/30 text-[#0C2C55] hover:bg-[#F8F9FA]"
                                 >
-                                    {copyingPrompt ? <Loader2 className="h-3 w-3 animate-spin" /> : <Copy className="h-3 w-3" />}
+                                    {copyingPrompt ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
                                     Copy Prompt
                                 </Button>
                                 <Button
                                     variant="outline"
                                     size="sm"
                                     onClick={handleGoToChatGPT}
-                                    className="h-7 text-[10px] gap-1 px-2 border-[#629FAD]/30 text-[#0C2C55]"
+                                    className="h-8 text-xs gap-1.5 border-[#629FAD]/30 text-[#0C2C55] hover:bg-[#F8F9FA]"
                                 >
-                                    <Sparkles className="h-3 w-3" />
+                                    <Sparkles className="h-3.5 w-3.5" />
                                     ChatGPT
                                 </Button>
                                 <Button
-                                    variant="outline"
+                                    variant={isManualEditing ? "default" : "outline"}
                                     size="sm"
-                                    onClick={handleStartManualEdit}
-                                    className="h-7 text-[10px] gap-1 px-2 border-[#629FAD]/30 text-[#0C2C55]"
+                                    onClick={() => {
+                                        if (isManualEditing) {
+                                            setIsManualEditing(false);
+                                        } else {
+                                            handleStartManualEdit();
+                                        }
+                                    }}
+                                    className={cn(
+                                        "h-8 text-xs gap-1.5 border-[#629FAD]/30 transition-colors",
+                                        isManualEditing ? "bg-[#0C2C55] text-white" : "text-[#0C2C55] hover:bg-[#F8F9FA]"
+                                    )}
                                 >
-                                    <FileEdit className="h-3 w-3" />
-                                    Manual Edit
+                                    <FileEdit className="h-3.5 w-3.5" />
+                                    {isManualEditing ? "Exit Edit" : "Manual Edit"}
                                 </Button>
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-hidden relative">
+                        {/* Content Viewer */}
+                        <div className="flex-1 overflow-hidden p-6 bg-[#E8E2DB]/10 relative">
                             {viewMode === 'resume' ? (
                                 isManualEditing ? (
-                                    <div className="flex-1 flex flex-col h-full bg-slate-950">
-                                        <div className="flex items-center justify-between p-2 bg-slate-900 border-b border-slate-800">
-                                            <span className="text-[10px] text-slate-400 font-mono">resume_source.tex</span>
-                                            <div className="flex gap-2">
-                                                <Button size="sm" variant="ghost" className="h-6 text-[10px] text-slate-300 hover:text-white" onClick={() => setIsManualEditing(false)}>Cancel</Button>
-                                                <Button size="sm" onClick={handleSaveManualEdit} disabled={savingManual} className="h-6 text-[10px] bg-blue-600 hover:bg-blue-700">
-                                                    {savingManual ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
-                                                    Save & Compile
-                                                </Button>
+                                    <div className="bg-white rounded-xl border border-[#629FAD]/30 shadow-sm h-full flex flex-col overflow-hidden">
+                                        <div className="flex items-center justify-between p-3 border-b border-[#629FAD]/20 bg-[#F8F9FA]">
+                                            <div className="flex items-center gap-2">
+                                                <code className="text-xs text-[#629FAD] bg-[#E8E2DB]/30 px-2 py-1 rounded">source.tex</code>
                                             </div>
+                                            <Button 
+                                                size="sm" 
+                                                onClick={handleSaveManualEdit} 
+                                                disabled={savingManual} 
+                                                className="h-7 text-xs bg-[#0C2C55] hover:bg-[#0C2C55]/90"
+                                            >
+                                                {savingManual ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
+                                                Save & Compile
+                                            </Button>
                                         </div>
                                         <textarea
-                                            className="w-full flex-1 p-4 font-mono text-[11px] resize-none focus:outline-none bg-slate-950 text-slate-200 border-none"
+                                            className="flex-1 p-4 font-mono text-xs leading-relaxed resize-none focus:outline-none text-[#0C2C55] selection:bg-[#629FAD]/20"
                                             value={manualLatex}
                                             onChange={(e) => setManualLatex(e.target.value)}
                                             spellCheck={false}
                                         />
                                     </div>
                                 ) : (
-                                    selectedVersionId ? (
-                                        <iframe
-                                            src={`${API_URL}/drafts/${draftId}/resume/preview?version_id=${selectedVersionId}&t=${new Date().getTime()}`}
-                                            className="w-full h-full border-none"
-                                            title="Resume Preview"
-                                        />
-                                    ) : (
-                                        <div className="flex items-center justify-center h-full">
-                                            {loading ? <Loader2 className="h-8 w-8 animate-spin text-[#629FAD]" /> : <span className="text-[#296374]">No resume preview available</span>}
-                                        </div>
-                                    )
-                                )
-                            ) : (
-                                <ScrollArea className="h-full bg-white">
-                                    <div className="p-8 prose prose-sm max-w-none">
-                                        <h2 className="text-xl font-bold mb-4 text-[#0C2C55]">Job Description</h2>
-                                        {jobDetails ? (
-                                            <div className="whitespace-pre-wrap text-sm leading-relaxed text-[#296374]">
-                                                {jobDetails}
-                                            </div>
+                                    <div className="h-full bg-white rounded-xl shadow-lg border border-[#629FAD]/10 overflow-hidden relative group">
+                                         {selectedVersionId ? (
+                                            <iframe
+                                                src={`${API_URL}/drafts/${draftId}/resume/preview?version_id=${selectedVersionId}&t=${new Date().getTime()}`}
+                                                className="w-full h-full border-none"
+                                                title="Resume Preview"
+                                            />
                                         ) : (
-                                            <div className="flex flex-col items-center justify-center h-40 text-muted-foreground italic">
-                                                <AlertCircle className="h-8 w-8 mb-2 opacity-50" />
-                                                No job description details captured.
+                                            <div className="flex flex-col items-center justify-center h-full text-[#629FAD] gap-3">
+                                                {loading ? (
+                                                    <>
+                                                        <Loader2 className="h-8 w-8 animate-spin" />
+                                                        <span className="text-sm">Loading preview...</span>
+                                                    </>
+                                                ) : (
+                                                    <span className="text-sm">Select a version to preview</span>
+                                                )}
                                             </div>
                                         )}
                                     </div>
-                                </ScrollArea>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Right: Versions & Refinement */}
-                    <div className="flex-[2] flex flex-col min-w-[320px] bg-background border-l">
-                        <ScrollArea className="flex-1">
-                            <div className="p-6 space-y-6">
-                                <div>
-                                    <div className="flex items-center justify-between mb-3">
-                                        <h3 className="text-sm font-semibold flex items-center gap-2 text-[#0C2C55]">
-                                            <Clock className="h-4 w-4" />
-                                            Version History
-                                        </h3>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="h-7 text-[10px] px-2 border-[#629FAD]/30 text-[#0C2C55]"
-                                            onClick={handleUseOriginal}
-                                        >
-                                            Use Original
-                                        </Button>
-                                    </div>
-                                    <div className="space-y-3">
-                                        {versions.map((v) => (
-                                            <div
-                                                key={v.id}
-                                                className={cn(
-                                                    "p-3 rounded-lg border cursor-pointer transition-all",
-                                                    selectedVersionId === v.id ? "border-[#0C2C55] bg-[#0C2C55]/5 ring-1 ring-[#0C2C55]" : "border-[#629FAD]/30 hover:border-[#629FAD]"
-                                                )}
-                                                onClick={() => setSelectedVersionId(v.id)}
-                                            >
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <span className="font-medium text-sm text-[#0C2C55]">Version {v.version_number}</span>
-                                                    {v.is_current && (
-                                                        <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-none h-5 text-[10px] px-1.5">
-                                                            CURRENT
-                                                        </Badge>
-                                                    )}
-                                                    {v.status === 'GENERATING' && (
-                                                        <Badge className="bg-yellow-100 text-yellow-700 animate-pulse border-none h-5 text-[10px] px-1.5 ml-1">
-                                                            Generating...
-                                                        </Badge>
-                                                    )}
-                                                    {v.status === 'FAILED' && (
-                                                        <Badge className="bg-red-100 text-red-700 border-none h-5 text-[10px] px-1.5 ml-1">
-                                                            Failed
-                                                        </Badge>
-                                                    )}
+                                )
+                            ) : (
+                                <div className="h-full bg-white rounded-xl border border-[#629FAD]/20 shadow-sm overflow-hidden flex flex-col">
+                                    <div className="p-6 overflow-y-auto custom-scrollbar">
+                                        <h3 className="text-lg font-bold text-[#0C2C55] mb-4 sticky top-0 bg-white pb-2 border-b border-[#E8E2DB]">Job Description</h3>
+                                        <div className="prose prose-sm max-w-none text-[#296374]">
+                                            {jobDetails ? (
+                                                <div className="whitespace-pre-wrap leading-relaxed">
+                                                    {jobDetails}
                                                 </div>
-                                                <div className="flex items-center justify-between text-xs text-[#296374]">
-                                                    <span>Score: {v.status === 'GENERATING' ? '...' : (v.ats_score || 'N/A')}</span>
-                                                    <span>{new Date(v.created_at).toLocaleDateString()}</span>
-                                                </div>
-                                                {v.changes_summary && (
-                                                    <p className="text-[11px] mt-2 italic text-[#296374]/80 line-clamp-2">
-                                                        "{v.changes_summary}"
-                                                    </p>
-                                                )}
-                                                {v.keywords_added && (
-                                                    <div className="flex flex-wrap gap-1 mt-2">
-                                                        {v.keywords_added.split(',').map((kw, i) => kw.trim() && (
-                                                            <Badge key={i} variant="outline" className="text-[9px] px-1 h-3.5 bg-blue-50/50 text-blue-700 border-blue-200">
-                                                                {kw.trim()}
-                                                            </Badge>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                                {selectedVersionId === v.id && !v.is_current && (
-                                                    <Button
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        className="w-full mt-3 h-7 text-xs text-[#0C2C55] hover:bg-[#0C2C55]/10"
-                                                        onClick={(e) => { e.stopPropagation(); handleSelectVersion(v.id); }}
-                                                    >
-                                                        Use this version
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <Separator />
-
-                                <div>
-                                    <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 text-[#0C2C55]">
-                                        <RefreshCw className="h-4 w-4" />
-                                        Refinement Instructions
-                                    </h3>
-                                    <div className="space-y-3">
-                                        <Textarea
-                                            placeholder="Example: Add more emphasis on my AWS and Kubernetes experience. Make the summary more concise."
-                                            className="min-h-[120px] text-sm resize-none border-[#629FAD]/30 focus:border-[#0C2C55]"
-                                            value={refinementPrompt}
-                                            onChange={(e) => setRefinementPrompt(e.target.value)}
-                                        />
-                                        <Button
-                                            className="w-full bg-[#0C2C55] hover:bg-[#0C2C55]/90 text-white"
-                                            disabled={refining || !refinementPrompt}
-                                            onClick={handleRefine}
-                                        >
-                                            {refining ? (
-                                                <>
-                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                    Generating...
-                                                </>
                                             ) : (
-                                                "Refine Resume"
+                                                <div className="flex flex-col items-center justify-center h-40 italic opacity-60">
+                                                    <AlertCircle className="h-8 w-8 mb-2" />
+                                                    No job description available
+                                                </div>
                                             )}
-                                        </Button>
-                                    </div>
-                                    <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
-                                        <div className="flex gap-2">
-                                            <AlertCircle className="h-4 w-4 text-blue-600 shrink-0" />
-                                            <p className="text-[11px] text-blue-700 leading-tight">
-                                                Instructions will trigger a new AI version targeting the job description and your profile.
-                                            </p>
                                         </div>
                                     </div>
                                 </div>
+                            )}
+                        </div>
+
+                        {/* Bottom Refinement Bar */}
+                        <div className="p-4 bg-white border-t border-[#629FAD]/20 shrink-0">
+                            <div className="flex gap-3 max-w-5xl mx-auto">
+                                <div className="flex-1 relative">
+                                    <Textarea
+                                        placeholder="Enter instructions to refine your resume (e.g., 'Emphasize my cloud experience', 'Make it one page')..."
+                                        className="min-h-[50px] max-h-[120px] pr-24 resize-none border-[#629FAD]/30 focus-visible:ring-[#0C2C55] text-sm"
+                                        value={refinementPrompt}
+                                        onChange={(e) => setRefinementPrompt(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                handleRefine();
+                                            }
+                                        }}
+                                    />
+                                    <div className="absolute right-2 bottom-2 text-[10px] text-muted-foreground bg-white/80 px-1 rounded">
+                                        Press Enter to refine
+                                    </div>
+                                </div>
+                                <Button
+                                    className="h-auto bg-[#296374] hover:bg-[#0C2C55] text-white px-6 transition-all"
+                                    disabled={refining || !refinementPrompt}
+                                    onClick={handleRefine}
+                                >
+                                    {refining ? (
+                                        <Loader2 className="h-5 w-5 animate-spin" />
+                                    ) : (
+                                        <div className="flex flex-col items-center">
+                                            <Sparkles className="h-5 w-5 mb-0.5" />
+                                            <span className="text-[10px] font-medium leading-none">REFINE</span>
+                                        </div>
+                                    )}
+                                </Button>
                             </div>
-                        </ScrollArea>
+                        </div>
                     </div>
                 </div>
-            </SheetContent>
-        </Sheet>
+            </div>
+        </div>
     );
 }
