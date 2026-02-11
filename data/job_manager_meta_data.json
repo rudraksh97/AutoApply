@@ -1,6 +1,6 @@
 {
-  "is_running": false,
-  "last_status_change": "2026-02-05T20:06:41.323628",
+  "is_running": true,
+  "last_status_change": "2026-02-09T21:41:33.706465",
   "can_start": false,
   "validation_errors": []
 }

@@ -6,22 +6,19 @@ import os
 # Add src to path
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-# Mock mistralai and langchain_mistralai before importing llm_factory
-sys.modules["mistralai"] = MagicMock()
-sys.modules["langchain_mistralai"] = MagicMock()
-
 from src.llm_factory import create_browser_use_llm, LLMFactory
 
 def test_create_browser_use_llm_mistral():
-    """Verify create_browser_use_llm returns ChatMistralAI for mistral_sdk provider."""
+    """Verify create_browser_use_llm returns ChatMistral for mistral_sdk provider."""
     
     # Setup
     api_key = "test_key"
     model = "mistral-large-latest"
     provider = "mistral_sdk"
     
-    with patch("src.llm_factory.ChatMistralAI") as MockChatMistral:
-        # Act
+    # Patch the class where it is defined, which is what is imported inside the function
+    with patch("browser_use.llm.mistral.ChatMistral") as MockChatMistral:
+         # Act
         llm = create_browser_use_llm(provider, model, api_key)
         
         # Assert
@@ -30,10 +27,12 @@ def test_create_browser_use_llm_mistral():
             api_key=api_key,
             temperature=0.1
         )
-        assert llm.provider == "mistral"
+        # create_browser_use_llm returns the instance directly
+        assert llm == MockChatMistral.return_value
 
+        
 def test_create_llm_instance_mistral():
-    """Verify _create_llm_instance returns ChatMistralAI for mistral_sdk provider."""
+    """Verify _create_llm_instance returns ChatMistral for mistral_sdk provider."""
     
     # Setup
     config = {
@@ -51,10 +50,10 @@ def test_create_llm_instance_mistral():
             "model_name": "mistral-large-latest"
         }
         
-        with patch("src.llm_factory.ChatMistralAI") as MockChatMistral:
+        with patch("browser_use.llm.mistral.ChatMistral") as MockChatMistral:
+            
             # Act
-            # Access private method for testing logic
-            LLMFactory._create_llm_instance(config)
+            llm = LLMFactory._create_llm_instance(config)
             
             # Assert
             MockChatMistral.assert_called_with(
@@ -62,10 +61,7 @@ def test_create_llm_instance_mistral():
                 api_key="test_key",
                 temperature=0.1
             )
-            # We can't easily check the return value of _create_llm_instance here since it mocks the class
-            # But the code path is covered by test_create_browser_use_llm_mistral which calls the same logic/factory pattern usually
-            # Actually, _create_llm_instance returns the instance, need capture it
-            
-            # Re-running the act to capture return
-            llm = LLMFactory._create_llm_instance(config)
-            assert llm.provider == "mistral"
+            # _create_llm_instance wraps the LLM in PrincipalLLMAdapter
+            # So llm is the adapter, and llm.real_llm is the mock
+            assert llm.real_llm == MockChatMistral.return_value
+            assert llm.provider == "mistral_sdk"

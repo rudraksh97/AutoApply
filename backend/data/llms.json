@@ -24,7 +24,7 @@
         "id": "mistral_large_latest",
         "name": "Mistral Large (Native)",
         "provider": "mistral_sdk",
-        "model_name": "mistral-large-latest",
+        "model_name": "mistral-large-2512",
         "daily_token_limit": 1000000
     }
 ]
