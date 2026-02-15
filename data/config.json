@@ -13,26 +13,6 @@
   "plan_type": "paid",
   "user_llm_configs": [
     {
-      "id": "6e71ad27-35df-47e2-963e-e05050915d1f",
-      "sdk_id": "z9x8c7v6-b5n4-m3l2-k1j0-h9g8f7d6s5a4",
-      "name": "OR-GPT40",
-      "api_key": "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",
-      "plan_type": "free",
-      "tokens_used_today": 177492,
-      "last_used_at": "2026-02-05T00:23:41.924316-05:00",
-      "reset_at": "2026-02-05T03:01:00-05:00"
-    },
-    {
-      "id": "7acfc35e-2368-439b-80de-1433e198e46d",
-      "sdk_id": "l1k2j3h4-g5f6-d7s8-a9p0-o1i2u3y4t954",
-      "name": "40mini",
-      "api_key": "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",
-      "plan_type": "free",
-      "tokens_used_today": 45634,
-      "last_used_at": "2026-02-05T01:57:26.722731-05:00",
-      "reset_at": "2026-02-05T03:01:00-05:00"
-    },
-    {
       "id": "cdd35def-fb35-4eb0-adf0-72549dcb64ec",
       "sdk_id": "mistral_large_latest",
       "name": "mistral",

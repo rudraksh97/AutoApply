@@ -1,10 +1,11 @@
-
 try:
-    from browser_use.llm.mistral import ChatMistral
-    print("Successfully imported ChatMistral from browser_use.llm.mistral")
-    llm = ChatMistral(api_key="test", model_name="test") # Check init args
-    print(f"LLM created. Provider: {getattr(llm, 'provider', 'Not Found')}")
-    print(f"LLM type: {type(llm)}")
+    from browser_use.llm.cerebras.chat import ChatCerebras
+    print("Successfully imported ChatCerebras")
+    print(f"ChatCerebras type: {ChatCerebras}")
+    print(f"ChatCerebras bases: {ChatCerebras.__bases__}")
+    # Inspect if it has special methods
+    import inspect
+    print(dir(ChatCerebras))
 except ImportError as e:
     print(f"ImportError: {e}")
 except Exception as e:
