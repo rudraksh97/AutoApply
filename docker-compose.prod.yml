@@ -2,21 +2,14 @@ version: "3.8"
 
 services:
   new-frontend:
-    build:
-      context: ./new-frontend
-      dockerfile: Dockerfile
-    image: devhaxcodes/autoapply-new-frontend:${TAG:-latest}
+    image: devhaxcodes/autoapply-new-frontend:${TAG:-prod}
     ports:
       - "3001:80"
-
 
     depends_on:
       - backend
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    image: devhaxcodes/autoapply-backend:${TAG:-latest}
+    image: devhaxcodes/autoapply-backend:${TAG:-prod}
     ports:
       - "8000:8000"
     volumes:
@@ -30,25 +23,17 @@ services:
     shm_size: '4gb' # Required for Chromium browser automation in Docker
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    image: devhaxcodes/autoapply-frontend:${TAG:-latest}
+    image: devhaxcodes/autoapply-frontend:${TAG:-prod}
     ports:
       - "3000:3000"
-
 
     depends_on:
       - backend
 
   frontend-revamp:
-    build:
-      context: ./frontend-revamp
-      dockerfile: Dockerfile
-    image: devhaxcodes/autoapply-frontend-revamp:${TAG:-latest}
+    image: devhaxcodes/autoapply-frontend-revamp:${TAG:-prod}
     ports:
       - "3002:3000"
-
 
     depends_on:
       - backend

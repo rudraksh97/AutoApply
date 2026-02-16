@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { cn } from "@/lib/utils";
 
 // Test feed URL - always available, not stored in user feeds
-const TEST_FEED_URL = "http://localhost:8000/test/feed.xml";
+const TEST_FEED_URL = "/api/test/feed.xml";
 
 interface Feed {
     url: string;
@@ -24,15 +24,16 @@ export default function FeedsPage() {
     const [pollingAll, setPollingAll] = useState(false);
     const [pollingFeed, setPollingFeed] = useState<string | null>(null);
 
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    
+    // Use relative path for API calls - this works for both localhost and production
+    // assuming Nginx is proxying /api to the backend
+
     // Filter out test feed from user feeds (in case it was added before)
     const userFeeds = feeds.filter(f => !f.url.includes('/test/feed.xml'));
 
     const fetchFeeds = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`${API_URL}/feeds`);
+            const res = await axios.get(`/api/feeds`);
             setFeeds(res.data);
         } catch (e) {
             console.error(e);
@@ -54,7 +55,7 @@ export default function FeedsPage() {
             return;
         }
         try {
-            await axios.post(`${API_URL}/feeds`, { url: newFeedUrl, name: newFeedName });
+            await axios.post(`/api/feeds`, { url: newFeedUrl, name: newFeedName });
             setNewFeedUrl("");
             setNewFeedName("");
             fetchFeeds();
@@ -66,7 +67,7 @@ export default function FeedsPage() {
 
     const removeFeed = async (feed: Feed) => {
         try {
-            await axios.delete(`${API_URL}/feeds`, { data: { url: feed.url, name: feed.name } });
+            await axios.delete(`/api/feeds`, { data: { url: feed.url, name: feed.name } });
             fetchFeeds();
             toast.success("Feed removed");
         } catch (e) {
@@ -77,7 +78,7 @@ export default function FeedsPage() {
     const pollAllFeeds = async () => {
         setPollingAll(true);
         try {
-            const res = await axios.post(`${API_URL}/feeds/poll`);
+            const res = await axios.post(`/api/feeds/poll`);
             toast.success(res.data.message);
         } catch (e) {
             toast.error("Failed to poll feeds");
@@ -89,7 +90,7 @@ export default function FeedsPage() {
     const pollSingleFeed = async (url: string) => {
         setPollingFeed(url);
         try {
-            const res = await axios.post(`${API_URL}/feeds/poll-single`, { url });
+            const res = await axios.post(`/api/feeds/poll-single`, { url });
             if (res.data.jobs_found > 0) {
                 toast.success(`Found ${res.data.jobs_found} new job(s)!`);
             } else {

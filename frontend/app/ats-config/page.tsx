@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Save, RotateCcw, Sparkles, Target } from 'lucide-react';
 import { toast } from 'sonner';
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = "/api";
 
 export default function ATSConfigPage() {
     const [prompts, setPrompts] = useState({

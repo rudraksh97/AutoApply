@@ -1,0 +1,278 @@
+#!/usr/bin/env bash
+
+# AutoApply Docker Manager
+# Usage: ./docker_manager.sh [command]
+# Commands: build, up, down, logs, restart, clean
+
+# Configuration
+DOCKER_USER="devhaxcodes"
+# DOCKER_PASS="Docker@123" # Uncomment and set if you want automatic login, otherwise rely on local auth
+# We will set these dynamically based on environment, but defaults are helpful
+# BACKEND_Image="devhaxcodes/autoapply-backend"
+# FRONTEND_Image="devhaxcodes/autoapply-frontend"
+# NEW_FRONTEND_Image="devhaxcodes/autoapply-new-frontend"
+# REVAMP_FRONTEND_Image="devhaxcodes/autoapply-frontend-revamp"
+
+# Determine current environment
+determine_env() {
+    if [ -f ".docker_env" ]; then
+        CURRENT_ENV=$(cat .docker_env)
+    else
+        # No environment set, prompt user
+        echo "⚠️  No environment selected."
+        echo "1) Development (Builds from Source, Tag: :dev)"
+        echo "2) Production (Uses Pre-built Images, Tag: :prod)"
+        read -p "Select environment [1-2]: " env_choice
+        case $env_choice in
+            1)
+                CURRENT_ENV="dev"
+                ;;
+            2)
+                CURRENT_ENV="prod"
+                ;;
+            *)
+                echo "Invalid choice. Defaulting to Development."
+                CURRENT_ENV="dev"
+                ;;
+        esac
+        echo "$CURRENT_ENV" > .docker_env
+        echo "✅ Environment set to: $CURRENT_ENV"
+    fi
+
+    # Set TAG based on environment
+    if [ "$CURRENT_ENV" == "prod" ]; then
+        export TAG="prod"
+    else
+        export TAG="dev"
+    fi
+}
+
+# Initial determination
+determine_env
+
+# Function to check and create .env file if missing
+check_env() {
+    if [ ! -f ".env" ]; then
+        echo "⚠️  No .env file found!"
+        echo "📝 Creating .env file..."
+        
+        # Set HOST_PROJECT_ROOT to current directory
+        echo "HOST_PROJECT_ROOT=$PWD" > .env
+        
+        # Ask for OPENROUTER_API_KEY
+        read -p "🔑 Enter your OPENROUTER_API_KEY (required): " api_key
+        echo "OPENROUTER_API_KEY=$api_key" >> .env
+        
+        echo "✅ .env file created."
+    else
+        # Optional: Check if HOST_PROJECT_ROOT is set correctly for this environment
+        if ! grep -q "HOST_PROJECT_ROOT" .env; then
+             echo "HOST_PROJECT_ROOT=$PWD" >> .env
+             echo "➕ Added HOST_PROJECT_ROOT to .env"
+        fi
+    fi
+}
+
+# Image names with tags
+BACKEND_Image="devhaxcodes/autoapply-backend:$TAG"
+FRONTEND_Image="devhaxcodes/autoapply-frontend:$TAG"
+NEW_FRONTEND_Image="devhaxcodes/autoapply-new-frontend:$TAG"
+REVAMP_FRONTEND_Image="devhaxcodes/autoapply-frontend-revamp:$TAG"
+
+# Function to run docker compose command
+compose_cmd() {
+    # Check enviroment file before running commands that might need it (up/build)
+    if [[ "$1" == "up" ]] || [[ "$1" == "build" ]]; then
+        check_env
+    fi
+    
+    # Check if backend directory exists to determine if we are in a dev environment with source code
+    # or a prod environment without source code. The .docker_env file overrides this.
+    
+    if [ "$CURRENT_ENV" == "prod" ]; then
+        # Check if the command allows -f flag (up, down, logs, config, etc.)
+        # build command doesn't make sense with prod.yml for image usage (though technically valid syntax)
+        if [[ "$1" != "build" ]]; then
+            # Echo only if interactive or verbose? Keeping it quiet for now or just once.
+            # echo "ℹ️  Using Production Config (docker-compose.prod.yml)" >&2
+            if docker compose version >/dev/null 2>&1; then
+                docker compose -f docker-compose.prod.yml "$@"
+            else
+                docker-compose -f docker-compose.prod.yml "$@"
+            fi
+            return
+        else
+            # If in Prod mode and user asks to build
+            if [ -f "docker-compose.yml" ]; then
+                echo "ℹ️  Building in Production mode using dev config (docker-compose.yml)..."
+                if docker compose version >/dev/null 2>&1; then
+                    docker compose -f docker-compose.yml build
+                else
+                    docker-compose -f docker-compose.yml build
+                fi
+                return
+            else
+                 echo "⚠️  Warning: 'build' command ignored in Production mode (images are pulled, not built) and no source config found."
+                 return
+            fi
+        fi
+    fi
+
+    if docker compose version >/dev/null 2>&1; then
+        docker compose "$@"
+    else
+        docker-compose "$@"
+    fi
+}
+
+show_menu() {
+    echo "======================================"
+    echo "   AutoApply Docker Management Script"
+    echo "======================================"
+    echo "1) 🏗️  Build Images (docker compose build)"
+    echo "2) 🚀 Run Containers (docker compose up -d)"
+    echo "3) 🛑 Stop Containers (docker compose down)"
+    echo "4) 📜 View Logs (docker compose logs -f)"
+    echo "5) ♻️  Restart (down + up)"
+    echo "6) 🧹 Clean Data (down -v)"
+    echo "7) ⬆️  Push Images (Current Env: $CURRENT_ENV)"
+    echo "8) ⬇️  Pull Images (Current Env: $CURRENT_ENV)"
+    echo "9) 🚪 Exit"
+    echo "10) 🌐 Switch Environment"
+    # echo "10) 🛠️  Run in Dev Mode (hot-reload)" # Disabled: No docker-compose.dev.yml
+    echo "======================================"
+}
+
+execute_choice() {
+    case $1 in
+        1|build)
+            echo "🔨 Building images..."
+            compose_cmd build
+            ;;
+        2|up)
+            echo "🚀 Starting services..."
+            compose_cmd up -d
+            echo "✅ Services started."
+            echo "   Frontend: http://localhost:3000"
+            echo "   New Frontend: http://localhost:3001"
+            echo "   Revamp Frontend: http://localhost:3002"
+            echo "   Backend: http://localhost:8000"
+            ;;
+        3|down)
+            echo "🛑 Stopping services..."
+            compose_cmd down
+            ;;
+        4|logs)
+            echo "📜 Showing logs (Ctrl+C to exit)..."
+            compose_cmd logs -f
+            ;;
+        5|restart)
+            echo "♻️  Restarting..."
+            compose_cmd down
+            sleep 1
+            compose_cmd up -d
+            ;;
+        6|clean)
+            echo "⚠️  WARNING: This will delete the database volume."
+            read -p "Are you sure? (y/N) " confirm
+            if [[ $confirm =~ ^[Yy]$ ]]; then
+                compose_cmd down -v
+                echo "🧹 cleaned."
+            fi
+            ;;
+        7|push)
+            # Check for DOCKER_PASS or manual login
+            if [ -n "$DOCKER_PASS" ]; then
+                echo "🔑 Logging into Docker Hub..."
+                echo "$DOCKER_PASS" | docker login --username "$DOCKER_USER" --password-stdin
+            else
+                echo "ℹ️  Assuming already logged in or using credential helper."
+            fi
+            
+            if [ "$CURRENT_ENV" == "prod" ] && [ -f "docker-compose.yml" ]; then
+                 read -p "❓ You are in Production mode but have source code. Do you want to BUILD images first? (y/N) " build_confirm
+                 if [[ $build_confirm =~ ^[Yy]$ ]]; then
+                     echo "🔨 Building production images (Tag: $TAG) using docker-compose.yml..."
+                     # Explicitly pass TAG=prod to the build command so docker-compose.yml picks it up
+                     if docker compose version >/dev/null 2>&1; then
+                        TAG=$TAG docker compose -f docker-compose.yml build
+                    else
+                        TAG=$TAG docker-compose -f docker-compose.yml build
+                    fi
+                 fi
+            fi
+
+            # Now push the images. They should exist locally with the correct tag ($TAG)
+            
+            echo "⬆️  Pushing Backend: $BACKEND_Image..."
+            docker push "$BACKEND_Image"
+            
+            echo "⬆️  Pushing Frontend: $FRONTEND_Image..."
+            docker push "$FRONTEND_Image"
+
+            # Tag other images if they exist - actually if they are built they are already tagged
+            echo "⬆️  Pushing New Frontend: $NEW_FRONTEND_Image..."
+            docker push "$NEW_FRONTEND_Image"
+
+            echo "⬆️  Pushing Revamp Frontend: $REVAMP_FRONTEND_Image..."
+            docker push "$REVAMP_FRONTEND_Image"
+
+            echo "✅ Done!"
+            ;;
+        8|pull)
+            if [ -n "$DOCKER_PASS" ]; then
+                echo "🔑 Logging into Docker Hub..."
+                echo "$DOCKER_PASS" | docker login --username "$DOCKER_USER" --password-stdin
+            fi
+
+            echo "⬇️  Pulling Backend: $BACKEND_Image..."
+            docker pull "$BACKEND_Image"
+            
+            echo "⬇️  Pulling Frontend: $FRONTEND_Image..."
+            docker pull "$FRONTEND_Image"
+
+            echo "⬇️  Pulling New Frontend: $NEW_FRONTEND_Image..."
+            docker pull "$NEW_FRONTEND_Image"
+
+            echo "⬇️  Pulling Revamp Frontend: $REVAMP_FRONTEND_Image..."
+            docker pull "$REVAMP_FRONTEND_Image"
+            
+            echo "✅ Done! To run these, you may need to adjust docker-compose.yml to use 'image:' instead of 'build:', or manually tag them."
+            ;;
+        9)
+            exit 0
+            ;;
+        10)
+            if [ "$CURRENT_ENV" == "dev" ]; then
+                echo "prod" > .docker_env
+                echo "✅ Switched to Production (Tag: :prod)"
+            else
+                echo "dev" > .docker_env
+                echo "✅ Switched to Development (Tag: :dev)"
+            fi
+            determine_env # Refresh variable & TAG
+            read -p "Press Enter to continue..."
+            show_menu
+            read -p "Select an option [1-10]: " choice
+            execute_choice "$choice"
+            ;;
+        # 10|dev)
+        #     echo "🛠️  Starting in Dev Mode..."
+        #     # ...
+        #     ;;
+        *)
+            echo "❌ Invalid option."
+            ;;
+    esac
+}
+
+# Main logic
+if [ -z "$1" ]; then
+    # Interactive mode
+    show_menu
+    read -p "Select an option [1-10]: " choice
+    execute_choice "$choice"
+else
+    # CLI mode
+    execute_choice "$1"
+fi

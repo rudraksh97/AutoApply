@@ -54,7 +54,7 @@ interface WorkflowLink {
 }
 
 export default function SettingsPage() {
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 
     // Data State
     const [sdks, setSdks] = useState<SDKDefinition[]>([]);
@@ -92,10 +92,10 @@ export default function SettingsPage() {
     const fetchData = async () => {
         try {
             const [sdkRes, invRes, wfRes, linkRes] = await Promise.all([
-                axios.get(`${API_URL}/settings/sdks`),
-                axios.get(`${API_URL}/settings/llm-inventory`),
-                axios.get(`${API_URL}/settings/workflows`),
-                axios.get(`${API_URL}/settings/workflow-links`)
+                axios.get(`/api/settings/sdks`),
+                axios.get(`/api/settings/llm-inventory`),
+                axios.get(`/api/settings/workflows`),
+                axios.get(`/api/settings/workflow-links`)
             ]);
             setSdks(sdkRes.data);
             setInventory(invRes.data);
@@ -126,7 +126,7 @@ export default function SettingsPage() {
 
         setSubmitting(true);
         try {
-            await axios.post(`${API_URL}/settings/llm-inventory`, newConfig);
+            await axios.post(`/api/settings/llm-inventory`, newConfig);
             toast.success("LLM Added Successfully");
             setIsAddDialogOpen(false);
             setNewConfig({ sdk_id: "", name: "", api_key: "", plan_type: "free" });
@@ -142,7 +142,7 @@ export default function SettingsPage() {
     const handleDeleteConfig = async (id: string) => {
         if (!confirm("Are you sure? This will unlink it from any workflows.")) return;
         try {
-            await axios.delete(`${API_URL}/settings/llm-inventory/${id}`);
+            await axios.delete(`/api/settings/llm-inventory/${id}`);
             toast.success("Deleted config");
             fetchData();
         } catch (e) {
@@ -157,7 +157,7 @@ export default function SettingsPage() {
     const handleLinkLLM = async (workflow_id: string, llm_config_id: string) => {
         if (!llm_config_id) return;
         try {
-            await axios.post(`${API_URL}/settings/workflow-links`, { workflow_id, llm_config_id });
+            await axios.post(`/api/settings/workflow-links`, { workflow_id, llm_config_id });
             toast.success("Linked LLM to Workflow");
             fetchData();
         } catch (e) {
@@ -167,7 +167,7 @@ export default function SettingsPage() {
 
     const handleUnlinkLLM = async (workflow_id: string, llm_config_id: string) => {
         try {
-            await axios.delete(`${API_URL}/settings/workflow-links`, {
+            await axios.delete(`/api/settings/workflow-links`, {
                 data: { workflow_id, llm_config_id }
             });
             toast.success("Unlinked LLM");

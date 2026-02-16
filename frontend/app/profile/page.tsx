@@ -15,11 +15,11 @@ export default function ProfilePage() {
     const [loading, setLoading] = useState(true);
     const [isProcessing, setIsProcessing] = useState(false);
 
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 
     const fetchProfile = async () => {
         try {
-            const res = await axios.get(`${API_URL}/profile`);
+            const res = await axios.get(`/api/profile`);
             setProfile(res.data);
         } catch (e) {
             console.error(e);
@@ -39,7 +39,7 @@ export default function ProfilePage() {
         try {
             setIsProcessing(true);
             const endpoint = type === 'pdf' ? '/upload-resume' : '/upload-template';
-            await axios.post(`${API_URL}${endpoint}`, formData, {
+            await axios.post(`/api${endpoint}`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             toast.success(`${type.toUpperCase()} uploaded successfully!`);
@@ -55,7 +55,7 @@ export default function ProfilePage() {
     const deleteResume = async (resumeId: string) => {
         try {
             setIsProcessing(true);
-            await axios.delete(`${API_URL}/profile/resumes/${resumeId}`);
+            await axios.delete(`/api/profile/resumes/${resumeId}`);
             toast.success("Resume deleted");
             fetchProfile();
         } catch (err) {
@@ -68,7 +68,7 @@ export default function ProfilePage() {
     const selectResume = async (resumeId: string) => {
         try {
             setIsProcessing(true);
-            await axios.post(`${API_URL}/profile/resumes/${resumeId}/select`);
+            await axios.post(`/api/profile/resumes/${resumeId}/select`);
             toast.success("Current resume updated");
             fetchProfile();
         } catch (err) {
@@ -82,7 +82,7 @@ export default function ProfilePage() {
         try {
             setIsProcessing(true);
             const endpoint = `/parse-resume?source=${source}`;
-            const res = await axios.post(`${API_URL}${endpoint}`);
+            const res = await axios.post(`/api${endpoint}`);
             const parsed = res.data;
 
             // Merge parsed data into profile
@@ -125,7 +125,7 @@ export default function ProfilePage() {
 
     const saveProfile = async () => {
         try {
-            await axios.post(`${API_URL}/profile`, profile);
+            await axios.post(`/api/profile`, profile);
             toast.success("Profile saved!");
         } catch (e) {
             toast.error("Failed to save profile");

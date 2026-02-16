@@ -88,14 +88,14 @@ export default function JobsPage() {
     const [previewJobUrl, setPreviewJobUrl] = useState<string>("");
     const [activeTab, setActiveTab] = useState<'drafts' | 'sent'>('drafts');
 
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 
     const fetchJobs = async () => {
         try {
             const [jobsRes, draftsRes, statusRes] = await Promise.all([
-                axios.get(`${API_URL}/jobs`),
-                axios.get(`${API_URL}/drafts`),
-                axios.get(`${API_URL}/settings/job-manager/status`)
+                axios.get(`/api/jobs`),
+                axios.get(`/api/drafts`),
+                axios.get(`/api/settings/job-manager/status`)
             ]);
             setJobs(jobsRes.data);
             setDrafts(draftsRes.data);
@@ -115,7 +115,7 @@ export default function JobsPage() {
 
     const retryJob = async (url: string) => {
         try {
-            await axios.post(`${API_URL}/jobs/retry`, { url });
+            await axios.post(`/api/jobs/retry`, { url });
             fetchJobs();
         } catch (e) {
             toast.error("Failed to retry job");
@@ -127,7 +127,7 @@ export default function JobsPage() {
         setAddingJob(true);
         try {
             // 1. Add job to DB
-            const res = await axios.post(`${API_URL}/jobs/`, { url: newJobUrl });
+            const res = await axios.post(`/api/jobs/`, { url: newJobUrl });
 
             setNewJobUrl("");
             setAddJobOpen(false);
@@ -148,7 +148,7 @@ export default function JobsPage() {
         if (!confirm("Are you sure you want to delete this job and its history?")) return;
         setDeletingJob(url);
         try {
-            await axios.delete(`${API_URL}/jobs/`, { params: { url } });
+            await axios.delete(`/api/jobs/`, { params: { url } });
             fetchJobs();
         } catch (e) {
             console.error(e);
@@ -160,7 +160,7 @@ export default function JobsPage() {
 
     const markAsSent = async (url: string, sent: boolean) => {
         try {
-            await axios.post(`${API_URL}/jobs/sent`, { url, sent });
+            await axios.post(`/api/jobs/sent`, { url, sent });
             fetchJobs();
             toast.success(sent ? "Marked as sent" : "Unmarked as sent");
         } catch (e) {
@@ -173,10 +173,10 @@ export default function JobsPage() {
         setToggling(true);
         try {
             if (jobManagerState.is_running) {
-                await axios.post(`${API_URL}/settings/job-manager/stop`);
+                await axios.post(`/api/settings/job-manager/stop`);
                 toast.success("Job Manager Stopped");
             } else {
-                await axios.post(`${API_URL}/settings/job-manager/start`);
+                await axios.post(`/api/settings/job-manager/start`);
                 toast.success("Job Manager Started");
             }
             fetchJobs(); // Refresh status
@@ -192,7 +192,7 @@ export default function JobsPage() {
         setLoadingDraft(true);
         setViewDraftOpen(true);
         try {
-            const res = await axios.get(`${API_URL}/drafts/${draftId}`);
+            const res = await axios.get(`/api/drafts/${draftId}`);
             setSelectedDraft(res.data);
         } catch (e) {
             console.error(e);

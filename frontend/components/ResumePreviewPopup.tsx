@@ -52,11 +52,11 @@ export function ResumePreviewPopup({ isOpen, onClose, draftId, jobUrl }: ResumeP
     const [copyingPrompt, setCopyingPrompt] = useState(false);
     const [versionLoading, setVersionLoading] = useState(false);
 
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 
     const fetchVersions = async () => {
         try {
-            const res = await axios.get(`${API_URL}/drafts/${draftId}/resume/versions`);
+            const res = await axios.get(`/api/drafts/${draftId}/resume/versions`);
             const fetchedVersions: ResumeVersion[] = res.data;
             setVersions(fetchedVersions);
 
@@ -100,7 +100,7 @@ export function ResumePreviewPopup({ isOpen, onClose, draftId, jobUrl }: ResumeP
 
     const fetchDraft = async () => {
         try {
-            const res = await axios.get(`${API_URL}/drafts/${draftId}`);
+            const res = await axios.get(`/api/drafts/${draftId}`);
             setJobDetails(res.data.job_details);
         } catch (e) {
             console.error(e);
@@ -137,7 +137,7 @@ export function ResumePreviewPopup({ isOpen, onClose, draftId, jobUrl }: ResumeP
         if (!refinementPrompt) return;
         setRefining(true);
         try {
-            const res = await axios.post(`${API_URL}/drafts/${draftId}/resume/versions`, {
+            const res = await axios.post(`/api/drafts/${draftId}/resume/versions`, {
                 prompt: refinementPrompt
             });
             toast.success("New resume version is being generated...");
@@ -157,7 +157,7 @@ export function ResumePreviewPopup({ isOpen, onClose, draftId, jobUrl }: ResumeP
 
     const handleSelectVersion = async (vId: string) => {
         try {
-            await axios.post(`${API_URL}/drafts/${draftId}/resume/versions/${vId}/select`);
+            await axios.post(`/api/drafts/${draftId}/resume/versions/${vId}/select`);
             toast.success("Resume version selected for submission");
             fetchVersions();
             setIsManualEditing(false);
@@ -171,7 +171,7 @@ export function ResumePreviewPopup({ isOpen, onClose, draftId, jobUrl }: ResumeP
         if (!selectedVersionId) return;
         setCopyingPrompt(true);
         try {
-            const res = await axios.get(`${API_URL}/drafts/${draftId}/resume/versions/${selectedVersionId}/prompt`);
+            const res = await axios.get(`/api/drafts/${draftId}/resume/versions/${selectedVersionId}/prompt`);
             await navigator.clipboard.writeText(res.data.prompt);
             toast.success("Prompt copied to clipboard!");
         } catch (e) {
@@ -188,7 +188,7 @@ export function ResumePreviewPopup({ isOpen, onClose, draftId, jobUrl }: ResumeP
     const handleStartManualEdit = async () => {
         if (!selectedVersionId) return;
         try {
-            const res = await axios.get(`${API_URL}/drafts/${draftId}/resume/versions/${selectedVersionId}/tex`);
+            const res = await axios.get(`/api/drafts/${draftId}/resume/versions/${selectedVersionId}/tex`);
             setManualLatex(res.data.tex);
             setIsManualEditing(true);
         } catch (e) {
@@ -200,7 +200,7 @@ export function ResumePreviewPopup({ isOpen, onClose, draftId, jobUrl }: ResumeP
         if (!manualLatex) return;
         setSavingManual(true);
         try {
-            await axios.post(`${API_URL}/drafts/${draftId}/resume/versions/manual`, {
+            await axios.post(`/api/drafts/${draftId}/resume/versions/manual`, {
                 latex: manualLatex
             });
             toast.success("New version created! Compiling PDF in background...");
@@ -216,7 +216,7 @@ export function ResumePreviewPopup({ isOpen, onClose, draftId, jobUrl }: ResumeP
 
     const handleUseOriginal = async () => {
         try {
-            const resp = await axios.post(`${API_URL}/drafts/${draftId}/resume/use_original`);
+            const resp = await axios.post(`/api/drafts/${draftId}/resume/use_original`);
             toast.success("Original resume added to version history");
             fetchVersions();
             setSelectedVersionId(resp.data.id);
@@ -328,7 +328,7 @@ export function ResumePreviewPopup({ isOpen, onClose, draftId, jobUrl }: ResumeP
                                 ) : (
                                     selectedVersionId ? (
                                         <iframe
-                                            src={`${API_URL}/drafts/${draftId}/resume/preview?version_id=${selectedVersionId}&t=${new Date().getTime()}`}
+                                            src={`/api/drafts/${draftId}/resume/preview?version_id=${selectedVersionId}&t=${new Date().getTime()}`}
                                             className="w-full h-full border-none"
                                             title="Resume Preview"
                                         />
