@@ -73,6 +73,36 @@ check_env() {
     fi
 }
 
+# Function to check for Docker Compose V2 and install if missing
+ensure_compose_v2() {
+    if docker compose version >/dev/null 2>&1; then
+        COMPOSE_CMD="docker compose"
+        return
+    fi
+    
+    echo "⚠️  'docker compose' (v2) not found. Falling back to 'docker-compose' (v1)."
+    echo "❌ If you see 'ContainerConfig' errors, you need Docker Compose V2."
+    read -p "❓ Do you want to install Docker Compose V2 now? (y/N) " install_v2
+    if [[ $install_v2 =~ ^[Yy]$ ]]; then
+        echo "⬇️  Installing Docker Compose V2..."
+        mkdir -p ~/.docker/cli-plugins/
+        ARCH=$(uname -m)
+        curl -SL https://github.com/docker/compose/releases/download/v2.24.5/docker-compose-linux-$ARCH -o ~/.docker/cli-plugins/docker-compose
+        chmod +x ~/.docker/cli-plugins/docker-compose
+        
+        echo "✅ Installed. Testing..."
+        if docker compose version >/dev/null 2>&1; then
+            echo "🎉 Docker Compose V2 is working!"
+            COMPOSE_CMD="docker compose"
+            return
+        else
+            echo "❌ Installation failed or not picked up. Using old docker-compose..."
+        fi
+    fi
+    
+    COMPOSE_CMD="docker-compose"
+}
+
 # Image names with tags
 BACKEND_Image="devhaxcodes/autoapply-backend:$TAG"
 FRONTEND_Image="devhaxcodes/autoapply-frontend:$TAG"
@@ -85,6 +115,11 @@ compose_cmd() {
     if [[ "$1" == "up" ]] || [[ "$1" == "build" ]]; then
         check_env
     fi
+
+    # Ensure we have the right compose command (V2 preferred)
+    if [ -z "$COMPOSE_CMD" ]; then
+        ensure_compose_v2
+    fi
     
     # Check if backend directory exists to determine if we are in a dev environment with source code
     # or a prod environment without source code. The .docker_env file overrides this.
@@ -93,23 +128,13 @@ compose_cmd() {
         # Check if the command allows -f flag (up, down, logs, config, etc.)
         # build command doesn't make sense with prod.yml for image usage (though technically valid syntax)
         if [[ "$1" != "build" ]]; then
-            # Echo only if interactive or verbose? Keeping it quiet for now or just once.
-            # echo "ℹ️  Using Production Config (docker-compose.prod.yml)" >&2
-            if docker compose version >/dev/null 2>&1; then
-                docker compose -f docker-compose.prod.yml "$@"
-            else
-                docker-compose -f docker-compose.prod.yml "$@"
-            fi
+            $COMPOSE_CMD -f docker-compose.prod.yml "$@"
             return
         else
             # If in Prod mode and user asks to build
             if [ -f "docker-compose.yml" ]; then
                 echo "ℹ️  Building in Production mode using dev config (docker-compose.yml)..."
-                if docker compose version >/dev/null 2>&1; then
-                    docker compose -f docker-compose.yml build
-                else
-                    docker-compose -f docker-compose.yml build
-                fi
+                $COMPOSE_CMD -f docker-compose.yml build
                 return
             else
                  echo "⚠️  Warning: 'build' command ignored in Production mode (images are pulled, not built) and no source config found."
@@ -118,11 +143,7 @@ compose_cmd() {
         fi
     fi
 
-    if docker compose version >/dev/null 2>&1; then
-        docker compose "$@"
-    else
-        docker-compose "$@"
-    fi
+    $COMPOSE_CMD "$@"
 }
 
 show_menu() {

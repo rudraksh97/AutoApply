@@ -23,17 +23,17 @@ router = APIRouter(prefix="/feeds", tags=["Feeds"])
 
 
 
-@router.get("/")
+@router.get("")
 def get_feeds(service: FeedService = Depends(get_feed_service)):
     return service.get_feeds()
 
-@router.post("/")
+@router.post("")
 def add_feed(feed: FeedURL, service: FeedService = Depends(get_feed_service)):
     if service.add_feed(feed.url, feed.name):
         return {"status": "added", "url": feed.url, "name": feed.name}
     raise HTTPException(status_code=400, detail="Feed URL or name already exists")
 
-@router.delete("/")
+@router.delete("")
 def remove_feed(feed: FeedURLOnly, service: FeedService = Depends(get_feed_service)):
     service.remove_feed(feed.url)
     return {"status": "removed", "url": feed.url}
@@ -149,6 +149,8 @@ async def poll_single_feed(feed: FeedURLOnly):
     feed_name = None
     if TEST_FEED_PATTERN in feed_url:
         feed_name = "Test"
+        # Fix: Map relative frontend URL to absolute backend URL for feedparser
+        feed_url = "http://localhost:8000/test/feed.xml"
     else:
         all_feeds = config_manager.get_feeds()
         for f in all_feeds:

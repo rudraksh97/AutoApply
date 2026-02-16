@@ -10,7 +10,7 @@ class MarkSentPayload(BaseModel):
     url: str
     sent: bool = True
 
-@router.get("/")
+@router.get("")
 def get_jobs(service: JobService = Depends(get_job_service)):
     return service.get_jobs()
 
@@ -30,7 +30,7 @@ def retry_job(payload: FeedURLOnly, service: JobService = Depends(get_job_servic
         return {"status": "retried", "url": payload.url}
     raise HTTPException(status_code=404, detail="Job not found")
 
-@router.post("/")
+@router.post("")
 def add_job(payload: FeedURLOnly, service: JobService = Depends(get_job_service)):
     if service.add_job(payload.url):
         return {"status": "added", "url": payload.url}
@@ -42,7 +42,7 @@ def mark_job_sent(payload: MarkSentPayload, service: JobService = Depends(get_jo
         return {"status": "updated", "url": payload.url, "sent": payload.sent}
     raise HTTPException(status_code=404, detail="Job not found")
 
-@router.delete("/")
+@router.delete("")
 def delete_job(url: str, service: JobService = Depends(get_job_service)):
     if service.delete_job(url):
         return {"status": "deleted", "url": url}
