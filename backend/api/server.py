@@ -59,53 +59,7 @@ DATA_DIRECTORIES = [
 # Background Tasks
 # =============================================================================
 
-async def automation_loop():
-    """Background task to poll RSS feeds and process pending jobs."""
-    logging.info("Starting background automation task...")
-
-    last_rss_poll = 0
-
-    while True:
-        try:
-            from src.job_manager_state import JobManagerState
-            
-            if not JobManagerState.is_running():
-                # If stopped, just wait effectively
-                await asyncio.sleep(5) 
-                continue
-
-            # Initialize components inside the loop for resilience
-            # This ensures that if initialization fails (e.g. no LLM keys), 
-            # the task doesn't die permanently.
-            job_manager = JobManager()
-            config_manager = ConfigManager()
-            agent = BrowserAgent(headless=True)
-            builder = ResumeBuilder()
-            service = DraftPreparationService(job_manager, agent, builder)
-
-            event_publisher = JobManagerEventPublisher(job_manager)
-            deduplicator = JobManagerDeduplicator(job_manager)
-
-            now = time.time()
-
-            # Poll RSS feeds hourly
-            if now - last_rss_poll > 3600:
-                await _poll_rss_feeds(
-                    config_manager, event_publisher, deduplicator
-                )
-                last_rss_poll = now
-
-            # Process pending jobs every minute
-            await _process_pending_jobs(job_manager, service)
-
-        except Exception as e:
-            import traceback
-            tb = traceback.format_exc()
-            logging.error(f"Error in automation loop: {e}\nStack trace:\n{tb}")
-            # Add a longer sleep if we hit a critical failure point
-            await asyncio.sleep(60)
-
-        await asyncio.sleep(60)
+# Background automation loop removed - moved to backend/poll_worker.py microservice
 
 
 async def _poll_rss_feeds(config_manager, event_publisher, deduplicator):
@@ -115,24 +69,31 @@ async def _poll_rss_feeds(config_manager, event_publisher, deduplicator):
     logging.info("Triggering periodic RSS poll...")
     all_feeds = config_manager.get_feeds()
     feeds_to_poll = [f for f in all_feeds if TEST_FEED_PATTERN not in f["url"]]
-
+    logging.info(f"Feeds to poll: {feeds_to_poll}")
+    logging.info(f"-------------------------------------------------------------------------------------")
     for feed_obj in feeds_to_poll:
+        logging.info(f"#####################################################################################")
+        logging.info(f"Processing feed: {feed_obj}")
         feed_url = feed_obj["url"]
         feed_name = feed_obj["name"]
 
         try:
+            logging.info(f"Starting to process feed: {feed_url}")
             loop = asyncio.get_event_loop()
             parsed_feed = await loop.run_in_executor(None, feedparser.parse, feed_url)
-
+            logging.info(f"Parsed feed: {parsed_feed}")
             use_llm = needs_llm_extraction(feed_url)
             feed_title = parsed_feed.feed.get("title", "")
             company_name = extract_company_from_feed(feed_url, feed_title)
 
             for entry in parsed_feed.entries:
+                logging.info(f"Processing feed entry: {entry}")
                 await _process_feed_entry(
                     entry, feed_url, feed_name, company_name,
                     use_llm, event_publisher, deduplicator
                 )
+                logging.info(f"Processed feed entry: {entry}")
+            logging.info(f"Ended Processed feed: {feed_url}")
 
         except Exception as e:
             import traceback
@@ -223,14 +184,14 @@ async def lifespan(app: FastAPI):
         logging.info("Forcing Job Manager to STOPPED state on startup safety check.")
         JobManagerState.set_running(False)
 
-    task = asyncio.create_task(automation_loop())
+    # task = asyncio.create_task(automation_loop())
     yield
-    task.cancel()
+    # task.cancel()
 
-    try:
-        await task
-    except asyncio.CancelledError:
-        logging.info("Background automation task stopped.")
+    # try:
+    #     await task
+    # except asyncio.CancelledError:
+    #     logging.info("Background automation task stopped.")
 
 
 app = FastAPI(

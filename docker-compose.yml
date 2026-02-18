@@ -52,3 +52,19 @@ services:
 
     depends_on:
       - backend
+
+  rss-poller:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: devhaxcodes/autoapply-backend:${TAG:-latest}
+    command: python poll_worker.py
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - HEADLESS=true
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - backend

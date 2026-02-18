@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Trash2, Plus, RefreshCw, Rss, Play, Loader2, FlaskConical } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from "@/lib/utils";
+import PollingStatus from "@/components/PollingStatus";
 
 // Test feed URL - always available, not stored in user feeds
 const TEST_FEED_URL = "/api/test/feed.xml";
@@ -139,6 +140,8 @@ export default function FeedsPage() {
                     </Button>
                 </div>
             </header>
+
+            <PollingStatus />
 
             <Card className="shadow-sm border-border/60 overflow-hidden">
                 <CardHeader className="border-b bg-muted/30 pb-4">

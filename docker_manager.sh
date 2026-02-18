@@ -108,6 +108,12 @@ BACKEND_Image="devhaxcodes/autoapply-backend:$TAG"
 FRONTEND_Image="devhaxcodes/autoapply-frontend:$TAG"
 NEW_FRONTEND_Image="devhaxcodes/autoapply-new-frontend:$TAG"
 REVAMP_FRONTEND_Image="devhaxcodes/autoapply-frontend-revamp:$TAG"
+# RSS Poller uses the same image as backend, but we can tag it if we wanted. 
+# For now, we rely on the implementation where it reuses the backend image.
+# However, for clarity in logs, we can define it. 
+# NOTE: In docker-compose.yml we use the SAME image name for both backend and rss-poller.
+# So pushing backend effectively pushes rss-poller's image. 
+
 
 # Function to run docker compose command
 compose_cmd() {
@@ -168,6 +174,7 @@ execute_choice() {
     case $1 in
         1|build)
             echo "🔨 Building images..."
+            echo "ℹ️  Note: 'rss-poller' uses the same image as 'backend', so they build together."
             compose_cmd build
             ;;
         2|up)
