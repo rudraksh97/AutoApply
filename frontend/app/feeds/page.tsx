@@ -1,263 +1,191 @@
-"use client"
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Trash2, Plus, RefreshCw, Rss, Play, Loader2, FlaskConical } from 'lucide-react';
-import { toast } from 'sonner';
-import { cn } from "@/lib/utils";
-import PollingStatus from "@/components/PollingStatus";
+"use client";
 
-// Test feed URL - always available, not stored in user feeds
-const TEST_FEED_URL = "/api/test/feed.xml";
-
-interface Feed {
-    url: string;
-    name: string;
-}
+import { useEffect, useState } from "react";
+import { fetchWithAuth } from "@/lib/api";
+import { Feed } from "@/types/feed";
+import { useAuth } from "@/components/providers/auth-provider";
+import { toast } from "sonner";
+import { Trash2, Plus, Globe, Lock } from "lucide-react";
 
 export default function FeedsPage() {
+    const { user } = useAuth();
     const [feeds, setFeeds] = useState<Feed[]>([]);
-    const [newFeedUrl, setNewFeedUrl] = useState("");
-    const [newFeedName, setNewFeedName] = useState("");
     const [loading, setLoading] = useState(true);
-    const [pollingAll, setPollingAll] = useState(false);
-    const [pollingFeed, setPollingFeed] = useState<string | null>(null);
+    const [newUrl, setNewUrl] = useState("");
+    const [newName, setNewName] = useState("");
+    const [isGlobal, setIsGlobal] = useState(false);
+    const [adding, setAdding] = useState(false);
 
-    // Use relative path for API calls - this works for both localhost and production
-    // assuming Nginx is proxying /api to the backend
+    const isAdmin = user?.roles.includes("admin");
 
-    // Filter out test feed from user feeds (in case it was added before)
-    const userFeeds = feeds.filter(f => !f.url.includes('/test/feed.xml'));
+    useEffect(() => {
+        loadFeeds();
+    }, []);
 
-    const fetchFeeds = async () => {
-        setLoading(true);
+    const loadFeeds = async () => {
         try {
-            const res = await axios.get(`/api/feeds`);
-            setFeeds(res.data);
-        } catch (e) {
-            console.error(e);
-            toast.error("Failed to fetch feeds");
+            const res = await fetchWithAuth("/feeds");
+            if (res.ok) {
+                setFeeds(await res.json());
+            } else {
+                toast.error("Failed to load feeds");
+            }
+        } catch (err) {
+            toast.error("Error loading feeds");
         } finally {
             setLoading(false);
         }
     };
 
-    useEffect(() => {
-        fetchFeeds();
-    }, []);
+    const handleAddFeed = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newUrl) return;
+        setAdding(true);
 
-    const addFeed = async () => {
-        if (!newFeedUrl || !newFeedName) return;
-        // Check if name already exists
-        if (feeds.some(f => f.name === newFeedName)) {
-            toast.error("A feed with this name already exists");
-            return;
-        }
         try {
-            await axios.post(`/api/feeds`, { url: newFeedUrl, name: newFeedName });
-            setNewFeedUrl("");
-            setNewFeedName("");
-            fetchFeeds();
-            toast.success("Feed added successfully");
-        } catch (e) {
-            toast.error("Failed to add feed - URL or name may already exist");
-        }
-    };
+            const res = await fetchWithAuth("/feeds", {
+                method: "POST",
+                body: JSON.stringify({
+                    url: newUrl,
+                    name: newName || newUrl,
+                    is_global: isAdmin ? isGlobal : false,
+                }),
+            });
 
-    const removeFeed = async (feed: Feed) => {
-        try {
-            await axios.delete(`/api/feeds`, { data: { url: feed.url, name: feed.name } });
-            fetchFeeds();
-            toast.success("Feed removed");
-        } catch (e) {
-            toast.error("Failed to remove feed");
-        }
-    };
-
-    const pollAllFeeds = async () => {
-        setPollingAll(true);
-        try {
-            const res = await axios.post(`/api/feeds/poll`);
-            toast.success(res.data.message);
-        } catch (e) {
-            toast.error("Failed to poll feeds");
-        } finally {
-            setPollingAll(false);
-        }
-    };
-
-    const pollSingleFeed = async (url: string) => {
-        setPollingFeed(url);
-        try {
-            const res = await axios.post(`/api/feeds/poll-single`, { url });
-            if (res.data.jobs_found > 0) {
-                toast.success(`Found ${res.data.jobs_found} new job(s)!`);
+            if (res.ok) {
+                const newFeed = await res.json();
+                setFeeds([...feeds, newFeed]);
+                setNewUrl("");
+                setNewName("");
+                setIsGlobal(false);
+                toast.success("Feed added");
             } else {
-                toast.info("No new jobs found in this feed");
+                const err = await res.json();
+                toast.error(err.detail || "Failed to add feed");
             }
-        } catch (e) {
-            toast.error("Failed to poll feed");
+        } catch (err) {
+            toast.error("Error adding feed");
         } finally {
-            setPollingFeed(null);
+            setAdding(false);
         }
     };
+
+    const handleDelete = async (feedId: string) => {
+        if (!confirm("Are you sure you want to delete this feed?")) return;
+
+        try {
+            const res = await fetchWithAuth(`/feeds/${feedId}`, {
+                method: "DELETE",
+            });
+
+            if (res.ok) {
+                setFeeds(feeds.filter((f) => f.id !== feedId));
+                toast.success("Feed removed");
+            } else {
+                const err = await res.json();
+                toast.error(err.detail || "Failed to remove feed");
+            }
+        } catch (err) {
+            toast.error("Error removing feed");
+        }
+    };
+
+    if (loading) return <div className="p-4">Loading feeds...</div>;
 
     return (
-        <div className="space-y-8">
-            <header className="flex items-center justify-between gap-4">
-                <div className="flex flex-col gap-2">
-                    <h1 className="text-3xl font-bold tracking-tight font-serif text-foreground flex items-center gap-2">
-                        <Rss className="h-8 w-8 text-primary" />
-                        RSS Feeds
-                    </h1>
-                    <p className="text-muted-foreground">Manage your job sources. New listings will be automatically processed in the background.</p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Button
-                        variant="default"
-                        size="sm"
-                        onClick={pollAllFeeds}
-                        disabled={pollingAll || userFeeds.length === 0}
-                        className="h-10 px-4"
+        <div className="max-w-4xl mx-auto">
+            <h1 className="text-2xl font-bold mb-6">RSS Feeds</h1>
+
+            {/* Add Feed Form */}
+            <div className="bg-card p-6 rounded-lg border shadow-sm mb-8">
+                <h2 className="text-lg font-semibold mb-4">Add New Feed</h2>
+                <form onSubmit={handleAddFeed} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Feed URL</label>
+                            <input
+                                type="url"
+                                required
+                                value={newUrl}
+                                onChange={(e) => setNewUrl(e.target.value)}
+                                placeholder="https://example.com/rss"
+                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Name (Optional)</label>
+                            <input
+                                type="text"
+                                value={newName}
+                                onChange={(e) => setNewName(e.target.value)}
+                                placeholder="My Tech Feed"
+                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            />
+                        </div>
+                    </div>
+
+                    {isAdmin && (
+                        <div className="flex items-center space-x-2">
+                            <input
+                                type="checkbox"
+                                id="isGlobal"
+                                checked={isGlobal}
+                                onChange={(e) => setIsGlobal(e.target.checked)}
+                                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                            />
+                            <label htmlFor="isGlobal" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                Global Feed (Visible to all users)
+                            </label>
+                        </div>
+                    )}
+
+                    <button
+                        type="submit"
+                        disabled={adding}
+                        className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
                     >
-                        {pollingAll ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        ) : (
-                            <Play className="h-4 w-4 mr-2" />
+                        {adding ? "Adding..." : <><Plus className="mr-2 h-4 w-4" /> Add Feed</>}
+                    </button>
+                </form>
+            </div>
+
+            {/* Feeds List */}
+            <div className="grid gap-4">
+                {feeds.map((feed) => (
+                    <div key={feed.id} className="bg-card p-4 rounded-lg border shadow-sm flex items-center justify-between">
+                        <div className="min-w-0 flex-1 mr-4">
+                            <div className="flex items-center gap-2 mb-1">
+                                <h3 className="font-semibold truncate">{feed.name}</h3>
+                                {feed.is_global ? (
+                                    <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-foreground">
+                                        <Globe className="h-3 w-3 mr-1" /> Global
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 text-muted-foreground">
+                                        <Lock className="h-3 w-3 mr-1" /> Private
+                                    </span>
+                                )}
+                            </div>
+                            <p className="text-sm text-muted-foreground truncate">{feed.url}</p>
+                        </div>
+
+                        {(feed.user_id === user?.id || isAdmin) && (
+                            <button
+                                onClick={() => handleDelete(feed.id!)}
+                                className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+                                title="Remove Feed"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                            </button>
                         )}
-                        Poll All
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={fetchFeeds}
-                        className="h-10 px-4"
-                    >
-                        <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
-                        Refresh
-                    </Button>
-                </div>
-            </header>
-
-            <PollingStatus />
-
-            <Card className="shadow-sm border-border/60 overflow-hidden">
-                <CardHeader className="border-b bg-muted/30 pb-4">
-                    <CardTitle className="text-xl font-semibold">Configure Sources</CardTitle>
-                    <CardDescription>Add RSS feed URLs from platforms like Ashby, Greenhouse, or Workable.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6 pt-6">
-                    <div className="flex flex-col gap-3">
-                        <div className="flex flex-col sm:flex-row gap-3">
-                            <Input
-                                className="w-full sm:w-48"
-                                placeholder="Feed name (e.g. Stripe)"
-                                value={newFeedName}
-                                onChange={(e) => setNewFeedName(e.target.value)}
-                            />
-                            <Input
-                                className="w-full flex-1"
-                                placeholder="https://jobs.ashbyhq.com/company/feed or https://boards.greenhouse.io/company/feed"
-                                value={newFeedUrl}
-                                onChange={(e) => setNewFeedUrl(e.target.value)}
-                            />
-                            <Button onClick={addFeed} disabled={!newFeedUrl || !newFeedName}>
-                                <Plus className="h-4 w-4 mr-2" /> Add Feed
-                            </Button>
-                        </div>
                     </div>
-
-                    {/* Test Feed Section */}
-                    <div className="space-y-3">
-                        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                            <FlaskConical className="h-4 w-4" />
-                            Test Feed
-                        </h3>
-                        <div className="flex items-center justify-between p-4 border-2 border-dashed border-violet-200 rounded-lg bg-violet-50/50 group hover:shadow-sm transition-shadow">
-                            <div className="flex items-center gap-3 overflow-hidden">
-                                <div className="p-2 rounded bg-violet-100">
-                                    <FlaskConical className="h-4 w-4 text-violet-600" />
-                                </div>
-                                <div className="overflow-hidden">
-                                    <span className="text-sm font-semibold text-violet-900 block">Test</span>
-                                    <span className="text-xs text-violet-600 truncate block">{TEST_FEED_URL}</span>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8 px-3 text-xs border-violet-300 hover:bg-violet-100"
-                                    onClick={() => pollSingleFeed(TEST_FEED_URL)}
-                                    disabled={pollingFeed === TEST_FEED_URL}
-                                >
-                                    {pollingFeed === TEST_FEED_URL ? (
-                                        <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
-                                    ) : (
-                                        <Play className="h-3 w-3 mr-1.5" />
-                                    )}
-                                    Poll
-                                </Button>
-                            </div>
-                        </div>
+                ))}
+                {feeds.length === 0 && (
+                    <div className="text-center p-8 text-muted-foreground">
+                        No feeds found. Add one above!
                     </div>
-
-                    {/* Active Feeds Section */}
-                    <div className="space-y-3">
-                        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Active Feeds</h3>
-                        <div className="grid gap-3">
-                            {userFeeds.map((feed) => (
-                                <div key={feed.url} className="flex items-center justify-between p-4 border rounded-lg bg-card group hover:shadow-sm transition-shadow">
-                                    <div className="flex items-center gap-3 overflow-hidden">
-                                        <div className="p-2 rounded bg-primary/10">
-                                            <Rss className="h-4 w-4 text-primary" />
-                                        </div>
-                                        <div className="overflow-hidden">
-                                            <span className="text-sm font-semibold block">{feed.name}</span>
-                                            <span className="text-xs text-muted-foreground truncate block">{feed.url}</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="h-8 px-3 text-xs"
-                                            onClick={() => pollSingleFeed(feed.url)}
-                                            disabled={pollingFeed === feed.url || pollingAll}
-                                        >
-                                            {pollingFeed === feed.url ? (
-                                                <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
-                                            ) : (
-                                                <Play className="h-3 w-3 mr-1.5" />
-                                            )}
-                                            Poll
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="text-muted-foreground hover:text-red-600 hover:bg-red-50 h-8 w-8"
-                                            onClick={() => removeFeed(feed)}
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                </div>
-                            ))}
-                            {userFeeds.length === 0 && !loading && (
-                                <div className="text-center py-12 border-2 border-dashed rounded-lg bg-muted/20">
-                                    <Rss className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
-                                    <p className="text-muted-foreground">No RSS feeds configured yet.</p>
-                                    <p className="text-sm text-muted-foreground/60 max-w-sm mx-auto mt-2">
-                                        Add feeds from Ashby, Greenhouse, or Workable to start discovering jobs automatically.
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
+                )}
+            </div>
         </div>
-    )
+    );
 }

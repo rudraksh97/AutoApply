@@ -1,7 +1,6 @@
 from api.interfaces.repositories import JobRepository, ConfigRepository, ProfileRepository
 from src.job_manager import JobManager
 from src.config import ConfigManager
-from src.profile_manager import ProfileManager
 from typing import List
 
 # Adapter Pattern: Adapting old Managers to new Repository Interfaces
@@ -43,19 +42,21 @@ class JsonConfigRepository(ConfigRepository):
 
 class JsonProfileRepository(ProfileRepository):
     def __init__(self):
-        self._manager = ProfileManager()
+        # Stubbed out for migration. This repository is no longer used
+        # in favor of SqlProfileRepository.
+        self._manager = None
 
-    def get_profile(self) -> dict:
-        return self._manager.get_profile()
+    def get_profile(self, user_id: str) -> dict:
+        return {}
     
-    def save_profile(self, profile: dict) -> None:
+    def save_profile(self, user_id: str, profile: dict) -> None:
         self._manager.save_profile(profile)
 
-    def add_resume(self, resume_type: str, filename: str, path: str) -> str:
+    def add_resume(self, user_id: str, resume_type: str, filename: str, path: str) -> str:
         return self._manager.add_resume(resume_type, filename, path)
 
-    def delete_resume(self, resume_id: str) -> bool:
+    def delete_resume(self, user_id: str, resume_id: str) -> bool:
         return self._manager.delete_resume(resume_id)
 
-    def set_current_resume(self, resume_id: str) -> bool:
+    def set_current_resume(self, user_id: str, resume_id: str) -> bool:
         return self._manager.set_current_resume(resume_id)

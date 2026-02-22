@@ -1,0 +1,5 @@
+{
+    "postgres_url": "postgresql://<user>:<password>@<host>:<port>/<database>?options=-csearch_path%3Dautoapply",
+    "jwt_secret": "your_jwt_secret_here",
+    "algorithm": "HS256"
+}

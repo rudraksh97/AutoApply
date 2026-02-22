@@ -1,773 +1,102 @@
-"use client"
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { RefreshCw, FileText, ExternalLink, Play, Trash2, Plus, Code, Copy, Check, RotateCcw, Eye, CheckCircle2, Circle, Activity, Loader2, Pause } from 'lucide-react';
+"use client";
+
+import { useEffect, useState } from "react";
+import { fetchWithAuth } from "@/lib/api";
+import { Job } from "@/types/job";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
-import { ResumePreviewPopup } from "@/components/ResumePreviewPopup";
-
-interface Job {
-    url: string;
-    status: string;
-    pdf_path: string | null;
-    timestamp: string;
-    details: string | null;
-    error_message?: string | null;
-    source_feed?: string | null;
-    source_feed_name?: string | null;
-    company_name?: string | null;
-    job_title?: string | null;
-    apply_link?: string | null;
-    sent?: boolean | number;
-    retry_count?: number;
-}
-
-interface Draft {
-    id: string;
-    job_url: string;
-    apply_link?: string | null;
-    status: string;
-    field_count: number;
-    filled_field_count: number;
-    initial_ats_score?: number | null;
-    current_ats_score?: number | null;
-}
-
-interface FullDraft {
-    id: string;
-    job_url: string;
-    apply_link?: string | null;
-    status: string;
-    form_state: {
-        version: string;
-        job_url: string;
-        page_index: number;
-        fields: Array<{
-            xpath: string;
-            field_type: string;
-            label: string | null;
-            options: string[] | null;
-            value: string | null;
-            confidence: number;
-            required: boolean;
-            skipped: boolean;
-            skip_reason: string | null;
-        }>;
-        extracted_at: string;
-        last_modified: string;
-    };
-    resume_path: string | null;
-    job_details: string | null;
-    initial_ats_score: number | null;
-    current_ats_score?: number | null;
-    created_at: string;
-    updated_at: string;
-}
+import Link from "next/link";
+import { ExternalLink } from "lucide-react";
+import { useAuth } from "@/components/providers/auth-provider";
+import { useRouter } from "next/navigation";
 
 export default function JobsPage() {
     const [jobs, setJobs] = useState<Job[]>([]);
-    const [drafts, setDrafts] = useState<Draft[]>([]);
-    const [jobManagerState, setJobManagerState] = useState({ is_running: false });
-    const [toggling, setToggling] = useState(false);
     const [loading, setLoading] = useState(true);
-    const [openingDraft, setOpeningDraft] = useState<string | null>(null);
-    const [newJobUrl, setNewJobUrl] = useState("");
-    const [addingJob, setAddingJob] = useState(false);
-    const [addJobOpen, setAddJobOpen] = useState(false);
-    const [deletingJob, setDeletingJob] = useState<string | null>(null);
-    const [viewDraftOpen, setViewDraftOpen] = useState(false);
-    const [selectedDraft, setSelectedDraft] = useState<FullDraft | null>(null);
-    const [loadingDraft, setLoadingDraft] = useState(false);
-    const [copied, setCopied] = useState(false);
-    const [previewOpen, setPreviewOpen] = useState(false);
-    const [previewDraftId, setPreviewDraftId] = useState<string | null>(null);
-    const [previewJobUrl, setPreviewJobUrl] = useState<string>("");
-    const [activeTab, setActiveTab] = useState<'drafts' | 'sent'>('drafts');
 
+    const { user, loading: authLoading, hasRole } = useAuth();
+    const router = useRouter();
 
+    useEffect(() => {
+        if (!authLoading) {
+            // Check if user has any of the allowed roles
+            if (!hasRole("customer") && !hasRole("basic") && !hasRole("admin")) {
+                // Technically Sidebar hides this, but good to have protection
+                toast.error("Unauthorized access");
+                router.push("/dashboard");
+                return;
+            }
+            loadJobs();
+        }
+    }, [authLoading, user]);
 
-    const fetchJobs = async () => {
+    const loadJobs = async () => {
         try {
-            const [jobsRes, draftsRes, statusRes] = await Promise.all([
-                axios.get(`/api/jobs`),
-                axios.get(`/api/drafts`),
-                axios.get(`/api/settings/job-manager/status`)
-            ]);
-            setJobs(jobsRes.data);
-            setDrafts(draftsRes.data);
-            setJobManagerState(statusRes.data);
-        } catch (e) {
-            console.error(e);
+            const res = await fetchWithAuth("/jobs");
+            if (res.ok) {
+                const data = await res.json();
+                setJobs(data);
+            } else {
+                toast.error("Failed to load jobs");
+            }
+        } catch (err) {
+            toast.error("Error loading jobs");
         } finally {
             setLoading(false);
         }
     };
 
-    useEffect(() => {
-        fetchJobs();
-        const interval = setInterval(fetchJobs, 5000); // Poll every 5s
-        return () => clearInterval(interval);
-    }, []);
-
-    const retryJob = async (url: string) => {
-        try {
-            await axios.post(`/api/jobs/retry`, { url });
-            fetchJobs();
-        } catch (e) {
-            toast.error("Failed to retry job");
-        }
-    };
-
-    const addJob = async () => {
-        if (!newJobUrl) return;
-        setAddingJob(true);
-        try {
-            // 1. Add job to DB
-            const res = await axios.post(`/api/jobs/`, { url: newJobUrl });
-
-            setNewJobUrl("");
-            setAddJobOpen(false);
-            fetchJobs();
-
-            if (res.data.status === 'exists') {
-                toast.info("Job already exists (workflow restarted)");
-            }
-        } catch (e) {
-            console.error(e);
-            toast.error("Failed to add job");
-        } finally {
-            setAddingJob(false);
-        }
-    };
-
-    const deleteJob = async (url: string) => {
-        if (!confirm("Are you sure you want to delete this job and its history?")) return;
-        setDeletingJob(url);
-        try {
-            await axios.delete(`/api/jobs/`, { params: { url } });
-            fetchJobs();
-        } catch (e) {
-            console.error(e);
-            toast.error("Failed to delete job");
-        } finally {
-            setDeletingJob(null);
-        }
-    };
-
-    const markAsSent = async (url: string, sent: boolean) => {
-        try {
-            await axios.post(`/api/jobs/sent`, { url, sent });
-            fetchJobs();
-            toast.success(sent ? "Marked as sent" : "Unmarked as sent");
-        } catch (e) {
-            console.error(e);
-            toast.error("Failed to update job");
-        }
-    };
-
-    const handleToggleJobManager = async () => {
-        setToggling(true);
-        try {
-            if (jobManagerState.is_running) {
-                await axios.post(`/api/settings/job-manager/stop`);
-                toast.success("Job Manager Stopped");
-            } else {
-                await axios.post(`/api/settings/job-manager/start`);
-                toast.success("Job Manager Started");
-            }
-            fetchJobs(); // Refresh status
-        } catch (e: any) {
-            const msg = e.response?.data?.detail || "Failed to toggle Job Manager";
-            toast.error(msg);
-        } finally {
-            setToggling(false);
-        }
-    };
-
-    const viewDraft = async (draftId: string) => {
-        setLoadingDraft(true);
-        setViewDraftOpen(true);
-        try {
-            const res = await axios.get(`/api/drafts/${draftId}`);
-            setSelectedDraft(res.data);
-        } catch (e) {
-            console.error(e);
-            toast.error("Failed to load draft details");
-            setViewDraftOpen(false);
-        } finally {
-            setLoadingDraft(false);
-        }
-    };
-
-    const copyToClipboard = () => {
-        if (selectedDraft) {
-            navigator.clipboard.writeText(JSON.stringify(selectedDraft, null, 2));
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-            toast.success("Copied to clipboard");
-        }
-    };
-
-    const openDraft = async (draftId: string, jobUrl: string) => {
-        setOpeningDraft(draftId);
-
-        // Use the browser extension trigger via URL hash
-        // usage: URL#autoapply_id=UUID
-
-        // Special handling for Ashby: user should open on /application URL
-        let targetUrl = jobUrl;
-
-        if (targetUrl.includes("jobs.ashbyhq.com") && !targetUrl.includes("/application")) {
-            // Remove trailing slash if present then append /application
-            targetUrl = targetUrl.replace(/\/$/, "") + "/application";
-        }
-
-        const separator = targetUrl.includes('#') ? '&' : '#';
-        const triggerUrl = `${targetUrl}${separator}autoapply_id=${draftId}`;
-
-        window.open(triggerUrl, '_blank');
-
-        setOpeningDraft(null);
-
-        // Show lightweight toast/helper
-        // We assume the user has the extension. If not, page just opens.
-        console.log("Opened with extension trigger");
-    };
-
-    // Find draft for a job URL
-    const getDraftForJob = (jobUrl: string): Draft | undefined => {
-        return drafts.find(d => d.job_url === jobUrl);
-    };
-
-    // Filter jobs into pending and sent
-    const pendingJobs = jobs.filter(job => !job.sent);
-    const sentJobs = jobs.filter(job => job.sent);
-
-    const getStatusColor = (status: string) => {
-        if (status.includes('Running')) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-        if (status === 'Completed' || status === 'Applied') return 'bg-green-50 text-green-700 border-green-200';
-        if (status === 'Draft Saved' || status === 'draft_saved') return 'bg-blue-50 text-blue-700 border-blue-200';
-        if (status === 'Failed' || status === 'Error' || status === 'Draft Failed' || status === 'failed') return 'bg-red-50 text-red-700 border-red-200';
-        if (status === 'Pending') return 'bg-yellow-50 text-yellow-700 border-yellow-200';
-        return 'bg-gray-50 text-gray-700 border-gray-200';
-    };
+    if (loading) return <div className="p-4">Loading jobs...</div>;
 
     return (
-        <div className="space-y-8">
-            <header className="flex items-center justify-between gap-4">
-                <div className="flex flex-col gap-2">
-                    <h1 className="text-3xl font-bold tracking-tight font-serif text-foreground">Job History</h1>
-                    <p className="text-muted-foreground">Track and manage your application drafts.</p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Dialog open={addJobOpen} onOpenChange={setAddJobOpen}>
-                        <DialogTrigger asChild>
-                            <Button className="h-10 px-4">
-                                <Plus className="h-4 w-4 mr-2" />
-                                Add Job
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                            <DialogHeader>
-                                <DialogTitle>Add New Job</DialogTitle>
-                            </DialogHeader>
-                            <div className="py-4">
-                                <Input
-                                    placeholder="https://jobs.ashbyhq.com/..."
-                                    value={newJobUrl}
-                                    onChange={(e) => setNewJobUrl(e.target.value)}
-                                />
-                                <p className="text-sm text-muted-foreground mt-2">
-                                    Adding a job will automatically trigger the draft preparation workflow.
-                                </p>
-                            </div>
-                            <DialogFooter>
-                                <Button variant="outline" onClick={() => setAddJobOpen(false)}>Cancel</Button>
-                                <Button onClick={addJob} disabled={addingJob || !newJobUrl}>
-                                    {addingJob ? "Adding..." : "Add Job"}
-                                </Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
-
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={fetchJobs}
-                        className="h-10 px-4"
-                    >
-                        <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
-                        Refresh
-                    </Button>
-                </div>
-            </header>
-
-            {/* Job Manager Status Banner */}
-            <div className={cn(
-                "rounded-lg border px-4 py-3 flex items-center justify-between shadow-sm transition-all",
-                jobManagerState.is_running
-                    ? "bg-gradient-to-r from-emerald-50 to-green-50 border-emerald-200"
-                    : "bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200"
-            )}>
-                <div className="flex items-center gap-3">
-                    <div className={cn(
-                        "p-2 rounded-full",
-                        jobManagerState.is_running ? "bg-emerald-100 text-emerald-600" : "bg-amber-100 text-amber-600"
-                    )}>
-                        <Activity className={cn("h-5 w-5", jobManagerState.is_running && "animate-pulse")} />
-                    </div>
-                    <div>
-                        <h3 className={cn("font-medium", jobManagerState.is_running ? "text-emerald-900" : "text-amber-900")}>
-                            {jobManagerState.is_running ? "AutoApply is Running" : "AutoApply is Paused"}
-                        </h3>
-                        <p className={cn("text-xs", jobManagerState.is_running ? "text-emerald-700" : "text-amber-700")}>
-                            {jobManagerState.is_running
-                                ? "The job manager is actively processing your application queue."
-                                : "Background processing is stopped. New jobs will not be processed until resumed."}
-                        </p>
-                    </div>
-                </div>
-                <Button
-                    size="sm"
-                    variant={jobManagerState.is_running ? "outline" : "default"}
-                    className={cn(
-                        "transition-colors",
-                        jobManagerState.is_running
-                            ? "border-emerald-300 text-emerald-800 hover:bg-emerald-100 bg-white/50"
-                            : "bg-amber-600 hover:bg-amber-700 text-white border-amber-600"
-                    )}
-                    onClick={handleToggleJobManager}
-                    disabled={toggling}
-                >
-                    {toggling ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : jobManagerState.is_running ? (
-                        <Pause className="h-4 w-4 mr-2" />
-                    ) : (
-                        <Play className="h-4 w-4 mr-2" />
-                    )}
-                    {jobManagerState.is_running ? "Pause" : "Start Processing"}
-                </Button>
-            </div>
-
-            <Card className="shadow-sm border-border/60 overflow-hidden">
-                <CardHeader className="border-b bg-muted/30 pb-4">
-                    <div className="flex items-center gap-4">
-                        <button
-                            onClick={() => setActiveTab('drafts')}
-                            className={cn(
-                                "text-xl font-semibold transition-colors",
-                                activeTab === 'drafts'
-                                    ? "text-foreground"
-                                    : "text-muted-foreground hover:text-foreground/70"
-                            )}
-                        >
-                            Application Drafts ({pendingJobs.length})
-                        </button>
-                        <span className="text-muted-foreground/30">|</span>
-                        <button
-                            onClick={() => setActiveTab('sent')}
-                            className={cn(
-                                "text-xl font-semibold transition-colors flex items-center gap-2",
-                                activeTab === 'sent'
-                                    ? "text-foreground"
-                                    : "text-muted-foreground hover:text-foreground/70"
-                            )}
-                        >
-                            <CheckCircle2 className={cn("h-5 w-5", activeTab === 'sent' ? "text-emerald-600" : "")} />
-                            Sent Applications ({sentJobs.length})
-                        </button>
-                    </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                    <table className="w-full text-sm text-left">
-                        <thead className="bg-[#fdfdfd] text-muted-foreground uppercase text-[10px] tracking-widest font-bold border-b">
-                            <tr>
-                                <th className="px-4 py-3 font-bold text-center">Sent</th>
-                                <th className="px-4 py-3 font-bold">Date</th>
-                                <th className="px-4 py-3 font-bold">Job</th>
-                                <th className="px-4 py-3 font-bold text-center">Job Link</th>
-                                <th className="px-4 py-3 font-bold text-center">Apply Link</th>
-                                <th className="px-4 py-3 font-bold">Draft Status</th>
-                                <th className="px-4 py-3 font-bold text-center">Retries</th>
-                                <th className="px-4 py-3 font-bold text-center">Extracted Fields</th>
-                                <th className="px-4 py-3 font-bold text-center">Extracted JSON</th>
-                                <th className="px-4 py-3 font-bold text-center">Preview Resume</th>
-                                <th className="px-4 py-3 font-bold text-center">Open Draft</th>
-                                <th className="px-4 py-3 font-bold text-center">Rerun</th>
-                                <th className="px-4 py-3 font-bold text-center">Delete Job</th>
+        <div>
+            <h1 className="text-2xl font-bold mb-6">My Applications</h1>
+            <div className="bg-card rounded-lg border text-card-foreground shadow-sm">
+                <div className="relative w-full overflow-auto">
+                    <table className="w-full caption-bottom text-sm">
+                        <thead className="[&_tr]:border-b">
+                            <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Date</th>
+                                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Company</th>
+                                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Role</th>
+                                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Status</th>
+                                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Link</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-border/40">
-                            {loading && jobs.length === 0 ? (
+                        <tbody className="[&_tr:last-child]:border-0">
+                            {jobs.length === 0 ? (
                                 <tr>
-                                    <td colSpan={12} className="px-6 py-12 text-center text-muted-foreground italic">
-                                        Loading jobs...
-                                    </td>
-                                </tr>
-                            ) : (activeTab === 'drafts' ? pendingJobs : sentJobs).length === 0 ? (
-                                <tr>
-                                    <td colSpan={12} className="px-6 py-12 text-center text-muted-foreground">
-                                        {activeTab === 'drafts'
-                                            ? "No pending applications. Add a job URL or configure RSS feeds to get started."
-                                            : "No sent applications yet. Mark jobs as sent after submitting them."}
-                                    </td>
+                                    <td colSpan={5} className="p-4 text-center text-muted-foreground">No jobs found.</td>
                                 </tr>
                             ) : (
-                                (activeTab === 'drafts' ? pendingJobs : sentJobs).map((job, i) => {
-                                    const draft = getDraftForJob(job.url);
-                                    const displayStatus = draft?.status || job.status;
-                                    const isDraftReady = displayStatus === 'draft_saved' || displayStatus === 'user_opened';
-                                    const isSent = activeTab === 'sent';
-
-                                    return (
-                                        <tr key={i} className={cn("group hover:bg-muted/30 transition-colors", isSent && "bg-emerald-50/30")}>
-                                            {/* Mark as Sent / Undo */}
-                                            <td className="px-4 py-3 text-center">
-                                                <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    onClick={() => markAsSent(job.url, !isSent)}
-                                                    className={cn(
-                                                        "h-7 w-7",
-                                                        isSent
-                                                            ? "text-emerald-600 hover:text-muted-foreground hover:bg-muted"
-                                                            : "text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50"
-                                                    )}
-                                                    title={isSent ? "Undo - Mark as Not Sent" : "Mark as Sent"}
-                                                >
-                                                    {isSent ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
-                                                </Button>
-                                            </td>
-
-                                            {/* Date */}
-                                            <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">
-                                                {new Date(job.timestamp).toLocaleDateString()}
-                                            </td>
-
-                                            {/* Job */}
-                                            <td className="px-4 py-3">
-                                                <div className="flex flex-col gap-0.5 min-w-0">
-                                                    <span className="font-medium text-foreground truncate max-w-[280px]" title={job.job_title || job.url}>
-                                                        {job.job_title || 'Untitled Position'}
-                                                    </span>
-                                                    <div className="flex items-center gap-2 text-xs text-muted-foreground truncate">
-                                                        {job.company_name && (
-                                                            <span className="font-medium">{job.company_name}</span>
-                                                        )}
-                                                        {(job.source_feed_name || job.source_feed) && (
-                                                            <span className="text-muted-foreground/60" title={job.source_feed || ''}>
-                                                                via {job.source_feed_name || (job.source_feed ? new URL(job.source_feed).hostname.replace('www.', '') : '')}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </td>
-
-                                            {/* Job Link */}
-                                            <td className="px-4 py-3 text-center">
-                                                <a href={job.url} target="_blank" rel="noopener noreferrer"
-                                                    className="inline-flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"
-                                                    title="View Job Description">
-                                                    <FileText className="h-4 w-4" />
-                                                </a>
-                                            </td>
-
-                                            {/* Application Link */}
-                                            <td className="px-4 py-3 text-center">
-                                                {job.apply_link ? (
-                                                    <a href={job.apply_link} target="_blank" rel="noopener noreferrer"
-                                                        className="inline-flex items-center justify-center text-blue-500 hover:text-blue-700 transition-colors"
-                                                        title="Apply Page">
-                                                        <ExternalLink className="h-4 w-4" />
-                                                    </a>
-                                                ) : (
-                                                    <span className="text-muted-foreground/40">--</span>
-                                                )}
-                                            </td>
-
-                                            {/* Status */}
-                                            <td className="px-4 py-3">
-                                                <span className={cn(
-                                                    "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border gap-1",
-                                                    getStatusColor(displayStatus)
-                                                )}>
-                                                    {displayStatus.includes('Running') && (
-                                                        <span className="relative flex h-1.5 w-1.5">
-                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                                                        </span>
-                                                    )}
-                                                    {displayStatus.replace('draft_', '').replace('_', ' ')}
-                                                </span>
-                                            </td>
-
-                                            {/* Retry Count */}
-                                            <td className="px-4 py-3 text-center">
-                                                {job.retry_count && job.retry_count > 0 ? (
-                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-50 text-orange-600 border border-orange-100">
-                                                        {job.retry_count}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-muted-foreground/30">0</span>
-                                                )}
-                                            </td>
-
-                                            {/* Fields Extracted / Total */}
-                                            <td className="px-4 py-3 text-center whitespace-nowrap">
-                                                {draft ? (
-                                                    <span className="text-sm font-medium">
-                                                        <span className="text-emerald-600">{draft.filled_field_count}</span>
-                                                        <span className="text-muted-foreground"> / </span>
-                                                        <span>{draft.field_count}</span>
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-muted-foreground/40">--</span>
-                                                )}
-                                            </td>
-
-                                            {/* Extracted JSON */}
-                                            <td className="px-4 py-3 text-center">
-                                                {draft ? (
-                                                    <Button
-                                                        size="icon"
-                                                        variant="ghost"
-                                                        onClick={() => viewDraft(draft.id)}
-                                                        className="h-7 w-7"
-                                                        title="View Extracted JSON"
-                                                    >
-                                                        <Code className="h-4 w-4" />
-                                                    </Button>
-                                                ) : (
-                                                    <span className="text-muted-foreground/40">--</span>
-                                                )}
-                                            </td>
-
-                                            {/* Preview Resume */}
-                                            <td className="px-4 py-3 text-center">
-                                                {draft ? (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-7 w-7"
-                                                        onClick={() => {
-                                                            setPreviewDraftId(draft.id);
-                                                            setPreviewJobUrl(job.url);
-                                                            setPreviewOpen(true);
-                                                        }}
-                                                        title="Preview Resume"
-                                                    >
-                                                        <Eye className="h-4 w-4" />
-                                                    </Button>
-                                                ) : (
-                                                    <span className="text-muted-foreground/40">--</span>
-                                                )}
-                                            </td>
-
-                                            {/* Open Draft */}
-                                            <td className="px-4 py-3 text-center">
-                                                {isDraftReady && draft ? (
-                                                    <Button
-                                                        size="icon"
-                                                        onClick={() => openDraft(draft.id, job.apply_link || job.url)}
-                                                        disabled={openingDraft === draft.id}
-                                                        className="h-7 w-7 bg-blue-600 hover:bg-blue-700 text-white"
-                                                        title="Open Draft"
-                                                    >
-                                                        {openingDraft === draft.id ? (
-                                                            <RefreshCw className="h-4 w-4 animate-spin" />
-                                                        ) : (
-                                                            <Play className="h-4 w-4" />
-                                                        )}
-                                                    </Button>
-                                                ) : (
-                                                    <span className="text-muted-foreground/40">--</span>
-                                                )}
-                                            </td>
-
-                                            {/* Restart Workflow */}
-                                            <td className="px-4 py-3 text-center">
-                                                <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    onClick={() => retryJob(job.url)}
-                                                    className="h-7 w-7 text-muted-foreground hover:text-orange-600 hover:bg-orange-50"
-                                                    title="Restart Workflow"
-                                                >
-                                                    <RotateCcw className="h-4 w-4" />
-                                                </Button>
-                                            </td>
-
-                                            {/* Delete Job */}
-                                            <td className="px-4 py-3 text-center">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-7 w-7 text-muted-foreground hover:text-red-600 hover:bg-red-50"
-                                                    onClick={() => deleteJob(job.url)}
-                                                    disabled={deletingJob === job.url}
-                                                    title="Delete Job"
-                                                >
-                                                    {deletingJob === job.url ? (
-                                                        <RefreshCw className="h-4 w-4 animate-spin" />
-                                                    ) : (
-                                                        <Trash2 className="h-4 w-4" />
-                                                    )}
-                                                </Button>
-                                            </td>
-                                        </tr>
-                                    );
-                                })
+                                jobs.map((job) => (
+                                    <tr key={job.id} className="border-b transition-colors hover:bg-muted/50">
+                                        <td className="p-4 align-middle">
+                                            {new Date(job.created_at).toLocaleDateString()}
+                                        </td>
+                                        <td className="p-4 align-middle font-medium">{job.company}</td>
+                                        <td className="p-4 align-middle">{job.role}</td>
+                                        <td className="p-4 align-middle">
+                                            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold
+                            ${job.status === 'APPLIED' ? 'bg-green-100 text-green-800' :
+                                                    job.status === 'FAILED' ? 'bg-red-100 text-red-800' :
+                                                        'bg-yellow-100 text-yellow-800'}`}>
+                                                {job.status}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 align-middle">
+                                            {job.url ? (
+                                                <Link href={job.url} target="_blank" className="text-indigo-600 hover:text-indigo-900 flex items-center">
+                                                    View <ExternalLink className="ml-1 h-3 w-3" />
+                                                </Link>
+                                            ) : '-'}
+                                        </td>
+                                    </tr>
+                                ))
                             )}
                         </tbody>
                     </table>
-                </CardContent>
-            </Card>
-
-            {/* View Draft JSON Dialog */}
-            < Dialog open={viewDraftOpen} onOpenChange={setViewDraftOpen} >
-                <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <Code className="h-5 w-5" />
-                            Extracted Form Data
-                        </DialogTitle>
-                    </DialogHeader>
-
-                    {loadingDraft ? (
-                        <div className="flex items-center justify-center py-12">
-                            <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
-                        </div>
-                    ) : selectedDraft ? (
-                        <div className="flex-1 overflow-hidden flex flex-col gap-4">
-                            {/* Summary */}
-                            <div className="grid grid-cols-4 gap-4 text-sm">
-                                <div className="bg-muted/50 rounded-lg p-3">
-                                    <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Status</div>
-                                    <div className="font-medium">{selectedDraft.status}</div>
-                                </div>
-                                <div className="bg-muted/50 rounded-lg p-3">
-                                    <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Total Fields</div>
-                                    <div className="font-medium">{selectedDraft.form_state?.fields?.length || 0}</div>
-                                </div>
-                                <div className="bg-muted/50 rounded-lg p-3">
-                                    <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Filled Fields</div>
-                                    <div className="font-medium">
-                                        {selectedDraft.form_state?.fields?.filter(f => f.value && !f.skipped).length || 0}
-                                    </div>
-                                </div>
-                                <div className="bg-muted/50 rounded-lg p-3">
-                                    <div className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Skipped Fields</div>
-                                    <div className="font-medium">
-                                        {selectedDraft.form_state?.fields?.filter(f => f.skipped).length || 0}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Fields Table */}
-                            {selectedDraft.form_state?.fields && selectedDraft.form_state.fields.length > 0 && (
-                                <div className="flex-1 border rounded-lg overflow-hidden flex flex-col min-h-0">
-                                    <div className="bg-muted/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide border-b">
-                                        Form Fields
-                                    </div>
-                                    <div className="flex-1 overflow-auto">
-                                        <table className="w-full text-sm">
-                                            <thead className="bg-muted/20 text-xs sticky top-0">
-                                                <tr>
-                                                    <th className="px-3 py-2 text-left whitespace-nowrap">Label</th>
-                                                    <th className="px-3 py-2 text-left whitespace-nowrap">Type</th>
-                                                    <th className="px-3 py-2 text-left whitespace-nowrap">Value</th>
-                                                    <th className="px-3 py-2 text-left whitespace-nowrap">Options</th>
-                                                    <th className="px-3 py-2 text-center whitespace-nowrap">Confidence</th>
-                                                    <th className="px-3 py-2 text-center whitespace-nowrap">Required</th>
-                                                    <th className="px-3 py-2 text-center whitespace-nowrap">Skipped</th>
-                                                    <th className="px-3 py-2 text-left whitespace-nowrap">Skip Reason</th>
-                                                    <th className="px-3 py-2 text-left whitespace-nowrap">XPath</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y">
-                                                {selectedDraft.form_state.fields.map((field, i) => (
-                                                    <tr key={i} className={cn(
-                                                        "hover:bg-muted/20",
-                                                        field.skipped && "bg-yellow-50/50"
-                                                    )}>
-                                                        <td className="px-3 py-2 font-medium whitespace-nowrap">
-                                                            {field.label || <span className="text-muted-foreground italic">No label</span>}
-                                                        </td>
-                                                        <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{field.field_type}</td>
-                                                        <td className="px-3 py-2">
-                                                            {field.value ? (
-                                                                <span className="text-green-700 truncate block max-w-[200px]" title={field.value}>
-                                                                    {field.value}
-                                                                </span>
-                                                            ) : (
-                                                                <span className="text-muted-foreground italic">Empty</span>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-3 py-2 text-xs text-muted-foreground">
-                                                            {field.options && field.options.length > 0 ? (
-                                                                <span className="truncate block max-w-[150px]" title={field.options.join(', ')}>
-                                                                    {field.options.slice(0, 3).join(', ')}{field.options.length > 3 && '...'}
-                                                                </span>
-                                                            ) : (
-                                                                <span className="text-muted-foreground/40">--</span>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-3 py-2 text-center">
-                                                            <span className={cn(
-                                                                "text-xs font-medium",
-                                                                field.confidence >= 0.8 ? "text-green-600" :
-                                                                    field.confidence >= 0.5 ? "text-yellow-600" : "text-red-600"
-                                                            )}>
-                                                                {(field.confidence * 100).toFixed(0)}%
-                                                            </span>
-                                                        </td>
-                                                        <td className="px-3 py-2 text-center">
-                                                            {field.required ? (
-                                                                <span className="text-red-500 font-bold">Yes</span>
-                                                            ) : (
-                                                                <span className="text-muted-foreground/40">No</span>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-3 py-2 text-center">
-                                                            {field.skipped ? (
-                                                                <span className="text-yellow-600 font-bold">Yes</span>
-                                                            ) : (
-                                                                <span className="text-muted-foreground/40">No</span>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-3 py-2 text-xs text-yellow-600">
-                                                            {field.skip_reason || <span className="text-muted-foreground/40">--</span>}
-                                                        </td>
-                                                        <td className="px-3 py-2 text-xs text-muted-foreground font-mono truncate max-w-[150px]" title={field.xpath}>
-                                                            {field.xpath}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="text-center py-8 text-muted-foreground">
-                            No draft data available
-                        </div>
-                    )}
-                </DialogContent>
-            </Dialog >
-
-            <ResumePreviewPopup
-                isOpen={previewOpen}
-                onClose={() => setPreviewOpen(false)}
-                draftId={previewDraftId || ""}
-                jobUrl={previewJobUrl}
-            />
-        </div >
+                </div>
+            </div>
+        </div>
     );
 }

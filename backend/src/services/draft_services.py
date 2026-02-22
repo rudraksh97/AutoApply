@@ -48,17 +48,10 @@ logger = logging.getLogger(__name__)
 # Profile Text Generation
 # =============================================================================
 
-def get_user_profile_text() -> str:
-    """Convert the user's profile into structured text for form filling."""
-    from src.profile_manager import ProfileManager
-
-    pm = ProfileManager()
-    profile = pm.get_profile()
-
-    return _format_profile_as_text(profile)
 
 
-def _format_profile_as_text(profile: dict) -> str:
+
+def get_user_profile_text(profile: dict) -> str:
     """Format a profile dictionary as structured text."""
     lines = []
 
@@ -163,6 +156,8 @@ FIELD_TYPE_MAP = {
 # Draft Preparation Service
 # =============================================================================
 
+from api.services.domain_services import ProfileService
+
 class DraftPreparationService:
     """
     Orchestrates the draft-first lifecycle for job applications.
@@ -181,12 +176,15 @@ class DraftPreparationService:
         job_manager: JobManagerProtocol,
         browser_agent: BrowserAgentProtocol,
         resume_builder: ResumeBuilderProtocol,
+        profile_service: ProfileService,
         draft_manager: Optional[DraftManager] = None
     ):
         self.job_manager = job_manager
         self.browser_agent = browser_agent
         self.resume_builder = resume_builder
+        self.profile_service = profile_service
         self.draft_manager = draft_manager or DraftManager()
+        self.config = ConfigManager()
 
     # -------------------------------------------------------------------------
     # Main Entry Point
@@ -195,7 +193,7 @@ class DraftPreparationService:
     async def prepare_draft(
         self,
         job_link: str,
-        user_details_text: str,
+        user_id: str,
         log_callback: Callable[[str], None] = print
     ) -> Optional[str]:
         """
@@ -210,6 +208,10 @@ class DraftPreparationService:
         log_callback(f"Created draft: {draft_id}")
 
         try:
+            # Fetch user profile
+            profile = self.profile_service.get_profile(user_id)
+            user_details_text = get_user_profile_text(profile)
+
             # Step 1: Scrape job details
             job_data = await self._scrape_job(job_link, log_callback)
 
@@ -218,13 +220,13 @@ class DraftPreparationService:
 
             # Step 3: Prepare resume
             pdf_path, relative_path = await self._prepare_resume(
-                draft_id, job_link, job_data["description"], log_callback
+                draft_id, user_id, job_link, job_data["description"], user_details_text, log_callback
             )
 
             # Step 4: Extract form structure
             extract_url = self._determine_extract_url(job_link, job_data["apply_link"], log_callback)
             form_state = await self._extract_and_fill_form(
-                job_link, extract_url, job_data["description"],
+                job_link, user_id, extract_url, job_data["description"],
                 user_details_text, pdf_path, relative_path, log_callback
             )
 
@@ -310,19 +312,29 @@ class DraftPreparationService:
     async def _prepare_resume(
         self,
         draft_id: str,
+        user_id: str,
         job_link: str,
         job_description: str,
+        user_profile_text: str,
         log_callback: Callable
     ) -> tuple[Optional[str], Optional[str]]:
         """Prepare resume - either use uploaded or generate new."""
-        from src.profile_manager import ProfileManager
-
-        profile_manager = ProfileManager()
-        profile = profile_manager.get_profile()
+        profile = self.profile_service.get_profile(user_id)
 
         mode = profile.get("resume_generation_mode", "ats_generated")
-        uploaded_pdf = profile_manager.get_current_resume_path("pdf")
-        uploaded_tex = profile_manager.get_current_resume_path("text")
+        # We need to implement get_current_resume_path equivalent in service/repo or here
+        # For now, let's extract it from profile data since repo.get_profile includes resumes list but maybe not path helper
+        
+        # Helper to find path from ID
+        def get_path(resumes_list, current_id, fallback_path):
+             if not current_id: return fallback_path
+             for r in resumes_list:
+                 if r["id"] == current_id:
+                     return r["path"]
+             return fallback_path
+
+        uploaded_pdf = get_path(profile.get("pdf_resumes", []), profile.get("current_pdf_resume_id"), profile.get("uploaded_pdf_path"))
+        uploaded_tex = get_path(profile.get("text_resumes", []), profile.get("current_text_resume_id"), profile.get("uploaded_tex_path"))
 
         # Determine PDF path based on mode
         if mode == "uploaded_pdf" and uploaded_pdf and os.path.exists(uploaded_pdf):
@@ -338,7 +350,7 @@ class DraftPreparationService:
                 log_callback(f"  - Using template: {template}")
 
             pdf_path = await self._generate_resume(
-                draft_id, job_link, job_description, log_callback, template
+                draft_id, user_id, job_link, job_description, user_profile_text, log_callback, template
             )
 
         # Compute paths for storage
@@ -355,7 +367,7 @@ class DraftPreparationService:
         if not pdf_path:
             return None, None
 
-        host_root = os.getenv("HOST_PROJECT_ROOT")
+        host_root = self.config.get_global_setting("host_project_root")
 
         # Compute project-relative path
         rel_path = pdf_path
@@ -374,8 +386,10 @@ class DraftPreparationService:
     async def _generate_resume(
         self,
         draft_id: str,
+        user_id: str,
         job_link: str,
         job_description: str,
+        user_profile_text: str,
         log_callback: Callable,
         template_path: Optional[str] = None
     ) -> str:
@@ -392,7 +406,7 @@ class DraftPreparationService:
         # Calculate initial ATS score
         log_callback("📊 Calculating initial ATS score...")
         score_data = await self.resume_builder.calculate_ats_score(
-            job_description, get_user_profile_text()
+            job_description, user_profile_text, user_id=user_id
         )
         initial_score = score_data.get("score", 0)
         self.draft_manager.update_draft(draft_id, initial_ats_score=initial_score)
@@ -400,12 +414,15 @@ class DraftPreparationService:
 
         # Create version entry
         version_id = str(uuid.uuid4())
+        profile = self.profile_service.get_profile(user_id)
+        user_email = profile.get("basics", {}).get("email", "unknown")
+
         version = ResumeVersion(
             id=version_id,
             draft_id=draft_id,
             version_number=1,
-            tex_path=f"data/tex_resumes/{job_id}/v1/Resume_{job_id}_v1.tex",
-            pdf_path=f"data/generated_resumes/{job_id}/v1/Resume_{job_id}_v1.pdf",
+            tex_path=f"data/{user_email}/tex_resumes/{job_id}/v1/Resume_{job_id}_v1.tex",
+            pdf_path=f"data/{user_email}/generated_resumes/{job_id}/v1/Resume_{job_id}_v1.pdf",
             ats_score=0,
             justification="Generating...",
             keywords_added="",
@@ -418,7 +435,7 @@ class DraftPreparationService:
         # Build resume
         pdf_path, _, _, _ = await self.resume_builder.build(
             job_description,
-            get_user_profile_text(),
+            user_profile_text,
             job_id=job_id,
             template_path=template_path,
             tailoring_prompt=tailoring_prompt,
@@ -428,7 +445,8 @@ class DraftPreparationService:
             draft_manager=self.draft_manager,
             ats_context=score_data,
             job_manager=self.job_manager,
-            job_url=job_link
+            job_url=job_link,
+            user_id=user_id
         )
 
         log_callback("✅ Resume generation completed")
@@ -463,6 +481,7 @@ class DraftPreparationService:
     async def _extract_and_fill_form(
         self,
         job_link: str,
+        user_id: str,
         extract_url: str,
         job_description: str,
         user_details_text: str,
@@ -488,7 +507,7 @@ class DraftPreparationService:
         # Generate answers
         self.job_manager.update_job(job_link, status="Running - Generating Answers")
         form_state = await self._generate_form_answers(
-            form_state, job_description, user_details_text, log_callback
+            form_state, job_description, user_details_text, log_callback, user_id=user_id
         )
 
         # Inject resume path into file fields
@@ -554,7 +573,8 @@ class DraftPreparationService:
         form_state: FormState,
         job_description: str,
         user_profile_text: str,
-        log_callback: Callable
+        log_callback: Callable,
+        user_id: str = None
     ) -> FormState:
         """Generate answers for form fields using LLM with structured output."""
         
@@ -579,7 +599,7 @@ class DraftPreparationService:
             from src.llm_factory import LLMFactory
             from src.token_manager import TokenManager
             
-            llm = LLMFactory.get_llm_for_step("step_form_answering")
+            llm = LLMFactory.get_llm_for_step("step_form_answering", user_id=user_id)
 
             # Deduct credits: len(prompt) * 2
             config_id = getattr(llm, "config_id", None)

@@ -1,8 +1,15 @@
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Depends, UploadFile, File
 from typing import List, Optional
 from pydantic import BaseModel
-from src.config import ConfigManager
+from sqlalchemy.orm import Session
+import os
 import logging
+
+from src.config import ConfigManager
+from api.dependencies import get_db, get_current_user
+from src.models import Settings, User
+from api.repositories.sql_repo import SqlProfileRepository
+from api.services.domain_services import ProfileService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/settings", tags=["Settings"])
@@ -28,58 +35,59 @@ class LinkWorkflow(BaseModel):
     llm_config_id: str
 
 # =============================================================================
-# Initialization Check (Frontend Helper)
-# =============================================================================
-
-@router.get("/init-status")
-def get_init_status():
-    """Checks if the system has at least one valid LLM configured."""
-    cm = ConfigManager()
-    configs = cm.get_user_configs()
-    return {"configured": len(configs) > 0, "count": len(configs)}
-
-# =============================================================================
-# SDK Definitions (Static Options)
+# SDK Definitions (Static Options — from llms.json)
 # =============================================================================
 
 @router.get("/sdks")
 def get_available_sdks():
-    """Returns the list of supported LLM SDKs (from llms.json)."""
+    """Returns the list of supported LLM SDKs."""
     cm = ConfigManager()
     return cm.get_sdk_definitions()
 
 # =============================================================================
-# LLM Inventory (User Configured Keys)
+# LLM Inventory (User Configured Keys — DB-backed, per-user)
 # =============================================================================
 
 @router.get("/llm-inventory")
-def get_llm_inventory():
-    """Returns all configured LLM keys with usage stats."""
-    cm = ConfigManager()
-    configs = cm.get_user_configs()
-    
-    # Mask API keys for security
+def get_llm_inventory(
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns the current user's configured LLM API keys.
+    API keys are masked in the response.
+    """
+    from src.models import LLMConfig
+    configs = db.query(LLMConfig).filter(LLMConfig.user_id == user.id).all()
     masked = []
     for c in configs:
-        m = c.copy()
-        
-        # Inject dynamic limit from SDK
-        if "daily_token_limit" not in m:
-            sdk = cm.get_sdk_definition(m.get("sdk_id"))
-            m["daily_token_limit"] = sdk.get("daily_token_limit", 1000000) if sdk else 1000000
-
-        if m.get("api_key"):
-            key = m["api_key"]
-            if len(key) > 8:
-                m["api_key"] = key[:4] + "..." + key[-4:]
-            else:
-                m["api_key"] = "****"
-        masked.append(m)
+        row = {
+            "id": c.id, "sdk_id": c.sdk_id, "name": c.name,
+            "plan_type": c.plan_type, "daily_token_limit": c.daily_token_limit,
+            "tokens_used_today": c.tokens_used_today or 0,
+            "last_used_at": c.last_used_at.isoformat() if c.last_used_at else None,
+        }
+        key = c.api_key or ""
+        row["api_key"] = (key[:4] + "..." + key[-4:]) if len(key) > 8 else "****"
+        masked.append(row)
     return masked
 
+@router.get("/init-status")
+def get_init_status(
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Returns whether the current user has at least one LLM config."""
+    from src.models import LLMConfig
+    count = db.query(LLMConfig).filter(LLMConfig.user_id == user.id).count()
+    return {"configured": count > 0, "count": count}
+
 @router.post("/llm-inventory")
-def add_llm_config(payload: AddLLMConfig):
-    """Adds a new LLM configuration."""
+def add_llm_config(
+    payload: AddLLMConfig,
+    user=Depends(get_current_user)
+):
+    """Adds a new LLM configuration for the current user."""
     cm = ConfigManager()
     try:
         new_config = cm.add_user_config(
@@ -87,61 +95,157 @@ def add_llm_config(payload: AddLLMConfig):
             name=payload.name,
             api_key=payload.api_key,
             plan_type=payload.plan_type,
-            daily_limit=payload.daily_token_limit
+            daily_limit=payload.daily_token_limit,
+            user_id=user.id,
         )
+        # Mask key before returning
+        key = new_config.get("api_key", "")
+        new_config["api_key"] = (key[:4] + "..." + key[-4:]) if len(key) > 8 else "****"
         return {"status": "success", "config": new_config}
     except Exception as e:
         logger.error(f"Error adding LLM config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/llm-inventory/{config_id}")
-def remove_llm_config(config_id: str):
-    """Removes an LLM configuration."""
-    cm = ConfigManager()
-    if cm.remove_user_config(config_id):
-        return {"status": "success"}
-    raise HTTPException(status_code=404, detail="Config not found")
+def remove_llm_config(
+    config_id: str,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Removes the user's LLM configuration. Admin can remove any config."""
+    from src.models import LLMConfig
+    q = db.query(LLMConfig).filter(LLMConfig.id == config_id)
+    if "admin" not in user.roles:
+        q = q.filter(LLMConfig.user_id == user.id)
+    cfg = q.first()
+    if not cfg:
+        raise HTTPException(status_code=404, detail="Config not found")
+    db.delete(cfg)
+    db.commit()
+    return {"status": "success"}
 
 @router.patch("/llm-inventory/{config_id}")
-def update_llm_config(config_id: str, payload: UpdateLLMConfig):
+def update_llm_config(
+    config_id: str,
+    payload: UpdateLLMConfig,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Updates an LLM configuration (name, limit, plan)."""
-    cm = ConfigManager()
+    from src.models import LLMConfig
     updates = {k: v for k, v in payload.dict().items() if v is not None}
     if not updates:
         return {"status": "no_changes"}
-    
-    if cm.update_user_config(config_id, updates):
-        return {"status": "success"}
-    raise HTTPException(status_code=404, detail="Config not found")
+    q = db.query(LLMConfig).filter(LLMConfig.id == config_id)
+    if "admin" not in user.roles:
+        q = q.filter(LLMConfig.user_id == user.id)
+    cfg = q.first()
+    if not cfg:
+        raise HTTPException(status_code=404, detail="Config not found")
+    for k, v in updates.items():
+        setattr(cfg, k, v)
+    db.commit()
+    return {"status": "success"}
 
 # =============================================================================
-# Workflows & Linking
+# Workflows & Linking (DB-backed, per-user)
 # =============================================================================
 
 @router.get("/workflows")
-def get_workflows():
-    """Returns available workflow steps."""
-    cm = ConfigManager()
-    return cm.get_workflows()
+def get_workflows(
+    db: Session = Depends(get_db)
+):
+    """
+    Returns the global catalogue of workflow step definitions.
+    Served from DB (seeded from workflows.json on startup).
+    """
+    from src.models import WorkflowStep
+    steps = db.query(WorkflowStep).all()
+    return [
+        {
+            "id": s.id,
+            "name": s.name,
+            "description": s.description,
+            "required_capabilities": s.required_capabilities or [],
+        }
+        for s in steps
+    ]
 
 @router.get("/workflow-links")
-def get_workflow_links():
-    """Returns current mappings between workflows and LLMs."""
-    cm = ConfigManager()
-    return cm.get_workflow_links()
+def get_workflow_links(
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns this user's WorkflowStep → LLM configuration assignments.
+    Scoped strictly to the authenticated user.
+    """
+    from src.models import WorkflowLLMLink
+    links = db.query(WorkflowLLMLink).filter(
+        WorkflowLLMLink.user_id == user.id
+    ).all()
+    return [
+        {
+            "id": link.id,
+            "workflow_id": link.workflow_id,
+            "llm_config_id": link.llm_config_id,
+        }
+        for link in links
+    ]
 
 @router.post("/workflow-links")
-def link_workflow(payload: LinkWorkflow):
-    """Links an LLM config to a workflow step."""
-    cm = ConfigManager()
-    cm.link_llm_to_workflow(payload.workflow_id, payload.llm_config_id)
+def link_workflow(
+    payload: LinkWorkflow,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Assign an LLM config to a workflow step for the current user.
+    Upsert semantics: if a link for (user, workflow) already exists,
+    update the llm_config_id instead of creating a duplicate.
+    """
+    from src.models import WorkflowLLMLink, WorkflowStep
+
+    # Validate the workflow step exists
+    if not db.query(WorkflowStep).filter(WorkflowStep.id == payload.workflow_id).first():
+        raise HTTPException(status_code=404, detail=f"Workflow step '{payload.workflow_id}' not found")
+
+    existing = db.query(WorkflowLLMLink).filter(
+        WorkflowLLMLink.user_id == user.id,
+        WorkflowLLMLink.workflow_id == payload.workflow_id
+    ).first()
+
+    if existing:
+        existing.llm_config_id = payload.llm_config_id
+    else:
+        db.add(WorkflowLLMLink(
+            user_id=user.id,
+            workflow_id=payload.workflow_id,
+            llm_config_id=payload.llm_config_id
+        ))
+    db.commit()
     return {"status": "success"}
 
 @router.delete("/workflow-links")
-def unlink_workflow(payload: LinkWorkflow):
-    """Unlinks an LLM config from a workflow step."""
-    cm = ConfigManager()
-    cm.unlink_llm_from_workflow(payload.workflow_id, payload.llm_config_id)
+def unlink_workflow(
+    payload: LinkWorkflow,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Remove the LLM assignment for a workflow step for the current user.
+    Returns 404 if the link doesn't exist.
+    """
+    from src.models import WorkflowLLMLink
+    link = db.query(WorkflowLLMLink).filter(
+        WorkflowLLMLink.user_id == user.id,
+        WorkflowLLMLink.workflow_id == payload.workflow_id,
+        WorkflowLLMLink.llm_config_id == payload.llm_config_id
+    ).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="Workflow link not found")
+    db.delete(link)
+    db.commit()
     return {"status": "success"}
 
 # -----------------------------------------------------------------------------
@@ -210,3 +314,171 @@ def set_ats_prompts(prompts: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/preferences")
+def get_preferences(
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get user preferences like global feed visibility."""
+    settings = db.query(Settings).filter(Settings.user_id == user.id).first()
+    if not settings:
+        # Create default
+        settings = Settings(user_id=user.id, include_global_feeds=True)
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+    
+    return {"include_global_feeds": settings.include_global_feeds}
+
+class PreferencesUpdate(BaseModel):
+    include_global_feeds: bool
+
+@router.put("/preferences")
+def update_preferences(
+    prefs: PreferencesUpdate,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update user preferences."""
+    settings = db.query(Settings).filter(Settings.user_id == user.id).first()
+    if not settings:
+        settings = Settings(user_id=user.id, include_global_feeds=prefs.include_global_feeds)
+        db.add(settings)
+    else:
+        settings.include_global_feeds = prefs.include_global_feeds
+    
+    db.commit()
+    return {"status": "success", "include_global_feeds": settings.include_global_feeds}
+
+
+# =============================================================================
+# Upload & Parse Endpoints (Moved from server.py)
+# =============================================================================
+
+@router.post("/upload-template")
+async def upload_template(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Upload a LaTeX resume template."""
+    if not file.filename.endswith(".tex"):
+        raise HTTPException(status_code=400, detail="Only .tex files allowed")
+
+    # Ensure directory
+    save_dir = "data/resumes/templates"
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = f"{save_dir}/{file.filename}"
+    content = await file.read()
+
+    with open(save_path, "wb") as f:
+        f.write(content)
+
+    # Use ProfileService
+    repo = SqlProfileRepository(db)
+    service = ProfileService(repo)
+    
+    resume_id = service.add_resume(current_user.id, "text", file.filename, save_path)
+
+    profile = service.get_profile(current_user.id)
+    profile["custom_template_filename"] = file.filename
+    service.save_profile(current_user.id, profile)
+
+    return {
+        "status": "uploaded",
+        "filename": file.filename,
+        "path": save_path,
+        "resume_id": resume_id
+    }
+
+
+@router.post("/upload-resume")
+async def upload_resume(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Upload a resume (PDF or LaTeX)."""
+    is_pdf = file.filename.endswith(".pdf")
+    is_tex = file.filename.endswith(".tex")
+
+    if not (is_pdf or is_tex):
+        raise HTTPException(status_code=400, detail="Only .pdf or .tex files allowed")
+
+    save_dir = "data/resumes" if is_pdf else "data/resumes/templates"
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = f"{save_dir}/{file.filename}"
+    content = await file.read()
+
+    with open(save_path, "wb") as f:
+        f.write(content)
+
+    repo = SqlProfileRepository(db)
+    service = ProfileService(repo)
+    
+    resume_type = "pdf" if is_pdf else "text"
+    resume_id = service.add_resume(current_user.id, resume_type, file.filename, save_path)
+
+    profile = service.get_profile(current_user.id)
+    if is_pdf:
+        profile["resume_generation_mode"] = "uploaded_pdf"
+        profile["uploaded_pdf_path"] = save_path
+    else:
+        profile["resume_generation_mode"] = "ats_generated"
+        profile["custom_template_filename"] = file.filename
+        profile["uploaded_tex_path"] = save_path
+
+    service.save_profile(current_user.id, profile)
+
+    return {
+        "status": "uploaded",
+        "filename": file.filename,
+        "path": save_path,
+        "resume_id": resume_id
+    }
+
+
+@router.post("/parse-resume")
+async def parse_resume(
+    source: str = "pdf",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Parse an uploaded resume to extract profile data."""
+    from src.resume_parser import ResumeParser
+    
+    repo = SqlProfileRepository(db)
+    service = ProfileService(repo)
+
+    resume_type = "text" if source == "tex" else "pdf"
+    profile = service.get_profile(current_user.id)
+    
+    def get_path(resumes_list, current_id, fallback_path):
+         if not current_id: return fallback_path
+         for r in resumes_list:
+             if r["id"] == current_id:
+                 return r["path"]
+         return fallback_path
+    
+    file_path = None
+    if resume_type == "pdf":
+        file_path = get_path(profile.get("pdf_resumes", []), profile.get("current_pdf_resume_id"), profile.get("uploaded_pdf_path"))
+    else:
+        file_path = get_path(profile.get("text_resumes", []), profile.get("current_text_resume_id"), profile.get("uploaded_tex_path"))
+
+    if not file_path or not os.path.exists(file_path):
+        file_type = "LaTeX" if source == "tex" else "PDF"
+        raise HTTPException(
+            status_code=400,
+            detail=f"No selected {file_type} resume found. Please upload and select one first."
+        )
+
+    try:
+        parser = ResumeParser()
+        parsed_data = await parser.parse_file(file_path, current_user.id)
+        return parsed_data
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        logging.error(f"Resume parsing error: {e}\nStack trace:\n{tb}")
+        raise HTTPException(status_code=500, detail=f"Parsing failed: {str(e)}")

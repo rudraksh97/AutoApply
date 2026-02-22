@@ -1,133 +1,72 @@
 """
-Database connection and initialization module for AutoApply.
+Database initialization module for AutoApply.
+
+Design contract:
+  - `init_db()` MUST be idempotent. Safe to call repeatedly.
+  - All model classes must be imported here so that SQLAlchemy's metadata is
+    populated before `create_all` is invoked.
+  - This module is the SINGLE authoritative place that calls `create_all`.
+    No other module should call it.
 """
 
-import sqlite3
-import os
+import logging
 from contextlib import contextmanager
 
-DB_FILE = "data/jobs.db"
+from .db import engine, SessionLocal, Base  # noqa: F401
 
-def init_db():
-    """Initializes the database with the required schema."""
-    if not os.path.exists("data"):
-        os.makedirs("data")
-        
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    # Create jobs table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS jobs (
-            url TEXT PRIMARY KEY,
-            status TEXT,
-            pdf_path TEXT,
-            timestamp TEXT,
-            details TEXT,
-            error_message TEXT,
-            source_feed TEXT,
-            source_feed_name TEXT,
-            company_name TEXT,
-            job_title TEXT,
-            apply_link TEXT
-        )
-    """)
-    
-    # Create drafts table for draft-first workflow
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS drafts (
-            id TEXT PRIMARY KEY,
-            job_url TEXT UNIQUE,
-            status TEXT NOT NULL,
-            form_state_json TEXT,
-            resume_path TEXT,
-            job_details TEXT,
-            apply_link TEXT,
-            initial_ats_score INTEGER,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )
-    """)
-    
-    # Create resume_versions table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS resume_versions (
-            id TEXT PRIMARY KEY,
-            draft_id TEXT NOT NULL,
-            version_number INTEGER NOT NULL,
-            tex_path TEXT,
-            pdf_path TEXT,
-            ats_score INTEGER,
-            justification TEXT,
-            keywords_added TEXT,
-            changes_summary TEXT,
-            status TEXT DEFAULT 'COMPLETED',
-            is_current INTEGER DEFAULT 0,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (draft_id) REFERENCES drafts (id)
-        )
-    """)
-    
-    # Migration: Add new columns if they don't exist
-    try:
-        cursor.execute("ALTER TABLE resume_versions ADD COLUMN status TEXT DEFAULT 'COMPLETED'")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        cursor.execute("ALTER TABLE jobs ADD COLUMN source_feed TEXT")
-    except sqlite3.OperationalError:
-        pass  # Column already exists
-    try:
-        cursor.execute("ALTER TABLE jobs ADD COLUMN source_feed_name TEXT")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        cursor.execute("ALTER TABLE jobs ADD COLUMN company_name TEXT")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        cursor.execute("ALTER TABLE jobs ADD COLUMN job_title TEXT")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        cursor.execute("ALTER TABLE jobs ADD COLUMN apply_link TEXT")
-    except sqlite3.OperationalError:
-        pass
-    
-    # Migration: Add apply_link to drafts if it doesn't exist
-    try:
-        cursor.execute("ALTER TABLE drafts ADD COLUMN apply_link TEXT")
-    except sqlite3.OperationalError:
-        pass
-    
-    try:
-        cursor.execute("ALTER TABLE drafts ADD COLUMN initial_ats_score INTEGER")
-    except sqlite3.OperationalError:
-        pass
+# ── Import every model so they register with Base.metadata ────────────────────
+from .models import (  # noqa: F401
+    User,
+    Profile,
+    Resume,
+    Feed,
+    Job,
+    Settings,
+    SystemState,
+    WorkflowStep,
+    WorkflowLLMLink,
+    LLMConfig,
+    UserProfile,
+)
 
-    # Migration: Add sent column to jobs
+logger = logging.getLogger(__name__)
+
+# ── Guard against repeated invocations in the same process ────────────────────
+_DB_INITIALIZED = False
+
+
+def init_db() -> None:
+    """
+    Idempotent database initializer.
+
+    Uses SQLAlchemy's `create_all` which is a no-op for tables that already
+    exist. The process-level guard (`_DB_INITIALIZED`) prevents redundant
+    log noise and any future non-idempotent work added here.
+
+    Safe to call from lifespan hooks. NOT safe to call from request handlers.
+    """
+    global _DB_INITIALIZED
+    if _DB_INITIALIZED:
+        logger.debug("init_db() skipped — already initialised in this process.")
+        return
+
     try:
-        cursor.execute("ALTER TABLE jobs ADD COLUMN sent INTEGER DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
+        Base.metadata.create_all(bind=engine)
+        logger.info("DB schema ensured (create_all completed).")
+        _DB_INITIALIZED = True
+    except Exception:
+        logger.exception("FATAL: Database schema initialisation failed.")
+        raise
 
-    # Migration: Add retry_count column to jobs
-    try:
-        cursor.execute("ALTER TABLE jobs ADD COLUMN retry_count INTEGER DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
-
-    conn.commit()
-    conn.close()
-
-def get_db_path():
-    return DB_FILE
 
 @contextmanager
 def get_connection():
-    """Context manager for database connections."""
-    conn = sqlite3.connect(DB_FILE)
+    """
+    Context manager for database sessions.
+    Always closes the session on exit, even on exception.
+    """
+    db = SessionLocal()
     try:
-        yield conn
+        yield db
     finally:
-        conn.close()
+        db.close()

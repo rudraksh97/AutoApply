@@ -124,10 +124,6 @@
     "llm_config_id": "2cca2b1f-00b6-4d50-8c84-30c9e099d51e"
   },
   {
-    "workflow_id": "step_browser_automation",
-    "llm_config_id": "cdd35def-fb35-4eb0-adf0-72549dcb64ec"
-  },
-  {
     "workflow_id": "step_ats_scoring",
     "llm_config_id": "cdd35def-fb35-4eb0-adf0-72549dcb64ec"
   },

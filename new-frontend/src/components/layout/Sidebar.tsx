@@ -13,19 +13,22 @@ const navItems = [
 export function Sidebar({ className }: { className?: string }) {
   const location = useLocation();
 
+  // Hide sidebar on auth pages
+  if (location.pathname === '/login' || location.pathname === '/register') return null;
+
   return (
     <aside className={cn("w-64 bg-[#0C2C55] border-r border-[#296374] flex flex-col", className)}>
       <div className="p-6 border-b border-[#296374]">
         <h1 className="text-xl font-semibold text-[#E8E2DB]">AutoApply 🚀</h1>
       </div>
-      
+
       <nav className="flex-1 p-4">
         <ul className="space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             // Active if exact match or subpath
             const isActive = location.pathname.startsWith(item.path);
-            
+
             return (
               <li key={item.path}>
                 <Link

@@ -18,6 +18,60 @@ from unittest.mock import Mock, AsyncMock
 # Ensure backend imports work
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+from src.database import Base
+from src.models import User
+
+# In-memory SQLite for testing
+SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+@pytest.fixture(scope="function")
+def db_session():
+    """
+    Creates a fresh in-memory SQLite database for each test.
+    Returns a SQLAlchemy session.
+    """
+    Base.metadata.create_all(bind=engine)
+    session = TestingSessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
+
+@pytest.fixture(scope="function")
+def test_user(db_session):
+    """
+    Creates a test user with admin role.
+    """
+    # Create user with all roles to pass permission checks by default
+    user = User(
+        email="test@example.com",
+        hashed_password="hashed_secret",
+        roles=["customer", "basic", "admin"] 
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+@pytest.fixture(autouse=True)
+def patch_session_local(monkeypatch):
+    """
+    Ensure all code using src.db.SessionLocal gets the test session.
+    """
+    monkeypatch.setattr("src.db.SessionLocal", TestingSessionLocal)
+
+
 
 # ============================================================================
 # Session-scoped fixtures

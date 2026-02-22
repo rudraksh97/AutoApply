@@ -14,19 +14,20 @@ class ResumeParser:
     def __init__(self):
         pass
 
-    async def parse_file(self, file_path: str) -> dict:
+    async def parse_file(self, file_path: str, user_id: str) -> dict:
         """
         Reads a file and uses an LLM to extract structured profile data.
 
         Args:
             file_path: Absolute path to the resume file.
+            user_id: ID of the user requesting the parse.
 
         Returns:
             dict: Structured JSON data matching the profile schema.
         """
         text = self._extract_text(file_path)
              
-        data = await self._parse_text_with_llm(text)
+        data = await self._parse_text_with_llm(text, user_id)
         if "skills" not in data:
             data["skills"] = []
         return data
@@ -51,13 +52,13 @@ class ResumeParser:
         except Exception as e:
             raise RuntimeError(f"Failed to read file: {e}")
 
-    async def _parse_text_with_llm(self, text: str) -> dict:
+    async def _parse_text_with_llm(self, text: str, user_id: str) -> dict:
         """Invokes the LLM to parse raw text into structured JSON."""
         from src.llm_factory import LLMFactory
         from src.schemas import ResumeParserOutput
         
         try:
-            llm = LLMFactory.get_llm_for_step("step_resume_parsing")
+            llm = LLMFactory.get_llm_for_step("step_resume_parsing", user_id=user_id)
             
             system_prompt = "You are an expert resume parser. Extract structured data from the resume text into the required JSON format."
             

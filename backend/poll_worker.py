@@ -16,6 +16,14 @@ logger = logging.getLogger("RSSPoller")
 # Ensure src can be imported
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+from src.db import engine, Base
+from src.models import User, Profile, Resume, Job, Feed, Settings  # noqa: F401
+try:
+    Base.metadata.create_all(bind=engine)
+    logger.info("Database tables ensured.")
+except Exception as e:
+    logger.warning(f"Could not create tables (DB may not be ready): {e}")
+
 from src.services.feed_poll_service import FeedPollService
 
 async def main_loop() -> NoReturn:

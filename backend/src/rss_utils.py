@@ -1,5 +1,6 @@
 import logging
 import re
+from typing import Optional
 from urllib.parse import urlparse
 from src.llm_factory import LLMFactory
 from src.prompts import EXTRACT_JOB_LINK_FROM_RSS_PROMPT
@@ -58,7 +59,7 @@ def extract_company_from_feed(feed_url: str, feed_title: str) -> str:
     domain = domain.split('.')[0]
     return domain.replace('-', ' ').title() if domain else None
 
-async def extract_job_link_with_llm(entry: dict) -> dict:
+async def extract_job_link_with_llm(entry: dict, user_id: Optional[str] = None) -> dict:
     """
     Use LLM to extract the actual job application URL from an RSS entry using structured output.
     
@@ -82,7 +83,7 @@ async def extract_job_link_with_llm(entry: dict) -> dict:
     )
     
     try:
-        llm = LLMFactory.get_llm_for_step("step_rss_link_extraction")
+        llm = LLMFactory.get_llm_for_step("step_rss_link_extraction", user_id=user_id)
         
         # Deduct credits
         from src.token_manager import TokenManager

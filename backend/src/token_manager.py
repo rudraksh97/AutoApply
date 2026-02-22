@@ -24,12 +24,7 @@ class TokenManager:
         self._check_and_reset(llm_config_id)
         
         # 2. Record Usage
-        configs = self.config_manager.get_user_configs()
-        target_config = None
-        for cfg in configs:
-            if cfg["id"] == llm_config_id:
-                target_config = cfg
-                break
+        target_config = self.config_manager.get_llm_config(llm_config_id)
         
         if target_config:
             new_usage = target_config.get("tokens_used_today", 0) + tokens_used
@@ -47,12 +42,7 @@ class TokenManager:
         """
         Checks if the daily reset time has passed and resets counters if needed.
         """
-        configs = self.config_manager.get_user_configs()
-        target_config = None
-        for cfg in configs:
-            if cfg["id"] == llm_config_id:
-                target_config = cfg
-                break
+        target_config = self.config_manager.get_llm_config(llm_config_id)
         
         if not target_config:
             return

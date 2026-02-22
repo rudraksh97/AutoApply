@@ -20,6 +20,16 @@ fi
 DOMAIN="autoapply.haxcodes.dev"
 EMAIL="bhuvanthirwani2208usa@gmail.com"
 
+# Install Nginx if not installed
+if ! command -v nginx &> /dev/null; then
+    echo "📦 Installing Nginx..."
+    apt-get update
+    apt-get install -y nginx
+fi
+
+# Ensure sites-available and sites-enabled exist
+mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
+
 # Remove default if exists
 rm -f /etc/nginx/sites-enabled/default
 

@@ -1,17 +1,17 @@
 version: "3.8"
 
 services:
-  new-frontend:
-    build:
-      context: ./new-frontend
-      dockerfile: Dockerfile
-    image: devhaxcodes/autoapply-new-frontend:${TAG:-latest}
-    ports:
-      - "3001:80"
+  # new-frontend:
+  #   build:
+  #     context: ./new-frontend
+  #     dockerfile: Dockerfile
+  #   image: devhaxcodes/autoapply-new-frontend:${TAG:-latest}
+  #   ports:
+  #     - "3001:80"
 
 
-    depends_on:
-      - backend
+  #   depends_on:
+  #     - backend
   backend:
     build:
       context: ./backend
@@ -21,12 +21,9 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/app/data
-    env_file:
-      - .env
     environment:
       - HEADLESS=true
       - PYTHONUNBUFFERED=1
-      - HOST_PROJECT_ROOT=${HOST_PROJECT_ROOT}
     shm_size: '4gb' # Required for Chromium browser automation in Docker
 
   frontend:
@@ -41,17 +38,17 @@ services:
     depends_on:
       - backend
 
-  frontend-revamp:
-    build:
-      context: ./frontend-revamp
-      dockerfile: Dockerfile
-    image: devhaxcodes/autoapply-frontend-revamp:${TAG:-latest}
-    ports:
-      - "3002:3000"
+  # frontend-revamp:
+  #   build:
+  #     context: ./frontend-revamp
+  #     dockerfile: Dockerfile
+  #   image: devhaxcodes/autoapply-frontend-revamp:${TAG:-latest}
+  #   ports:
+  #     - "3002:3000"
 
 
-    depends_on:
-      - backend
+    # depends_on:
+    #   - backend
 
   rss-poller:
     build:
@@ -61,8 +58,6 @@ services:
     command: python poll_worker.py
     volumes:
       - ./data:/app/data
-    env_file:
-      - .env
     environment:
       - HEADLESS=true
       - PYTHONUNBUFFERED=1

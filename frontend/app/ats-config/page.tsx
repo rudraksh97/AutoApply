@@ -1,19 +1,19 @@
 "use client"
 import React, { useState, useEffect } from 'react';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Save, RotateCcw, Sparkles, Target } from 'lucide-react';
+import { Loader2, Save, RotateCcw, Sparkles, Target, Globe } from 'lucide-react';
 import { toast } from 'sonner';
-
-const API_BASE = "/api";
+import { fetchWithAuth } from '@/lib/api';
 
 export default function ATSConfigPage() {
     const [prompts, setPrompts] = useState({
         calculate_score: "",
         tailor_resume: ""
     });
+    const [includeGlobalFeeds, setIncludeGlobalFeeds] = useState(true);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
@@ -40,36 +40,54 @@ export default function ATSConfigPage() {
     };
 
     useEffect(() => {
-        fetchPrompts();
+        Promise.all([fetchPrompts(), fetchPreferences()]).finally(() => setLoading(false));
     }, []);
 
     const fetchPrompts = async () => {
         try {
-            const res = await fetch(`${API_BASE}/settings/ats-prompts`);
+            const res = await fetchWithAuth(`/settings/ats-prompts`);
             if (res.ok) {
                 const data = await res.json();
                 setPrompts(data);
+            } else {
+                toast.error("Failed to load ATS configurations");
             }
         } catch (err) {
             console.error("Failed to fetch prompts", err);
-            toast.error("Failed to load ATS configurations");
-        } finally {
-            setLoading(false);
+        }
+    };
+
+    const fetchPreferences = async () => {
+        try {
+            const res = await fetchWithAuth(`/settings/preferences`);
+            if (res.ok) {
+                const data = await res.json();
+                setIncludeGlobalFeeds(data.include_global_feeds);
+            }
+        } catch (err) {
+            console.error("Failed to fetch preferences", err);
         }
     };
 
     const handleSave = async () => {
         setSaving(true);
         try {
-            const res = await fetch(`${API_BASE}/settings/ats-prompts`, {
+            // Save Prompts
+            const pRes = await fetchWithAuth(`/settings/ats-prompts`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(prompts)
             });
-            if (res.ok) {
-                toast.success("ATS Configuration saved successfully!");
+
+            // Save Preferences
+            const sRes = await fetchWithAuth(`/settings/preferences`, {
+                method: 'PUT',
+                body: JSON.stringify({ include_global_feeds: includeGlobalFeeds })
+            });
+
+            if (pRes.ok && sRes.ok) {
+                toast.success("Settings saved successfully!");
             } else {
-                toast.error("Failed to save configuration");
+                toast.error("Failed to save some settings");
             }
         } catch (err) {
             toast.error("Error connecting to server");
@@ -79,12 +97,10 @@ export default function ATSConfigPage() {
     };
 
     const handleReset = () => {
-        if (confirm("Are you sure you want to reset prompts to defaults?")) {
-            // Let backend handle defaults by sending empty or specific request if we had a reset endpoint, 
-            // but for now we'll just re-fetch or could define defaults here.
-            // Simplest: just fetch again if we haven't modified, or ask user to refresh.
+        if (confirm("Are you sure you want to reset prompts and settings to saved state?")) {
             fetchPrompts();
-            toast.info("Prompts reloaded from current saved state");
+            fetchPreferences();
+            toast.info("Reloaded from server");
         }
     };
 
@@ -101,11 +117,39 @@ export default function ATSConfigPage() {
             <header className="flex flex-col gap-2">
                 <h1 className="text-3xl font-bold tracking-tight font-serif text-foreground">ATS Configuration</h1>
                 <p className="text-muted-foreground">
-                    Customize the AI prompts used for ATS scoring and resume tailoring.
+                    Customize AI prompts and general feed settings.
                 </p>
             </header>
 
             <div className="grid gap-6">
+
+                {/* GENERAL SETTINGS CARD */}
+                <Card className="border-border shadow-sm">
+                    <CardHeader>
+                        <div className="flex items-center gap-2">
+                            <Globe className="h-5 w-5 text-indigo-500" />
+                            <CardTitle>Global Feeds</CardTitle>
+                        </div>
+                        <CardDescription>
+                            Control whether you want to see community-curated job feeds.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex items-center space-x-2">
+                            <input
+                                type="checkbox"
+                                id="globalFeeds"
+                                checked={includeGlobalFeeds}
+                                onChange={(e) => setIncludeGlobalFeeds(e.target.checked)}
+                                className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600 cursor-pointer"
+                            />
+                            <label htmlFor="globalFeeds" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer">
+                                Include Global/Admin Feeds in Job Lists
+                            </label>
+                        </div>
+                    </CardContent>
+                </Card>
+
                 {/* SCORING PROMPT CARD */}
                 <Card className="border-primary/20 shadow-lg hover:shadow-xl transition-shadow duration-300">
                     <CardHeader className="bg-primary/5">

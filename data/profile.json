@@ -1,22 +1,22 @@
 {
   "basics": {
-    "first_name": "Ramachandran",
-    "last_name": "Kulothungan",
-    "email": "ramachandran.kulothungan@gmail.com",
-    "phone": "(716) 9947155",
-    "location": "Chicago, IL"
+    "first_name": "Test",
+    "last_name": "User",
+    "email": "test@example.com",
+    "phone": "123-456-7890",
+    "location": "Test City"
   },
   "urls": {
-    "linkedin": "https://www.linkedin.com/in/ramachandran-kulothungan",
-    "github": "https://github.com/RamachandranKulothungan",
-    "portfolio": ""
+    "linkedin": "http://linkedin.com/in/test",
+    "github": "http://github.com/test",
+    "portfolio": "http://test.com"
   },
   "demographics": {
-    "gender": "",
-    "race": "Asian",
-    "nationality": "Indian",
-    "veteran": "",
-    "disability": ""
+    "gender": "Male",
+    "race": "Prefer not to say",
+    "nationality": "Test",
+    "veteran": "I am not a protected veteran",
+    "disability": "I do not have a disability"
   },
   "work_auth": {
     "authorized_in_us": true,
@@ -24,70 +24,37 @@
   },
   "education": [
     {
-      "degree": "Master of Science in Computer Science",
-      "university": "University at Buffalo",
-      "field_of_study": "Computer Science",
-      "graduation_year": "December 2025"
-    },
-    {
-      "degree": "Bachelor of Technology",
-      "university": "Malaviya National Institute of Technology",
-      "field_of_study": "",
-      "graduation_year": "June 2020"
+      "degree": "BS CS",
+      "university": "Test Uni",
+      "field_of_study": "CS",
+      "graduation_year": "2024"
     }
   ],
   "experience": [
     {
-      "company": "Nokia Bell Labs, Chicago",
-      "role": "Software Dev Cloud Intern",
-      "start_date": "June 2025",
-      "end_date": "December 2025",
-      "description": "Built cloud-native lifecycle automation for Nokia CMM across Kubernetes environments (NCS, OpenShift) using NCOM, enabling reliable deployment, scaling, and upgrade workflows. Developed an extensible Python library exposing 30+ standardized API and logging abstractions, enabling programmatic integration across automation and orchestration workflows using Jenkins. Automated CMM re-installation workflows for T-Mobile (TMO) using Python and NCOM+ tooling, to reduce manual re-installation time from ~9 hours."
-    },
-    {
-      "company": "Dassault Systemes",
-      "role": "Software Development Engineer",
-      "start_date": "August 2020",
-      "end_date": "August 2024",
-      "description": "Built a scalable Python-based internal automation framework adopted by 40+ teams to orchestrate UI and API-driven workflows and CI/CD execution using goCD and Github Actions, significantly reducing manual operational effort. Led a platform decentralization initiative by modularizing shared libraries, defining versioned packaging patterns, and automating artifact publishing to Artifactory using GitHub Actions, enabling team-owned repositories and independent releases. Worked on cloud infrastructure migration and optimization on AWS, designing reusable Terraform modules and rightsizing EC2 resources to achieve ~60% cost reduction and faster environment provisioning. Engineered and deployed an internal developer productivity tool (Django, AWS, Kubernetes) to index and search library keywords across 10+ repositories, improving discoverability and onboarding efficiency. Implemented centralized observability and analytics using structured logging and Sumo Logic dashboards to provide real-time visibility into test pipeline health for 30+ teams. Led data validation for a production AWS DMS migration (MySQL \u2192 PostgreSQL) by building automated Ruby/SQL integrity checks, ensuring data correctness and reducing manual validation effort by ~90%. Recognized with 2 company awards for engineering contributions that reduced system execution time by ~50% and improved reliability and scalability across organization-wide platforms."
+      "company": "Test Corp",
+      "role": "Engineer",
+      "start_date": "01/2020",
+      "end_date": "Present",
+      "description": "Doing testing."
     }
   ],
-  "skills": "Python, JavaScript, C, Java, FastAPI, Next.js, Django, React, AWS, Docker, Kubernetes, Terraform, GitHub Actions, PostgreSQL, MySQL, MongoDB, Web Development, DevOps",
-  "great_fit_pitch": "",
-  "cover_letter_template": "",
+  "skills": "",
+  "great_fit_pitch": "I am great.",
+  "cover_letter_template": "Hello {{company}}",
   "why_us": "",
   "challenging_project": "",
-  "uploaded_pdf_path": "data/resumes/Bhuvan_Thirwani_Software_Engineer_2026.pdf",
-  "uploaded_pdf_filename": "Bhuvan_Thirwani_Software_Engineer_2026.pdf",
-  "uploaded_tex_path": "data/resumes/templates/resume.tex",
-  "uploaded_tex_filename": "resume.tex",
-  "pdf_resumes": [
-    {
-      "id": "23a74286-106a-4170-82ec-44544a89232b",
-      "filename": "Bhuvan_Thirwani_Software_Engineer_2026.pdf",
-      "path": "data/resumes/Bhuvan_Thirwani_Software_Engineer_2026.pdf",
-      "created_at": "2026-01-17T02:18:02.988355"
-    }
-  ],
-  "text_resumes": [
-    {
-      "id": "367bef04-abbc-422f-b1a3-422c6a502a28",
-      "filename": "Bhuvan_Thirwani_Software_Engineer_Robinhood_2026.tex",
-      "path": "data/resumes/templates/Bhuvan_Thirwani_Software_Engineer_Robinhood_2026.tex",
-      "created_at": "2026-01-21T06:09:18.262580"
-    },
-    {
-      "id": "363d8a63-476e-4bd8-a80e-641c0856167b",
-      "filename": "resume.tex",
-      "path": "data/resumes/templates/resume.tex",
-      "created_at": "2026-02-05T04:57:58.933122"
-    }
-  ],
-  "current_pdf_resume_id": "23a74286-106a-4170-82ec-44544a89232b",
-  "current_text_resume_id": "363d8a63-476e-4bd8-a80e-641c0856167b",
+  "uploaded_pdf_path": "",
+  "uploaded_pdf_filename": "",
+  "uploaded_tex_path": "",
+  "uploaded_tex_filename": "",
+  "pdf_resumes": [],
+  "text_resumes": [],
+  "current_pdf_resume_id": null,
+  "current_text_resume_id": null,
   "resume_generation_mode": "ats_generated",
   "use_uploaded_resume": false,
-  "custom_template_filename": "resume.tex",
+  "custom_template_filename": "",
   "uploaded_resume_path": "",
   "uploaded_resume_filename": ""
 }

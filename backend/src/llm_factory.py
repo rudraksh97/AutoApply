@@ -150,15 +150,15 @@ class LLMFactory:
     """
 
     @classmethod
-    def get_llm_for_step(cls, step_id: str):
+    def get_llm_for_step(cls, step_id: str, user_id: Optional[str] = None):
         """
-        Returns an LLM instance optimized for the specific workflow step.
+        Returns an LLM instance optimized for the specific workflow step and user.
         """
         cm = ConfigManager()
         tm = TokenManager()
         
-        # 1. Get Linked Configs
-        links = cm.get_workflow_links()
+        # 1. Get Linked Configs for this user
+        links = cm.get_workflow_links(user_id=user_id)
         linked_config_ids = [l["llm_config_id"] for l in links if l["workflow_id"] == step_id]
         
         if not linked_config_ids:
@@ -172,21 +172,25 @@ class LLMFactory:
                 "step_resume_parsing"
             ]
             if step_id in internal_steps:
-                 logger.warning(f"No LLMs linked to internal step '{step_id}'. Falling back.")
+                 logger.warning(f"No LLMs linked to step '{step_id}' for user '{user_id}'. Falling back.")
             else:
                  logger.warning(f"Unknown step '{step_id}'. Falling back.")
                  
-            return cls._get_fallback_llm(cm)
+            return cls._get_fallback_llm(cm, user_id=user_id)
 
-        all_configs = cm.get_user_configs()
+        all_configs = cm.get_user_configs(user_id=user_id)
         candidates = []
         
         for cfg in all_configs:
             if cfg["id"] in linked_config_ids:
-                # 2. Check Limits (Dynamic from SDK)
+                # 2. Check Limits (DB override or SDK default)
                 sdk_id = cfg.get("sdk_id")
                 sdk = cm.get_sdk_definition(sdk_id)
-                limit = sdk.get("daily_token_limit", 1000000) if sdk else 1000000
+                
+                # Use DB override if set (> 0), otherwise use SDK definition
+                limit = cfg.get("daily_token_limit")
+                if not limit or limit <= 0:
+                    limit = sdk.get("daily_token_limit", 1000000) if sdk else 1000000
                 
                 used = cfg.get("tokens_used_today", 0)
                 remaining = limit - used
@@ -196,7 +200,7 @@ class LLMFactory:
         
         if not candidates:
             logger.error(f"All linked LLMs for '{step_id}' are exhausted! Falling back.")
-            return cls._get_fallback_llm(cm)
+            return cls._get_fallback_llm(cm, user_id=user_id)
             
         # 3. Sort by Highest Remaining
         candidates.sort(key=lambda x: x[0], reverse=True)
@@ -221,6 +225,10 @@ class LLMFactory:
         model = sdk.get("model_name")
         api_key = config.get("api_key")
         
+        if not api_key:
+            logger.error(f"API key missing for config '{config.get('name')}'")
+            raise ValueError(f"API key is missing for LLM configuration '{config.get('name')}'. Please update it in Settings.")
+        
         llm = None
 
         if provider == "mistral_sdk":
@@ -234,7 +242,8 @@ class LLMFactory:
                  llm = ChatMistralAI(
                      model=model,
                      api_key=api_key,
-                     temperature=0.1
+                     temperature=0.1,
+                     max_tokens=8192
                  )
             except Exception as e:
                 logger.error(f"Failed to initialize Mistral LLM: {e}")
@@ -247,7 +256,8 @@ class LLMFactory:
             llm = ChatGoogleGenerativeAI(
                 model=model,
                 google_api_key=api_key,
-                temperature=0.1
+                temperature=0.1,
+                max_output_tokens=8192
             )
             
         elif provider == "cerebras":
@@ -255,7 +265,8 @@ class LLMFactory:
                 llm = ChatCerebras(
                     model=model,
                     api_key=api_key,
-                    temperature=0.1
+                    temperature=0.1,
+                    max_tokens=8192
                 )
             else:
                  # Fallback if library missing
@@ -266,7 +277,8 @@ class LLMFactory:
                     openai_api_key=api_key,
                     base_url="https://api.cerebras.ai/v1",
                     openai_api_base="https://api.cerebras.ai/v1",
-                    temperature=0.1
+                    temperature=0.1,
+                    max_tokens=8192
                 )
             
         elif provider == "openrouter":
@@ -276,7 +288,8 @@ class LLMFactory:
                 openai_api_key=api_key,
                 base_url="https://openrouter.ai/api/v1",
                 openai_api_base="https://openrouter.ai/api/v1",
-                temperature=0.1
+                temperature=0.1,
+                max_tokens=8192
             )
             
         else: # openai_compatible
@@ -287,35 +300,45 @@ class LLMFactory:
                 openai_api_key=api_key,
                 base_url=base_url,
                 openai_api_base=base_url,
-                temperature=0.1
+                temperature=0.1,
+                max_tokens=8192
             )
             
         # Unified Adaptation Pattern (Decorator Pattern)
         return adapt_llm(llm, provider, config.get("id"), model)
 
     @classmethod
-    def _get_fallback_llm(cls, cm: ConfigManager):
+    def _get_fallback_llm(cls, cm: ConfigManager, user_id: Optional[str] = None):
         """Last resort fallback."""
-        all_configs = cm.get_user_configs()
+        all_configs = cm.get_user_configs(user_id=user_id)
         for cfg in all_configs:
-            if cfg.get("plan_type") == "free":
+            if cfg.get("plan_type") == "free" or not user_id:
                  return cls._create_llm_instance(cfg)
         
-        fallback = ChatOpenAI(model="gpt-3.5-turbo")
-        return adapt_llm(fallback, "openai", "fallback", "gpt-3.5-turbo")
+        if user_id:
+             # Try global configs if user-specific free one not found
+             all_configs = cm.get_user_configs(user_id=None)
+             for cfg in all_configs:
+                  if cfg.get("plan_type") == "free":
+                       return cls._create_llm_instance(cfg)
+
+        # If no configuration found, we cannot proceed meaningfully
+        logger.error(f"No LLM configurations found for user '{user_id}'.")
+        raise ValueError("No LLM configurations found. Please go to Settings and add your API key.")
 
     @classmethod
     def _create_generic_llm(cls, config):
         llm = ChatOpenAI(
-            model="gpt-3.5-turbo",
+            model="gpt-4o-mini", # Use a more robust default than 3.5
             api_key=config.get("api_key"),
-            openai_api_key=config.get("api_key")
+            openai_api_key=config.get("api_key"),
+            max_tokens=8192
         )
-        return adapt_llm(llm, "openai", config.get("id"), "gpt-3.5-turbo")
+        return adapt_llm(llm, "openai", config.get("id"), "gpt-4o-mini")
 
     # Backwards compatibility
     @classmethod
-    def get_llm(cls):
-        logger.warning("Legacy get_llm() called. Defaulting to 'Browser Automation' step.")
-        return cls.get_llm_for_step("step_browser_automation")
+    def get_llm(cls, user_id: Optional[str] = None):
+        logger.warning(f"Legacy get_llm() called for user '{user_id}'. Defaulting to 'Browser Automation' step.")
+        return cls.get_llm_for_step("step_browser_automation", user_id=user_id)
 

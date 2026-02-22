@@ -1,13 +1,13 @@
 version: "3.8"
 
 services:
-  new-frontend:
-    image: devhaxcodes/autoapply-new-frontend:${TAG:-prod}
-    ports:
-      - "3001:80"
+  # new-frontend:
+  #   image: devhaxcodes/autoapply-new-frontend:${TAG:-prod}
+  #   ports:
+  #     - "3001:80"
 
-    depends_on:
-      - backend
+  #   depends_on:
+  #     - backend
   backend:
     image: devhaxcodes/autoapply-backend:${TAG:-prod}
     ports:
@@ -30,13 +30,13 @@ services:
     depends_on:
       - backend
 
-  frontend-revamp:
-    image: devhaxcodes/autoapply-frontend-revamp:${TAG:-prod}
-    ports:
-      - "3002:3000"
+  # frontend-revamp:
+  #   image: devhaxcodes/autoapply-frontend-revamp:${TAG:-prod}
+  #   ports:
+  #     - "3002:3000"
 
-    depends_on:
-      - backend
+  #   depends_on:
+  #     - backend
 
   rss-poller:
     image: devhaxcodes/autoapply-backend:${TAG:-prod}

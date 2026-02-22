@@ -14,11 +14,10 @@ import shutil
 import subprocess
 import traceback
 from datetime import datetime
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from pydantic import BaseModel
 
 import jinja2
-from dotenv import load_dotenv
 from src.prompts import RESUME_OPTIMIZER_PROMPT_TEMPLATE
 from src.schemas import (
     ATSScoreOutput,
@@ -26,7 +25,6 @@ from src.schemas import (
     JustificationDetail
 )
 
-load_dotenv()
 logger = logging.getLogger(__name__)
 
 
@@ -40,14 +38,23 @@ class ResumeBuilder:
     def __init__(
         self,
         base_template_path: str = "data/resumes/templates/resume_base.tex",
-        output_dir: str = "data/generated_resumes"
+        output_dir: str = "data/generated_resumes",
+        user_email: str = None,
+        user_id: str = None,
     ):
-        self.base_template_path = base_template_path
-        self.output_dir = output_dir
+        self.user_id = user_id
+        # Per-user directory: data/{user_email}/...
+        if user_email:
+            self.base_user_data = os.path.join("data", user_email)
+            self.output_dir = os.path.join(self.base_user_data, "generated_resumes")
+            self.base_template_path = base_template_path
+        else:
+            self.base_user_data = "data"
+            self.output_dir = output_dir
+            self.base_template_path = base_template_path
 
         self._ensure_directories()
         self._setup_jinja_env()
-        # self.llm removed - we instantiate per-step LLMs now
 
     def _ensure_directories(self):
         """Create required directories."""
@@ -76,7 +83,7 @@ class ResumeBuilder:
     # ATS Score Calculation
     # -------------------------------------------------------------------------
 
-    async def calculate_ats_score(self, job_description: str, resume_text: str) -> dict:
+    async def calculate_ats_score(self, job_description: str, resume_text: str, user_id: Optional[str] = None) -> dict:
         """Calculate ATS compatibility score using structured LLM output."""
         from src.config import ConfigManager
         
@@ -90,7 +97,7 @@ class ResumeBuilder:
             from src.llm_factory import LLMFactory
             from src.token_manager import TokenManager
 
-            llm = LLMFactory.get_llm_for_step("step_ats_scoring")
+            llm = LLMFactory.get_llm_for_step("step_ats_scoring", user_id=user_id)
             
             # Deduct credits
             config_id = getattr(llm, "config_id", None)
@@ -151,7 +158,8 @@ class ResumeBuilder:
         job_description: str,
         user_profile_text: str,
         custom_prompt: str = None,
-        ats_context: dict = None
+        ats_context: dict = None,
+        user_id: Optional[str] = None
     ) -> dict:
         """Tailor LaTeX template using LLM with ATS context."""
         prompt = self._build_tailoring_prompt(
@@ -163,7 +171,7 @@ class ResumeBuilder:
             from src.llm_factory import LLMFactory
             from src.token_manager import TokenManager
 
-            llm = LLMFactory.get_llm_for_step("step_resume_tailoring")
+            llm = LLMFactory.get_llm_for_step("step_resume_tailoring", user_id=user_id)
             
             # Deduct credits
             config_id = getattr(llm, "config_id", None)
@@ -375,7 +383,8 @@ class ResumeBuilder:
         ats_context: dict = None,
         job_manager=None,
         job_url: str = None,
-        raw_latex: str = None
+        raw_latex: str = None,
+        user_id: str = None
     ) -> Tuple[str, str, str, str]:
         """
         Orchestrate resume tailoring and PDF generation.
@@ -395,7 +404,8 @@ class ResumeBuilder:
                 metadata = await self._tailor_resume(
                     paths, job_description, user_profile_text,
                     template_path, tailoring_prompt, ats_context, log,
-                    raw_latex=raw_latex
+                    raw_latex=raw_latex,
+                    user_id=user_id or self.user_id
                 )
 
                 await self._compile_resume(paths, log)
@@ -416,9 +426,9 @@ class ResumeBuilder:
 
     def _setup_build_paths(self, job_id: str, version: str) -> dict:
         """Setup and create directories for build artifacts."""
-        gen_dir = os.path.join("data", "generated_resumes", str(job_id), version)
-        tex_dir = os.path.join("data", "tex_resumes", str(job_id), version)
-        log_dir = os.path.join("data", "logs", str(job_id))
+        gen_dir = os.path.join(self.output_dir, str(job_id), version)
+        tex_dir = os.path.join(self.base_user_data, "tex_resumes", str(job_id), version)
+        log_dir = os.path.join(self.base_user_data, "logs", str(job_id))
 
         for d in [gen_dir, tex_dir, log_dir]:
             os.makedirs(d, exist_ok=True)
@@ -454,7 +464,8 @@ class ResumeBuilder:
         tailoring_prompt: str,
         ats_context: dict,
         log,
-        raw_latex: str = None
+        raw_latex: str = None,
+        user_id: str = None
     ) -> dict:
         """Tailor resume content and write to tex file."""
         metadata = {"keywords": "", "summary": "", "score": 0}
@@ -475,7 +486,8 @@ class ResumeBuilder:
             log("Applying LLM-based LaTeX tailoring...")
             result = await self.tailor_latex(
                 template_content, job_description, user_profile_text,
-                custom_prompt=tailoring_prompt, ats_context=ats_context
+                custom_prompt=tailoring_prompt, ats_context=ats_context,
+                user_id=user_id
             )
             latex_content = result["latex"]
             metadata["keywords"] = result["keywords"]

@@ -15,16 +15,12 @@ import re
 
 from browser_use import Agent, Browser
 from browser_use.llm.openrouter.chat import ChatOpenRouter
-from dotenv import load_dotenv
-
 from src.config import ConfigManager
 from src.prompts import (
     EXTRACT_FORM_TASK_TEMPLATE,
     FORM_EXTRACTION_CONTEXT,
     SCRAPE_JOB_TASK_TEMPLATE,
 )
-
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 

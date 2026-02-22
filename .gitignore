@@ -9,6 +9,10 @@ __pycache__/
 !data/*.json
 *logs/*
 
+# configs (credentials)
+backend/configs/development.json
+!backend/configs/development.example.json
+
 # dependencies
 /node_modules
 /.pnp

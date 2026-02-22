@@ -1,6 +1,5 @@
 "use client"
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,16 +10,15 @@ import {
     Cpu,
     Trash2,
     Plus,
-    Link as LinkIcon,
     ExternalLink,
     Loader2,
     AlertCircle,
     CheckCircle2,
-    Settings2,
     Activity,
     XCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { fetchWithAuth } from '@/lib/api';
 
 interface SDKDefinition {
     id: string;
@@ -55,16 +53,11 @@ interface WorkflowLink {
 
 export default function SettingsPage() {
 
-
     // Data State
     const [sdks, setSdks] = useState<SDKDefinition[]>([]);
     const [inventory, setInventory] = useState<LLMConfig[]>([]);
     const [workflows, setWorkflows] = useState<WorkflowStep[]>([]);
     const [links, setLinks] = useState<WorkflowLink[]>([]);
-
-
-
-    // Loading State
 
     // Loading State
     const [loading, setLoading] = useState(true);
@@ -88,19 +81,23 @@ export default function SettingsPage() {
     const [extensionStatus, setExtensionStatus] = useState<'checking' | 'installed' | 'not_installed'>('checking');
 
     // Initial Data Fetch
-    // Initial Data Fetch
     const fetchData = async () => {
         try {
             const [sdkRes, invRes, wfRes, linkRes] = await Promise.all([
-                axios.get(`/api/settings/sdks`),
-                axios.get(`/api/settings/llm-inventory`),
-                axios.get(`/api/settings/workflows`),
-                axios.get(`/api/settings/workflow-links`)
+                fetchWithAuth(`/settings/sdks`),
+                fetchWithAuth(`/settings/llm-inventory`),
+                fetchWithAuth(`/settings/workflows`),
+                fetchWithAuth(`/settings/workflow-links`)
             ]);
-            setSdks(sdkRes.data);
-            setInventory(invRes.data);
-            setWorkflows(wfRes.data);
-            setLinks(linkRes.data);
+
+            if (sdkRes.ok && invRes.ok && wfRes.ok && linkRes.ok) {
+                setSdks(await sdkRes.json());
+                setInventory(await invRes.json());
+                setWorkflows(await wfRes.json());
+                setLinks(await linkRes.json());
+            } else {
+                toast.error("Failed to load some settings data.");
+            }
         } catch (e) {
             console.error("Failed to load settings data", e);
             toast.error("Failed to load settings. Check backend connection.");
@@ -126,12 +123,20 @@ export default function SettingsPage() {
 
         setSubmitting(true);
         try {
-            await axios.post(`/api/settings/llm-inventory`, newConfig);
-            toast.success("LLM Added Successfully");
-            setIsAddDialogOpen(false);
-            setNewConfig({ sdk_id: "", name: "", api_key: "", plan_type: "free" });
-            setSelectedProvider("");
-            fetchData();
+            const res = await fetchWithAuth(`/settings/llm-inventory`, {
+                method: 'POST',
+                body: JSON.stringify(newConfig)
+            });
+
+            if (res.ok) {
+                toast.success("LLM Added Successfully");
+                setIsAddDialogOpen(false);
+                setNewConfig({ sdk_id: "", name: "", api_key: "", plan_type: "free" });
+                setSelectedProvider("");
+                fetchData();
+            } else {
+                toast.error("Failed to add LLM configuration");
+            }
         } catch (e) {
             toast.error("Failed to add LLM configuration");
         } finally {
@@ -142,9 +147,15 @@ export default function SettingsPage() {
     const handleDeleteConfig = async (id: string) => {
         if (!confirm("Are you sure? This will unlink it from any workflows.")) return;
         try {
-            await axios.delete(`/api/settings/llm-inventory/${id}`);
-            toast.success("Deleted config");
-            fetchData();
+            const res = await fetchWithAuth(`/settings/llm-inventory/${id}`, {
+                method: 'DELETE'
+            });
+            if (res.ok) {
+                toast.success("Deleted config");
+                fetchData();
+            } else {
+                toast.error("Failed to delete config");
+            }
         } catch (e) {
             toast.error("Failed to delete config");
         }
@@ -157,9 +168,17 @@ export default function SettingsPage() {
     const handleLinkLLM = async (workflow_id: string, llm_config_id: string) => {
         if (!llm_config_id) return;
         try {
-            await axios.post(`/api/settings/workflow-links`, { workflow_id, llm_config_id });
-            toast.success("Linked LLM to Workflow");
-            fetchData();
+            const res = await fetchWithAuth(`/settings/workflow-links`, {
+                method: 'POST',
+                body: JSON.stringify({ workflow_id, llm_config_id })
+            });
+
+            if (res.ok) {
+                toast.success("Linked LLM to Workflow");
+                fetchData();
+            } else {
+                toast.error("Failed to link LLM");
+            }
         } catch (e) {
             toast.error("Failed to link LLM");
         }
@@ -167,19 +186,21 @@ export default function SettingsPage() {
 
     const handleUnlinkLLM = async (workflow_id: string, llm_config_id: string) => {
         try {
-            await axios.delete(`/api/settings/workflow-links`, {
-                data: { workflow_id, llm_config_id }
+            const res = await fetchWithAuth(`/settings/workflow-links`, {
+                method: 'DELETE',
+                body: JSON.stringify({ workflow_id, llm_config_id })
             });
-            toast.success("Unlinked LLM");
-            fetchData();
+
+            if (res.ok) {
+                toast.success("Unlinked LLM");
+                fetchData();
+            } else {
+                toast.error("Failed to unlink LLM");
+            }
         } catch (e) {
             toast.error("Failed to unlink LLM");
         }
     };
-
-    // ------------------------------------------------------------------------
-    // Job Manager Actions
-    // ------------------------------------------------------------------------
 
     // ------------------------------------------------------------------------
     // Helpers

@@ -1,862 +1,569 @@
-"use client"
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Plus, Trash2, Sparkles, FileText, Upload, Database, LayoutGrid, Loader2 } from "lucide-react";
+"use client";
+
+import { useEffect, useState, useRef } from "react";
+import { fetchWithAuth } from "@/lib/api";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
-import { Separator } from "@/components/ui/separator";
+import { useAuth } from "@/components/providers/auth-provider";
+import { Plus, Trash2, Upload, FileText, CheckCircle } from "lucide-react";
+
+// ─── Types ────────────────────────────────────────────────────────────
+
+interface KBEntry {
+    id: string;
+    question: string;
+    answer: string;
+}
+
+interface Education {
+    degree: string;
+    university: string;
+    field_of_study: string;
+    graduation_year: string;
+}
+
+interface Experience {
+    company: string;
+    role: string;
+    start_date: string;
+    end_date: string;
+    description: string;
+}
+
+interface ResumeInfo {
+    id: string;
+    filename: string;
+    path: string;
+    created_at: string;
+}
+
+interface ProfileData {
+    basics: { first_name: string; last_name: string; email: string; phone: string; location: string; };
+    urls: { linkedin: string; github: string; portfolio: string; };
+    demographics: { gender: string; race: string; nationality: string; veteran: string; disability: string; };
+    work_auth: { authorized_in_us: boolean; requires_sponsorship: boolean; };
+    education: Education[];
+    experience: Experience[];
+    skills: string;
+    cover_letter_template: string;
+    knowledge_base: KBEntry[];
+    pdf_resumes: ResumeInfo[];
+    text_resumes: ResumeInfo[];
+    current_pdf_resume_id: string | null;
+    current_text_resume_id: string | null;
+    resume_generation_mode: string;
+    use_uploaded_resume: boolean;
+}
+
+const EMPTY_EDU: Education = { degree: "", university: "", field_of_study: "", graduation_year: "" };
+const EMPTY_EXP: Experience = { company: "", role: "", start_date: "", end_date: "", description: "" };
+
+const DEFAULT_PROFILE: ProfileData = {
+    basics: { first_name: "", last_name: "", email: "", phone: "", location: "" },
+    urls: { linkedin: "", github: "", portfolio: "" },
+    demographics: { gender: "", race: "Prefer not to say", nationality: "", veteran: "I am not a protected veteran", disability: "I do not have a disability" },
+    work_auth: { authorized_in_us: true, requires_sponsorship: false },
+    education: [{ ...EMPTY_EDU }],
+    experience: [{ ...EMPTY_EXP }],
+    skills: "",
+    cover_letter_template: "",
+    knowledge_base: [],
+    pdf_resumes: [],
+    text_resumes: [],
+    current_pdf_resume_id: null,
+    current_text_resume_id: null,
+    resume_generation_mode: "ats_generated",
+    use_uploaded_resume: false,
+};
+
+// ─── Shared UI ────────────────────────────────────────────────────────
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+    return (
+        <div>
+            <label className="block text-sm font-medium mb-1 text-foreground">{label}</label>
+            {children}
+        </div>
+    );
+}
+
+const inputClass = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring";
+const selectClass = `${inputClass} cursor-pointer`;
+
+function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+    return (
+        <div className="bg-card p-6 border-x border-b shadow-sm">
+            <h2 className="text-lg font-semibold mb-4">{title}</h2>
+            {children}
+        </div>
+    );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────
 
 export default function ProfilePage() {
-    const [profile, setProfile] = useState<any>(null);
+    const { user } = useAuth();
+    const [profile, setProfile] = useState<ProfileData>(DEFAULT_PROFILE);
     const [loading, setLoading] = useState(true);
-    const [isProcessing, setIsProcessing] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [uploading, setUploading] = useState<"pdf" | "tex" | null>(null);
+    const [autofilling, setAutofilling] = useState<string | null>(null); // resume_id being autofilled
+    const pdfRef = useRef<HTMLInputElement>(null);
+    const texRef = useRef<HTMLInputElement>(null);
 
-
-
-    const fetchProfile = async () => {
-        try {
-            const res = await axios.get(`/api/profile`);
-            setProfile(res.data);
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
-        }
-    };
+    // New Q&A entry state
+    const [newQ, setNewQ] = useState("");
+    const [newA, setNewA] = useState("");
 
     useEffect(() => {
-        fetchProfile();
+        // Load profile + resume list in parallel
+        Promise.all([
+            fetchWithAuth("/profile").then(r => r.json()),
+            fetchWithAuth("/profile/resumes").then(r => r.json()).catch(() => ({ pdf_resumes: [], tex_resumes: [] })),
+        ])
+            .then(([profileData, resumeData]) => {
+                setProfile({
+                    ...DEFAULT_PROFILE,
+                    ...profileData,
+                    education: profileData.education?.length ? profileData.education : [{ ...EMPTY_EDU }],
+                    experience: profileData.experience?.length ? profileData.experience : [{ ...EMPTY_EXP }],
+                    knowledge_base: profileData.knowledge_base || [],
+                    pdf_resumes: resumeData.pdf_resumes || [],
+                    text_resumes: resumeData.tex_resumes || [],
+                });
+            })
+            .catch(() => toast.error("Failed to load profile"))
+            .finally(() => setLoading(false));
     }, []);
 
-    const uploadFile = async (file: File, type: 'pdf' | 'tex') => {
-        const formData = new FormData();
-        formData.append('file', file);
-
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setSaving(true);
         try {
-            setIsProcessing(true);
-            const endpoint = type === 'pdf' ? '/upload-resume' : '/upload-template';
-            await axios.post(`/api${endpoint}`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
+            const { pdf_resumes, text_resumes, ...payload } = profile;
+            const res = await fetchWithAuth("/profile", {
+                method: "POST",
+                body: JSON.stringify(payload),
             });
-            toast.success(`${type.toUpperCase()} uploaded successfully!`);
-            fetchProfile(); // Refresh list
-        } catch (err: any) {
-            console.error(err);
-            toast.error(`Failed to upload ${type}: ` + (err.response?.data?.detail || err.message));
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
-    const deleteResume = async (resumeId: string) => {
-        try {
-            setIsProcessing(true);
-            await axios.delete(`/api/profile/resumes/${resumeId}`);
-            toast.success("Resume deleted");
-            fetchProfile();
-        } catch (err) {
-            toast.error("Failed to delete resume");
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
-    const selectResume = async (resumeId: string) => {
-        try {
-            setIsProcessing(true);
-            await axios.post(`/api/profile/resumes/${resumeId}/select`);
-            toast.success("Current resume updated");
-            fetchProfile();
-        } catch (err) {
-            toast.error("Failed to select resume");
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
-    const handleParseResume = async (source: 'pdf' | 'tex') => {
-        try {
-            setIsProcessing(true);
-            const endpoint = `/parse-resume?source=${source}`;
-            const res = await axios.post(`/api${endpoint}`);
-            const parsed = res.data;
-
-            // Merge parsed data into profile
-            setProfile((prev: any) => ({
-                ...prev,
-                basics: { ...prev.basics, ...parsed.basics },
-                urls: { ...prev.urls, ...parsed.urls },
-                education: parsed.education || prev.education,
-                experience: parsed.experience || prev.experience,
-                skills: parsed.skills
-                    ? Array.isArray(parsed.skills)
-                        ? parsed.skills.join(", ")
-                        : parsed.skills
-                    : prev.skills
-            }));
-
-            toast.success(`Profile auto-filled from ${source.toUpperCase()}! Please review changes.`);
-        } catch (err: any) {
-            console.error(err);
-            toast.error(`Failed to parse ${source}. Ensure one is uploaded.`);
-        } finally {
-            setIsProcessing(false);
-        }
-    };
-
-    const handleChange = (section: string, field: string, value: any) => {
-        setProfile((prev: any) => {
-            if (section === 'root') {
-                return { ...prev, [field]: value };
+            if (res.ok) {
+                toast.success("Profile saved");
+            } else {
+                const err = await res.json().catch(() => ({}));
+                toast.error(err.detail || "Save failed");
             }
-            return {
-                ...prev,
-                [section]: {
-                    ...prev[section],
-                    [field]: value
-                }
-            };
-        });
-    };
-
-    const saveProfile = async () => {
-        try {
-            await axios.post(`/api/profile`, profile);
-            toast.success("Profile saved!");
-        } catch (e) {
-            toast.error("Failed to save profile");
+        } catch {
+            toast.error("Error saving profile");
+        } finally {
+            setSaving(false);
         }
     };
 
-    if (loading) return <div>Loading...</div>;
-    if (!profile) return <div>Error loading profile.</div>;
+    const handleUpload = async (file: File, type: "pdf" | "tex") => {
+        setUploading(type);
+        const form = new FormData();
+        form.append("file", file);
+        try {
+            const res = await fetchWithAuth("/profile/resumes", { method: "POST", body: form });
+            if (res.ok) {
+                const { resume } = await res.json();
+                setProfile(p => ({
+                    ...p,
+                    pdf_resumes: type === "pdf" ? [...p.pdf_resumes, resume] : p.pdf_resumes,
+                    text_resumes: type === "tex" ? [...p.text_resumes, resume] : p.text_resumes,
+                }));
+                toast.success(`${type.toUpperCase()} uploaded`);
+            } else {
+                toast.error("Upload failed");
+            }
+        } catch {
+            toast.error("Upload error");
+        } finally {
+            setUploading(null);
+        }
+    };
+
+    const handleSelectResume = async (id: string) => {
+        const res = await fetchWithAuth(`/profile/resumes/${id}/select`, { method: "POST" });
+        if (res.ok) {
+            const isPdf = profile.pdf_resumes.some(r => r.id === id);
+            setProfile(p => ({
+                ...p,
+                current_pdf_resume_id: isPdf ? id : p.current_pdf_resume_id,
+                current_text_resume_id: !isPdf ? id : p.current_text_resume_id,
+            }));
+            toast.success("Active resume updated");
+        }
+    };
+
+    const handleDeleteResume = async (id: string) => {
+        if (!confirm("Delete this resume?")) return;
+        const res = await fetchWithAuth(`/profile/resumes/${id}`, { method: "DELETE" });
+        if (res.ok) {
+            setProfile(p => ({
+                ...p,
+                pdf_resumes: p.pdf_resumes.filter(r => r.id !== id),
+                text_resumes: p.text_resumes.filter(r => r.id !== id),
+                current_pdf_resume_id: p.current_pdf_resume_id === id ? null : p.current_pdf_resume_id,
+                current_text_resume_id: p.current_text_resume_id === id ? null : p.current_text_resume_id,
+            }));
+            toast.success("Resume deleted");
+        }
+    };
+
+    const handleAutofill = async (resumeId: string, filename: string) => {
+        setAutofilling(resumeId);
+        try {
+            const res = await fetchWithAuth(`/profile/resumes/${resumeId}/autofill`, { method: "POST" });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                toast.error(err.detail || "Autofill failed");
+                return;
+            }
+            const { extracted } = await res.json();
+            // Merge extracted data — user still needs to hit Save to persist
+            setProfile(p => ({
+                ...p,
+                basics: { ...p.basics, ...(extracted.basics || {}) },
+                urls: { ...p.urls, ...(extracted.urls || {}) },
+                education: extracted.education?.length ? extracted.education : p.education,
+                experience: extracted.experience?.length ? extracted.experience : p.experience,
+                skills: extracted.skills || p.skills,
+            }));
+            toast.success(`Form filled from "${filename}" — review and save when ready`);
+        } catch {
+            toast.error("Autofill error");
+        } finally {
+            setAutofilling(null);
+        }
+    };
+
+    const addKBEntry = () => {
+        if (!newQ.trim() || !newA.trim()) { toast.error("Both question and answer are required"); return; }
+        const entry: KBEntry = { id: crypto.randomUUID(), question: newQ.trim(), answer: newA.trim() };
+        setProfile(p => ({ ...p, knowledge_base: [...p.knowledge_base, entry] }));
+        setNewQ(""); setNewA("");
+    };
+
+    const removeKBEntry = (id: string) =>
+        setProfile(p => ({ ...p, knowledge_base: p.knowledge_base.filter(e => e.id !== id) }));
+
+    const updateEdu = (idx: number, key: keyof Education, val: string) =>
+        setProfile(p => { const e = [...p.education]; e[idx] = { ...e[idx], [key]: val }; return { ...p, education: e }; });
+
+    const updateExp = (idx: number, key: keyof Experience, val: string) =>
+        setProfile(p => { const e = [...p.experience]; e[idx] = { ...e[idx], [key]: val }; return { ...p, experience: e }; });
+
+    if (loading) return <div className="flex h-screen items-center justify-center text-muted-foreground">Loading profile…</div>;
+
+    const ResumeList = ({ resumes, type }: { resumes: ResumeInfo[]; type: "pdf" | "tex" }) => (
+        <div className="space-y-2">
+            {resumes.length === 0 && (
+                <p className="text-xs text-muted-foreground italic">No resumes uploaded yet.</p>
+            )}
+            {resumes.map(r => {
+                const isActive = type === "pdf" ? profile.current_pdf_resume_id === r.id : profile.current_text_resume_id === r.id;
+                const isAutofilling = autofilling === r.id;
+                return (
+                    <div key={r.id} className={`flex items-center gap-2 p-2 rounded-md border text-sm ${isActive ? "border-primary bg-primary/5" : "border-border"}`}>
+                        <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span className="flex-1 truncate">{r.filename}</span>
+                        {isActive && <CheckCircle className="h-4 w-4 text-primary shrink-0" />}
+                        <button type="button" onClick={() => handleAutofill(r.id, r.filename)}
+                            disabled={isAutofilling || !!autofilling}
+                            className="text-xs text-amber-600 hover:underline shrink-0 disabled:opacity-50">
+                            {isAutofilling ? "Autofilling…" : "Autofill"}
+                        </button>
+                        <button type="button" onClick={() => handleSelectResume(r.id)}
+                            className="text-xs text-primary hover:underline shrink-0">
+                            {isActive ? "Active" : "Set Active"}
+                        </button>
+                        <button type="button" onClick={() => handleDeleteResume(r.id)}
+                            className="text-muted-foreground hover:text-destructive shrink-0">
+                            <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                );
+            })}
+        </div>
+    );
 
     return (
-        <div className="space-y-12 pb-20">
-            <header className="flex items-center justify-between gap-4">
-                <div className="flex flex-col gap-2">
-                    <h1 className="text-3xl font-bold tracking-tight font-serif text-foreground">My Profile</h1>
-                    <p className="text-muted-foreground">Manage your personal information and application preferences.</p>
-                </div>
-                <Button
-                    onClick={saveProfile}
-                    size="lg"
-                    className="px-8 shadow-sm"
-                >
-                    Save Changes
-                </Button>
-            </header>
-
-            <div className="flex flex-col gap-10">
-                {/* Resume Strategy & Settings Section */}
-                <section className="space-y-6">
-                    <div className="flex flex-col gap-1">
-                        <h2 className="text-2xl font-bold text-foreground">Resume Selection</h2>
-                        <p className="text-sm text-muted-foreground">Choose how your resume is prepared for each application.</p>
-                    </div>
-
-                    <div className="grid gap-6 md:grid-cols-2">
-                        {/* ATS Generated Option */}
-                        <Card
-                            className={cn(
-                                "cursor-pointer transition-all duration-300 border-2",
-                                profile.resume_generation_mode === "ats_generated"
-                                    ? "border-primary bg-primary/5 shadow-md scale-[1.02]"
-                                    : "border-transparent hover:border-primary/30"
-                            )}
-                            onClick={() => handleChange('root', 'resume_generation_mode', 'ats_generated')}
-                        >
-                            <CardContent className="p-6 space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className={cn(
-                                            "p-2 rounded-full",
-                                            profile.resume_generation_mode === "ats_generated" ? "bg-primary text-primary-foreground" : "bg-muted"
-                                        )}>
-                                            <Sparkles className="h-5 w-5" />
-                                        </div>
-                                        <CardTitle className="text-lg">ATS Generated</CardTitle>
-                                    </div>
-                                    <div className={cn(
-                                        "h-5 w-5 rounded-full border-2 flex items-center justify-center",
-                                        profile.resume_generation_mode === "ats_generated" ? "border-primary" : "border-muted"
-                                    )}>
-                                        {profile.resume_generation_mode === "ats_generated" && <div className="h-2.5 w-2.5 rounded-full bg-primary" />}
-                                    </div>
-                                </div>
-                                <p className="text-sm text-muted-foreground">
-                                    Automatically tailor your resume for every job using AI. Uses your profile data and your uploaded <code>.tex</code> template (or default).
-                                </p>
-                            </CardContent>
-                        </Card>
-
-                        {/* Uploaded PDF Option */}
-                        <Card
-                            className={cn(
-                                "cursor-pointer transition-all duration-300 border-2",
-                                profile.resume_generation_mode === "uploaded_pdf"
-                                    ? "border-primary bg-primary/5 shadow-md scale-[1.02]"
-                                    : "border-transparent hover:border-primary/30"
-                            )}
-                            onClick={() => {
-                                if (profile.uploaded_pdf_path && profile.uploaded_pdf_path.toLowerCase().endsWith('.pdf')) {
-                                    handleChange('root', 'resume_generation_mode', 'uploaded_pdf');
-                                } else {
-                                    toast.error("Please upload a PDF resume first to use this mode.");
-                                }
-                            }}
-                        >
-                            <CardContent className="p-6 space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className={cn(
-                                            "p-2 rounded-full",
-                                            profile.resume_generation_mode === "uploaded_pdf" ? "bg-primary text-primary-foreground" : "bg-muted"
-                                        )}>
-                                            <FileText className="h-5 w-5" />
-                                        </div>
-                                        <CardTitle className="text-lg">Uploaded PDF</CardTitle>
-                                    </div>
-                                    <div className={cn(
-                                        "h-5 w-5 rounded-full border-2 flex items-center justify-center",
-                                        profile.resume_generation_mode === "uploaded_pdf" ? "border-primary" : "border-muted"
-                                    )}>
-                                        {profile.resume_generation_mode === "uploaded_pdf" && <div className="h-2.5 w-2.5 rounded-full bg-primary" />}
-                                    </div>
-                                </div>
-                                <p className="text-sm text-muted-foreground">
-                                    Use your original, pre-made PDF resume for all applications. No AI tailoring will be applied.
-                                </p>
-                            </CardContent>
-                        </Card>
-                    </div>
-
-                    <Card className="shadow-sm border-border/60">
-                        <CardHeader className="bg-muted/30 py-4">
-                            <CardTitle className="text-base font-medium">Resume Management</CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-8 space-y-10">
-                            {/* PDF Resume Management */}
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <Label className="text-sm font-semibold flex items-center gap-2">
-                                        <FileText className="h-4 w-4 text-primary" />
-                                        PDF Resumes
-                                    </Label>
-                                    <Button variant="outline" size="sm" className="relative">
-                                        <Plus className="h-4 w-4 mr-2" /> Upload New PDF
-                                        <Input
-                                            type="file"
-                                            accept=".pdf"
-                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                            onChange={(e) => {
-                                                const file = e.target.files?.[0];
-                                                if (file) uploadFile(file, 'pdf');
-                                            }}
-                                            disabled={isProcessing}
-                                        />
-                                    </Button>
-                                </div>
-
-                                <div className="grid gap-3">
-                                    {(profile.pdf_resumes || []).map((r: any) => (
-                                        <div
-                                            key={r.id}
-                                            className={cn(
-                                                "flex items-center gap-4 p-4 rounded-xl border transition-all",
-                                                profile.current_pdf_resume_id === r.id
-                                                    ? "bg-primary/5 border-primary/40"
-                                                    : "bg-muted/10 border-transparent hover:border-muted-foreground/20"
-                                            )}
-                                        >
-                                            <div className="flex flex-col">
-                                                <span className="text-sm font-medium truncate max-w-[300px]">{r.filename}</span>
-                                                <span className="text-[10px] text-muted-foreground">Uploaded on {new Date(r.created_at).toLocaleDateString()}</span>
-                                            </div>
-                                            <div className="flex-1" />
-                                            {profile.current_pdf_resume_id === r.id ? (
-                                                <span className="text-[10px] font-bold text-primary uppercase bg-primary/10 px-2 py-0.5 rounded">Current</span>
-                                            ) : (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="text-xs h-7"
-                                                    onClick={() => selectResume(r.id)}
-                                                >
-                                                    Select
-                                                </Button>
-                                            )}
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8 text-muted-foreground hover:text-red-500"
-                                                onClick={() => deleteResume(r.id)}
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    ))}
-                                    {(!profile.pdf_resumes || profile.pdf_resumes.length === 0) && (
-                                        <p className="text-sm text-muted-foreground italic text-center py-4 border-2 border-dashed rounded-xl">No PDF resumes uploaded yet.</p>
-                                    )}
-                                </div>
-                            </div>
-
-                            <Separator />
-
-                            {/* LaTeX Template Management */}
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <Label className="text-sm font-semibold flex items-center gap-2">
-                                        <Database className="h-4 w-4 text-secondary" />
-                                        LaTeX Templates (.tex)
-                                    </Label>
-                                    <Button variant="outline" size="sm" className="relative">
-                                        <Plus className="h-4 w-4 mr-2" /> Upload New .tex
-                                        <Input
-                                            type="file"
-                                            accept=".tex"
-                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                            onChange={(e) => {
-                                                const file = e.target.files?.[0];
-                                                if (file) uploadFile(file, 'tex');
-                                            }}
-                                            disabled={isProcessing}
-                                        />
-                                    </Button>
-                                </div>
-
-                                <div className="grid gap-3">
-                                    {(profile.text_resumes || []).map((r: any) => (
-                                        <div
-                                            key={r.id}
-                                            className={cn(
-                                                "flex items-center gap-4 p-4 rounded-xl border transition-all",
-                                                profile.current_text_resume_id === r.id
-                                                    ? "bg-secondary/5 border-secondary/40"
-                                                    : "bg-muted/10 border-transparent hover:border-muted-foreground/20"
-                                            )}
-                                        >
-                                            <div className="flex flex-col">
-                                                <span className="text-sm font-medium truncate max-w-[300px]">{r.filename}</span>
-                                                <span className="text-[10px] text-muted-foreground">Uploaded on {new Date(r.created_at).toLocaleDateString()}</span>
-                                            </div>
-                                            <div className="flex-1" />
-                                            {profile.current_text_resume_id === r.id ? (
-                                                <span className="text-[10px] font-bold text-secondary uppercase bg-secondary/10 px-2 py-0.5 rounded">Current</span>
-                                            ) : (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="text-xs h-7"
-                                                    onClick={() => selectResume(r.id)}
-                                                >
-                                                    Select
-                                                </Button>
-                                            )}
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8 text-muted-foreground hover:text-red-500"
-                                                onClick={() => deleteResume(r.id)}
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    ))}
-                                    {(!profile.text_resumes || profile.text_resumes.length === 0) && (
-                                        <p className="text-sm text-muted-foreground italic text-center py-4 border-2 border-dashed rounded-xl">No LaTeX templates uploaded yet.</p>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="flex flex-wrap gap-4 pt-4 border-t">
-                                <Button
-                                    variant="secondary"
-                                    className="gap-2 shadow-sm"
-                                    onClick={() => handleParseResume('pdf')}
-                                    disabled={isProcessing || !profile.current_pdf_resume_id}
-                                >
-                                    <LayoutGrid className="h-4 w-4" />
-                                    Auto-fill from Current PDF
-                                </Button>
-                                <Button
-                                    variant="secondary"
-                                    className="gap-2 shadow-sm"
-                                    onClick={() => handleParseResume('tex')}
-                                    disabled={isProcessing || !profile.current_text_resume_id}
-                                >
-                                    <LayoutGrid className="h-4 w-4" />
-                                    Auto-fill from Current .tex
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </section>
-
-                {/* Basics Section */}
-                <section className="space-y-6">
-                    <div className="flex flex-col gap-1">
-                        <h2 className="text-xl font-semibold text-foreground">Personal Details</h2>
-                        <p className="text-sm text-muted-foreground">Standard information used for your applications.</p>
-                    </div>
-                    <Card className="shadow-sm border-border/60">
-                        <CardContent className="p-8 space-y-8">
-                            <div className="grid gap-8 sm:grid-cols-2">
-                                <div className="space-y-2.5">
-                                    <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">First Name</Label>
-                                    <Input className="h-11 bg-muted/20 border-transparent focus:border-accent/30 transition-all" value={profile.basics.first_name} onChange={(e) => handleChange('basics', 'first_name', e.target.value)} />
-                                </div>
-                                <div className="space-y-2.5">
-                                    <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Last Name</Label>
-                                    <Input className="h-11 bg-muted/20 border-transparent focus:border-accent/30 transition-all" value={profile.basics.last_name} onChange={(e) => handleChange('basics', 'last_name', e.target.value)} />
-                                </div>
-                            </div>
-                            <div className="grid gap-8 sm:grid-cols-2">
-                                <div className="space-y-2.5">
-                                    <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Email Address</Label>
-                                    <Input className="h-11 bg-muted/20 border-transparent focus:border-accent/30 transition-all" value={profile.basics.email} onChange={(e) => handleChange('basics', 'email', e.target.value)} />
-                                </div>
-                                <div className="space-y-2.5">
-                                    <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Phone Number</Label>
-                                    <Input className="h-11 bg-muted/20 border-transparent focus:border-accent/30 transition-all" value={profile.basics.phone} onChange={(e) => handleChange('basics', 'phone', e.target.value)} />
-                                </div>
-                            </div>
-                            <div className="space-y-2.5">
-                                <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Current Location</Label>
-                                <Input className="h-11 bg-muted/20 border-transparent focus:border-accent/30 transition-all" value={profile.basics.location} onChange={(e) => handleChange('basics', 'location', e.target.value)} />
-                            </div>
-                        </CardContent>
-                    </Card>
-                </section>
-
-                {/* Demographics Section */}
-                <section className="space-y-6">
-                    <div className="flex flex-col gap-1">
-                        <h2 className="text-xl font-semibold text-foreground">Demographics</h2>
-                        <p className="text-sm text-muted-foreground">Voluntary self-identification information.</p>
-                    </div>
-                    <Card className="shadow-sm border-border/60">
-                        <CardContent className="p-8 space-y-8">
-                            <div className="grid gap-8 sm:grid-cols-2">
-                                <div className="space-y-2.5">
-                                    <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Gender</Label>
-                                    <select
-                                        className="flex h-11 w-full rounded-md border border-input bg-muted/20 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        value={profile.demographics.gender}
-                                        onChange={(e) => handleChange('demographics', 'gender', e.target.value)}
-                                    >
-                                        <option value="Male">Male</option>
-                                        <option value="Female">Female</option>
-                                        <option value="Non-binary">Non-binary</option>
-                                        <option value="Prefer not to say">Prefer not to say</option>
-                                    </select>
-                                </div>
-                                <div className="space-y-2.5">
-                                    <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Race / Ethnicity</Label>
-                                    <select
-                                        className="flex h-11 w-full rounded-md border border-input bg-muted/20 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        value={profile.demographics.race || "Prefer not to say"}
-                                        onChange={(e) => handleChange('demographics', 'race', e.target.value)}
-                                    >
-                                        <option value="Asian">Asian</option>
-                                        <option value="Black or African American">Black or African American</option>
-                                        <option value="Hispanic / Latino">Hispanic / Latino</option>
-                                        <option value="White">White</option>
-                                        <option value="Native Hawaiian or Other Pacific Islander">Native Hawaiian or Other Pacific Islander</option>
-                                        <option value="American Indian or Alaska Native">American Indian or Alaska Native</option>
-                                        <option value="Two or More Races">Two or More Races</option>
-                                        <option value="Prefer not to say">Prefer not to say</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div className="grid gap-8 sm:grid-cols-2">
-                                <div className="space-y-2.5">
-                                    <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Nationality</Label>
-                                    <Input className="h-11 bg-muted/20 border-transparent focus:border-accent/30 transition-all" value={profile.demographics.nationality} onChange={(e) => handleChange('demographics', 'nationality', e.target.value)} />
-                                </div>
-                            </div>
-                            <div className="grid gap-8 sm:grid-cols-2">
-                                <div className="space-y-2.5">
-                                    <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Veteran Status</Label>
-                                    <select
-                                        className="flex h-11 w-full rounded-md border border-input bg-muted/20 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        value={profile.demographics.veteran}
-                                        onChange={(e) => handleChange('demographics', 'veteran', e.target.value)}
-                                    >
-                                        <option value="I am not a protected veteran">I am not a protected veteran</option>
-                                        <option value="I am a protected veteran">I am a protected veteran</option>
-                                        <option value="Prefer not to say">Prefer not to say</option>
-                                    </select>
-                                </div>
-                                <div className="space-y-2.5">
-                                    <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Disability Status</Label>
-                                    <select
-                                        className="flex h-11 w-full rounded-md border border-input bg-muted/20 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        value={profile.demographics.disability}
-                                        onChange={(e) => handleChange('demographics', 'disability', e.target.value)}
-                                    >
-                                        <option value="I do not have a disability">I do not have a disability</option>
-                                        <option value="I have a disability">I have a disability</option>
-                                        <option value="Prefer not to say">Prefer not to say</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </section>
-
-                {/* Work Authorization Section */}
-                <section className="space-y-6">
-                    <div className="flex flex-col gap-1">
-                        <h2 className="text-xl font-semibold text-foreground">Work Authorization</h2>
-                        <p className="text-sm text-muted-foreground">Legal authorization to work in the target country.</p>
-                    </div>
-                    <Card className="shadow-sm border-border/60">
-                        <CardContent className="p-8 space-y-4">
-                            <div className="flex items-center space-x-3 p-4 border rounded-lg bg-slate-50/50">
-                                <input
-                                    type="checkbox"
-                                    id="auth_us"
-                                    className="h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary"
-                                    checked={profile.work_auth.authorized_in_us}
-                                    onChange={(e) => handleChange('work_auth', 'authorized_in_us', e.target.checked)}
-                                />
-                                <Label htmlFor="auth_us" className="text-sm font-medium cursor-pointer">Authorized to work in the US</Label>
-                            </div>
-                            <div className="flex items-center space-x-3 p-4 border rounded-lg bg-slate-50/50">
-                                <input
-                                    type="checkbox"
-                                    id="req_sponsorship"
-                                    className="h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary"
-                                    checked={profile.work_auth.requires_sponsorship}
-                                    onChange={(e) => handleChange('work_auth', 'requires_sponsorship', e.target.checked)}
-                                />
-                                <Label htmlFor="req_sponsorship" className="text-sm font-medium cursor-pointer">Requires Sponsorship</Label>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </section>
-
-                {/* Skills Section */}
-                <section className="space-y-6">
-                    <div className="flex flex-col gap-1">
-                        <h2 className="text-xl font-semibold text-foreground">Skills</h2>
-                        <p className="text-sm text-muted-foreground">List your key technical and professional skills.</p>
-                    </div>
-                    <Card className="shadow-sm border-border/60">
-                        <CardContent className="p-8 space-y-4">
-                            <textarea
-                                className="flex min-h-[140px] w-full rounded-md border border-input bg-muted/20 px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                placeholder="JavaScript, TypeScript, React, Python, SQL, cloud..."
-                                value={profile.skills || ""}
-                                onChange={(e) => handleChange('root', 'skills', e.target.value)}
-                            />
-                        </CardContent>
-                    </Card>
-                </section>
-
-                <div className="grid gap-10 lg:grid-cols-2">
-                    {/* Links Section */}
-                    <section className="space-y-6">
-                        <div className="flex flex-col gap-1">
-                            <h2 className="text-xl font-semibold text-foreground">Online Presence</h2>
-                            <p className="text-sm text-muted-foreground">Links to your professional profiles.</p>
-                        </div>
-                        <Card className="shadow-sm border-border/60 h-full">
-                            <CardContent className="p-8 space-y-8">
-                                <div className="space-y-2.5">
-                                    <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">LinkedIn URL</Label>
-                                    <Input className="h-11 bg-muted/20 border-transparent focus:border-accent/30 transition-all" value={profile.urls.linkedin} onChange={(e) => handleChange('urls', 'linkedin', e.target.value)} />
-                                </div>
-                                <div className="space-y-2.5">
-                                    <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">GitHub URL</Label>
-                                    <Input className="h-11 bg-muted/20 border-transparent focus:border-accent/30 transition-all" value={profile.urls.github} onChange={(e) => handleChange('urls', 'github', e.target.value)} />
-                                </div>
-                                <div className="space-y-2.5">
-                                    <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Portfolio URL</Label>
-                                    <Input className="h-11 bg-muted/20 border-transparent focus:border-accent/30 transition-all" value={profile.urls.portfolio} onChange={(e) => handleChange('urls', 'portfolio', e.target.value)} />
-                                </div>
-                            </CardContent>
-                        </Card>
-                    </section>
-
-                    {/* Education Section */}
-                    <section className="space-y-6">
-                        <div className="flex flex-col gap-1">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <h2 className="text-xl font-semibold text-foreground">Education</h2>
-                                    <p className="text-sm text-muted-foreground">Academic background and qualifications.</p>
-                                </div>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setProfile((prev: any) => ({
-                                        ...prev,
-                                        education: [...prev.education, { degree: "", university: "", field_of_study: "", graduation_year: "" }]
-                                    }))}
-                                >
-                                    <Plus className="h-4 w-4 mr-2" /> Add
-                                </Button>
-                            </div>
-                        </div>
-
-                        {profile.education.map((edu: any, index: number) => (
-                            <Card key={index} className="shadow-sm border-border/60">
-                                <CardHeader className="flex flex-row items-center justify-between py-4">
-                                    <CardTitle className="text-base font-medium">Education #{index + 1}</CardTitle>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-8 w-8 text-muted-foreground hover:text-red-500"
-                                        onClick={() => {
-                                            const newEdu = [...profile.education];
-                                            newEdu.splice(index, 1);
-                                            setProfile((prev: any) => ({ ...prev, education: newEdu }));
-                                        }}
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                </CardHeader>
-                                <CardContent className="p-8 pt-0 space-y-8">
-                                    <div className="grid gap-8 sm:grid-cols-2">
-                                        <div className="space-y-2.5">
-                                            <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Degree</Label>
-                                            <Input
-                                                className="h-11 bg-muted/20 border-transparent focus:border-accent/30 transition-all"
-                                                value={edu.degree}
-                                                onChange={(e) => {
-                                                    const newEdu = [...profile.education];
-                                                    newEdu[index].degree = e.target.value;
-                                                    setProfile((prev: any) => ({ ...prev, education: newEdu }));
-                                                }}
-                                            />
-                                        </div>
-                                        <div className="space-y-2.5">
-                                            <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Graduation Year</Label>
-                                            <Input
-                                                className="h-11 bg-muted/20 border-transparent focus:border-accent/30 transition-all"
-                                                value={edu.graduation_year}
-                                                onChange={(e) => {
-                                                    const newEdu = [...profile.education];
-                                                    newEdu[index].graduation_year = e.target.value;
-                                                    setProfile((prev: any) => ({ ...prev, education: newEdu }));
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2.5">
-                                        <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Field of Study</Label>
-                                        <Input
-                                            className="h-11 bg-muted/20 border-transparent focus:border-accent/30 transition-all"
-                                            value={edu.field_of_study}
-                                            onChange={(e) => {
-                                                const newEdu = [...profile.education];
-                                                newEdu[index].field_of_study = e.target.value;
-                                                setProfile((prev: any) => ({ ...prev, education: newEdu }));
-                                            }}
-                                        />
-                                    </div>
-                                    <div className="space-y-2.5">
-                                        <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">University Name</Label>
-                                        <Input
-                                            className="h-11 bg-muted/20 border-transparent focus:border-accent/30 transition-all"
-                                            value={edu.university}
-                                            onChange={(e) => {
-                                                const newEdu = [...profile.education];
-                                                newEdu[index].university = e.target.value;
-                                                setProfile((prev: any) => ({ ...prev, education: newEdu }));
-                                            }}
-                                        />
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </section>
-                </div>
-
-                {/* Experience Section */}
-                <section className="space-y-6 pt-6">
-                    <div className="flex flex-col gap-1">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <h2 className="text-xl font-semibold text-foreground">Work Experience</h2>
-                                <p className="text-sm text-muted-foreground">Professional history and roles.</p>
-                            </div>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setProfile((prev: any) => ({
-                                    ...prev,
-                                    experience: [...(prev.experience || []), { company: "", role: "", start_date: "", end_date: "", description: "" }]
-                                }))}
-                            >
-                                <Plus className="h-4 w-4 mr-2" /> Add
-                            </Button>
-                        </div>
-                    </div>
-
-                    {(profile.experience || []).map((exp: any, index: number) => (
-                        <Card key={index} className="shadow-sm border-border/60">
-                            <CardHeader className="flex flex-row items-center justify-between py-4">
-                                <CardTitle className="text-base font-medium">Position #{index + 1}</CardTitle>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-muted-foreground hover:text-red-500"
-                                    onClick={() => {
-                                        const newExp = [...profile.experience];
-                                        newExp.splice(index, 1);
-                                        setProfile((prev: any) => ({ ...prev, experience: newExp }));
-                                    }}
-                                >
-                                    <Trash2 className="h-4 w-4" />
-                                </Button>
-                            </CardHeader>
-                            <CardContent className="p-8 pt-0 space-y-8">
-                                <div className="grid gap-8 sm:grid-cols-2">
-                                    <div className="space-y-2.5">
-                                        <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Company</Label>
-                                        <Input
-                                            className="h-11 bg-muted/20 border-transparent focus:border-accent/30 transition-all"
-                                            value={exp.company}
-                                            onChange={(e) => {
-                                                const newExp = [...profile.experience];
-                                                newExp[index].company = e.target.value;
-                                                setProfile((prev: any) => ({ ...prev, experience: newExp }));
-                                            }}
-                                        />
-                                    </div>
-                                    <div className="space-y-2.5">
-                                        <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Role / Title</Label>
-                                        <Input
-                                            className="h-11 bg-muted/20 border-transparent focus:border-accent/30 transition-all"
-                                            value={exp.role}
-                                            onChange={(e) => {
-                                                const newExp = [...profile.experience];
-                                                newExp[index].role = e.target.value;
-                                                setProfile((prev: any) => ({ ...prev, experience: newExp }));
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-                                <div className="grid gap-8 sm:grid-cols-2">
-                                    <div className="space-y-2.5">
-                                        <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Start Date</Label>
-                                        <Input
-                                            className="h-11 bg-muted/20 border-transparent focus:border-accent/30 transition-all"
-                                            placeholder="MM/YYYY"
-                                            value={exp.start_date}
-                                            onChange={(e) => {
-                                                const newExp = [...profile.experience];
-                                                newExp[index].start_date = e.target.value;
-                                                setProfile((prev: any) => ({ ...prev, experience: newExp }));
-                                            }}
-                                        />
-                                    </div>
-                                    <div className="space-y-2.5">
-                                        <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">End Date</Label>
-                                        <Input
-                                            className="h-11 bg-muted/20 border-transparent focus:border-accent/30 transition-all"
-                                            placeholder="MM/YYYY or Present"
-                                            value={exp.end_date}
-                                            onChange={(e) => {
-                                                const newExp = [...profile.experience];
-                                                newExp[index].end_date = e.target.value;
-                                                setProfile((prev: any) => ({ ...prev, experience: newExp }));
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-                                <div className="space-y-2.5">
-                                    <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground/80">Description</Label>
-                                    <textarea
-                                        className="flex min-h-[120px] w-full rounded-md border border-input bg-muted/20 px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        value={exp.description}
-                                        onChange={(e) => {
-                                            const newExp = [...profile.experience];
-                                            newExp[index].description = e.target.value;
-                                            setProfile((prev: any) => ({ ...prev, experience: newExp }));
-                                        }}
-                                    />
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ))}
-                </section>
-
-                {/* Strategy Section */}
-                <section className="space-y-6">
-                    <div className="flex flex-col gap-1">
-                        <h2 className="text-xl font-semibold text-foreground">Application Strategy</h2>
-                        <p className="text-sm text-muted-foreground">Custom content for cover letters and "Why us?" questions.</p>
-                    </div>
-
-                    <Card className="shadow-sm border-border/60">
-                        <CardHeader className="pb-4">
-                            <CardTitle className="text-base font-medium">Your Pitch</CardTitle>
-                            <CardDescription>Why are you a great fit?</CardDescription>
-                        </CardHeader>
-                        <CardContent className="p-8 pt-0">
-                            <textarea
-                                className="flex min-h-[150px] w-full rounded-md border border-input bg-muted/20 px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                placeholder="I am a software engineer with 5 years of experience..."
-                                value={profile.great_fit_pitch || ""}
-                                onChange={(e) => setProfile((prev: any) => ({ ...prev, great_fit_pitch: e.target.value }))}
-                            />
-                        </CardContent>
-                    </Card>
-
-                    <Card className="shadow-sm border-border/60">
-                        <CardHeader className="pb-4">
-                            <CardTitle className="text-base font-medium">Cover Letter Template</CardTitle>
-                            <CardDescription>Use placeholder {"{{company}}"} to dynamically insert the company name.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="p-8 pt-0">
-                            <textarea
-                                className="flex min-h-[200px] w-full rounded-md border border-input bg-muted/20 px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                value={profile.cover_letter_template || ""}
-                                onChange={(e) => setProfile((prev: any) => ({ ...prev, cover_letter_template: e.target.value }))}
-                            />
-                        </CardContent>
-                    </Card>
-
-                    <Card className="shadow-sm border-border/60">
-                        <CardHeader className="pb-4">
-                            <CardTitle className="text-base font-medium">"Why do you want to join us?" Template</CardTitle>
-                            <CardDescription>Generic template for "Why Us?". Use {"{{company}}"} placeholder.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="p-8 pt-0">
-                            <textarea
-                                className="flex min-h-[150px] w-full rounded-md border border-input bg-muted/20 px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                placeholder="I've always admired {{company}}'s commitment to..."
-                                value={profile.why_us || ""}
-                                onChange={(e) => setProfile((prev: any) => ({ ...prev, why_us: e.target.value }))}
-                            />
-                        </CardContent>
-                    </Card>
-
-                    <Card className="shadow-sm border-border/60">
-                        <CardHeader className="pb-4">
-                            <CardTitle className="text-base font-medium">Challenging Project</CardTitle>
-                            <CardDescription>Tell me about a challenging project loop.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="p-8 pt-0">
-                            <textarea
-                                className="flex min-h-[200px] w-full rounded-md border border-input bg-muted/20 px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                placeholder="One of the most challenging projects I worked on was..."
-                                value={profile.challenging_project || ""}
-                                onChange={(e) => setProfile((prev: any) => ({ ...prev, challenging_project: e.target.value }))}
-                            />
-                        </CardContent>
-                    </Card>
-                </section>
+        <div className="max-w-3xl mx-auto py-8 px-4">
+            <div className="mb-6">
+                <h1 className="text-2xl font-bold">My Profile</h1>
+                <p className="text-sm text-muted-foreground">Keep your profile up-to-date for the best autofill results.</p>
             </div>
-        </div >
+
+            <form onSubmit={handleSave}>
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                {/* 1. Resume Upload + Toggle  (TOP)                                    */}
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                <div className="bg-card p-6 border rounded-t shadow-sm">
+                    <h2 className="text-lg font-semibold mb-1">Resumes</h2>
+                    <p className="text-sm text-muted-foreground mb-4">Upload your PDF and/or LaTeX resume. Set one as active for each type.</p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                        {/* PDF */}
+                        <div>
+                            <p className="text-sm font-medium mb-2">PDF Resume</p>
+                            <button type="button" onClick={() => pdfRef.current?.click()}
+                                disabled={uploading === "pdf"}
+                                className="flex items-center gap-2 text-sm border border-dashed rounded-md px-4 py-2 hover:bg-muted transition-colors disabled:opacity-50 w-full justify-center">
+                                <Upload className="h-4 w-4" />
+                                {uploading === "pdf" ? "Uploading…" : "Upload PDF"}
+                            </button>
+                            <input ref={pdfRef} type="file" accept=".pdf" className="hidden"
+                                onChange={e => e.target.files?.[0] && handleUpload(e.target.files[0], "pdf")} />
+                            <div className="mt-2">
+                                <ResumeList resumes={profile.pdf_resumes} type="pdf" />
+                            </div>
+                        </div>
+                        {/* LaTeX */}
+                        <div>
+                            <p className="text-sm font-medium mb-2">LaTeX Resume (.tex)</p>
+                            <button type="button" onClick={() => texRef.current?.click()}
+                                disabled={uploading === "tex"}
+                                className="flex items-center gap-2 text-sm border border-dashed rounded-md px-4 py-2 hover:bg-muted transition-colors disabled:opacity-50 w-full justify-center">
+                                <Upload className="h-4 w-4" />
+                                {uploading === "tex" ? "Uploading…" : "Upload .tex"}
+                            </button>
+                            <input ref={texRef} type="file" accept=".tex" className="hidden"
+                                onChange={e => e.target.files?.[0] && handleUpload(e.target.files[0], "tex")} />
+                            <div className="mt-2">
+                                <ResumeList resumes={profile.text_resumes} type="tex" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Toggle */}
+                    <label className="flex items-center gap-3 cursor-pointer border-t pt-4">
+                        <input type="checkbox" className="h-4 w-4 rounded border-input"
+                            checked={profile.use_uploaded_resume}
+                            onChange={e => setProfile(p => ({ ...p, use_uploaded_resume: e.target.checked }))} />
+                        <div>
+                            <span className="text-sm font-medium">Use uploaded resume instead of AI-generated</span>
+                            <p className="text-xs text-muted-foreground">When checked, your active PDF will be submitted directly</p>
+                        </div>
+                    </label>
+                </div>
+
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                {/* 2. Cover Letter Template                                            */}
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                <SectionCard title="Cover Letter Template">
+                    <p className="text-xs text-muted-foreground mb-3">Use <code className="bg-muted px-1 rounded">{"{{company}}"}</code> as a placeholder for the company name.</p>
+                    <textarea
+                        className={inputClass + " min-h-[120px] resize-y"}
+                        placeholder={"Dear {{company}} team,\n\nI am excited to apply..."}
+                        value={profile.cover_letter_template}
+                        onChange={e => setProfile(p => ({ ...p, cover_letter_template: e.target.value }))}
+                    />
+                </SectionCard>
+
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                {/* 3. Basic Info                                                       */}
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                <SectionCard title="Basic Information">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Field label="First Name"><input className={inputClass} value={profile.basics.first_name} onChange={e => setProfile(p => ({ ...p, basics: { ...p.basics, first_name: e.target.value } }))} placeholder="Jane" /></Field>
+                        <Field label="Last Name"><input className={inputClass} value={profile.basics.last_name} onChange={e => setProfile(p => ({ ...p, basics: { ...p.basics, last_name: e.target.value } }))} placeholder="Doe" /></Field>
+                        <Field label="Email"><input type="email" className={inputClass} value={profile.basics.email} onChange={e => setProfile(p => ({ ...p, basics: { ...p.basics, email: e.target.value } }))} placeholder="jane@example.com" /></Field>
+                        <Field label="Phone"><input className={inputClass} value={profile.basics.phone} onChange={e => setProfile(p => ({ ...p, basics: { ...p.basics, phone: e.target.value } }))} placeholder="+1 555 0100" /></Field>
+                        <Field label="Location" ><input className={inputClass} value={profile.basics.location} onChange={e => setProfile(p => ({ ...p, basics: { ...p.basics, location: e.target.value } }))} placeholder="San Francisco, CA" /></Field>
+                    </div>
+                </SectionCard>
+
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                {/* 4. Professional Links                                               */}
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                <SectionCard title="Professional Links">
+                    <div className="grid grid-cols-1 gap-4">
+                        <Field label="LinkedIn"><input className={inputClass} value={profile.urls.linkedin} onChange={e => setProfile(p => ({ ...p, urls: { ...p.urls, linkedin: e.target.value } }))} placeholder="https://linkedin.com/in/..." /></Field>
+                        <Field label="GitHub"><input className={inputClass} value={profile.urls.github} onChange={e => setProfile(p => ({ ...p, urls: { ...p.urls, github: e.target.value } }))} placeholder="https://github.com/..." /></Field>
+                        <Field label="Portfolio / Website"><input className={inputClass} value={profile.urls.portfolio} onChange={e => setProfile(p => ({ ...p, urls: { ...p.urls, portfolio: e.target.value } }))} placeholder="https://..." /></Field>
+                    </div>
+                </SectionCard>
+
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                {/* 5. Demographics                                                     */}
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                <SectionCard title="Demographics">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Field label="Gender">
+                            <select className={selectClass} value={profile.demographics.gender} onChange={e => setProfile(p => ({ ...p, demographics: { ...p.demographics, gender: e.target.value } }))}>
+                                <option value="">Prefer not to say</option>
+                                <option>Male</option><option>Female</option><option>Non-binary</option><option>Other</option>
+                            </select>
+                        </Field>
+                        <Field label="Race / Ethnicity">
+                            <select className={selectClass} value={profile.demographics.race} onChange={e => setProfile(p => ({ ...p, demographics: { ...p.demographics, race: e.target.value } }))}>
+                                {["Prefer not to say", "White", "Black or African American", "Asian", "Hispanic or Latino", "Native American", "Pacific Islander", "Two or more races", "Other"].map(o => <option key={o}>{o}</option>)}
+                            </select>
+                        </Field>
+                        <Field label="Nationality"><input className={inputClass} value={profile.demographics.nationality} onChange={e => setProfile(p => ({ ...p, demographics: { ...p.demographics, nationality: e.target.value } }))} placeholder="e.g. American" /></Field>
+                        <Field label="Veteran Status">
+                            <select className={selectClass} value={profile.demographics.veteran} onChange={e => setProfile(p => ({ ...p, demographics: { ...p.demographics, veteran: e.target.value } }))}>
+                                {["I am not a protected veteran", "I am a protected veteran", "I prefer not to say"].map(o => <option key={o}>{o}</option>)}
+                            </select>
+                        </Field>
+                        <Field label="Disability Status">
+                            <select className={selectClass} value={profile.demographics.disability} onChange={e => setProfile(p => ({ ...p, demographics: { ...p.demographics, disability: e.target.value } }))}>
+                                {["I do not have a disability", "I have a disability", "I prefer not to say"].map(o => <option key={o}>{o}</option>)}
+                            </select>
+                        </Field>
+                    </div>
+                </SectionCard>
+
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                {/* 6. Work Authorization                                               */}
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                <SectionCard title="Work Authorization">
+                    <div className="space-y-3">
+                        <label className="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" className="h-4 w-4 rounded border-input" checked={profile.work_auth.authorized_in_us} onChange={e => setProfile(p => ({ ...p, work_auth: { ...p.work_auth, authorized_in_us: e.target.checked } }))} />
+                            <span className="text-sm">I am authorized to work in the United States</span>
+                        </label>
+                        <label className="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" className="h-4 w-4 rounded border-input" checked={profile.work_auth.requires_sponsorship} onChange={e => setProfile(p => ({ ...p, work_auth: { ...p.work_auth, requires_sponsorship: e.target.checked } }))} />
+                            <span className="text-sm">I will require visa sponsorship</span>
+                        </label>
+                    </div>
+                </SectionCard>
+
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                {/* 7. Education                                                        */}
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                <div className="bg-card p-6 border-x border-b shadow-sm">
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold">Education</h2>
+                        <button type="button" onClick={() => setProfile(p => ({ ...p, education: [...p.education, { ...EMPTY_EDU }] }))}
+                            className="flex items-center gap-1 text-sm text-primary hover:underline">
+                            <Plus className="h-4 w-4" /> Add
+                        </button>
+                    </div>
+                    <div className="space-y-6">
+                        {profile.education.map((edu, i) => (
+                            <div key={i} className="relative bg-muted/30 rounded-md p-4 border">
+                                {profile.education.length > 1 && (
+                                    <button type="button" onClick={() => setProfile(p => ({ ...p, education: p.education.filter((_, j) => j !== i) }))}
+                                        className="absolute top-3 right-3 text-muted-foreground hover:text-destructive">
+                                        <Trash2 className="h-4 w-4" />
+                                    </button>
+                                )}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <Field label="Degree"><input className={inputClass} value={edu.degree} onChange={e => updateEdu(i, "degree", e.target.value)} placeholder="BS Computer Science" /></Field>
+                                    <Field label="University"><input className={inputClass} value={edu.university} onChange={e => updateEdu(i, "university", e.target.value)} placeholder="MIT" /></Field>
+                                    <Field label="Field of Study"><input className={inputClass} value={edu.field_of_study} onChange={e => updateEdu(i, "field_of_study", e.target.value)} placeholder="Computer Science" /></Field>
+                                    <Field label="Graduation Year"><input className={inputClass} value={edu.graduation_year} onChange={e => updateEdu(i, "graduation_year", e.target.value)} placeholder="2024" /></Field>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                {/* 8. Experience                                                       */}
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                <div className="bg-card p-6 border-x border-b shadow-sm">
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold">Work Experience</h2>
+                        <button type="button" onClick={() => setProfile(p => ({ ...p, experience: [...p.experience, { ...EMPTY_EXP }] }))}
+                            className="flex items-center gap-1 text-sm text-primary hover:underline">
+                            <Plus className="h-4 w-4" /> Add
+                        </button>
+                    </div>
+                    <div className="space-y-6">
+                        {profile.experience.map((exp, i) => (
+                            <div key={i} className="relative bg-muted/30 rounded-md p-4 border">
+                                {profile.experience.length > 1 && (
+                                    <button type="button" onClick={() => setProfile(p => ({ ...p, experience: p.experience.filter((_, j) => j !== i) }))}
+                                        className="absolute top-3 right-3 text-muted-foreground hover:text-destructive">
+                                        <Trash2 className="h-4 w-4" />
+                                    </button>
+                                )}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <Field label="Company"><input className={inputClass} value={exp.company} onChange={e => updateExp(i, "company", e.target.value)} placeholder="Acme Corp" /></Field>
+                                    <Field label="Role / Title"><input className={inputClass} value={exp.role} onChange={e => updateExp(i, "role", e.target.value)} placeholder="Software Engineer" /></Field>
+                                    <Field label="Start Date"><input className={inputClass} value={exp.start_date} onChange={e => updateExp(i, "start_date", e.target.value)} placeholder="Jan 2022" /></Field>
+                                    <Field label="End Date"><input className={inputClass} value={exp.end_date} onChange={e => updateExp(i, "end_date", e.target.value)} placeholder="Present" /></Field>
+                                </div>
+                                <div className="mt-3">
+                                    <Field label="Description">
+                                        <textarea className={inputClass + " min-h-[80px] resize-y"} value={exp.description} onChange={e => updateExp(i, "description", e.target.value)} placeholder="Key responsibilities and achievements…" />
+                                    </Field>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                {/* 9. Skills                                                           */}
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                <SectionCard title="Skills">
+                    <Field label="Skills (comma-separated)">
+                        <textarea className={inputClass + " min-h-[80px] resize-y"} value={profile.skills}
+                            onChange={e => setProfile(p => ({ ...p, skills: e.target.value }))}
+                            placeholder="Python, TypeScript, React, PostgreSQL, Docker…" />
+                    </Field>
+                </SectionCard>
+
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                {/* 10. Q&A Knowledge Base (fully dynamic)                              */}
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                <div className="bg-card p-6 border-x border-b shadow-sm">
+                    <h2 className="text-lg font-semibold mb-1">Questions & Answers</h2>
+                    <p className="text-sm text-muted-foreground mb-4">
+                        Add questions you commonly encounter on application forms and your preferred answers. Saved with your profile.
+                    </p>
+
+                    {/* Existing entries */}
+                    {profile.knowledge_base.length > 0 && (
+                        <div className="space-y-3 mb-5">
+                            {profile.knowledge_base.map(entry => (
+                                <div key={entry.id} className="group relative bg-muted/30 rounded-md border p-4">
+                                    <button type="button" onClick={() => removeKBEntry(entry.id)}
+                                        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity">
+                                        <Trash2 className="h-4 w-4" />
+                                    </button>
+                                    <p className="text-sm font-medium text-foreground mb-1">{entry.question}</p>
+                                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{entry.answer}</p>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Add new entry */}
+                    <div className="border rounded-md p-4 bg-background space-y-3">
+                        <h3 className="text-sm font-semibold">Add New Entry</h3>
+                        <Field label="Question">
+                            <input type="text" className={inputClass}
+                                placeholder="e.g. Why are you a great fit for this role?"
+                                value={newQ} onChange={e => setNewQ(e.target.value)} />
+                        </Field>
+                        <Field label="Answer">
+                            <textarea className={inputClass + " min-h-[80px] resize-y"}
+                                placeholder="Your answer…"
+                                value={newA} onChange={e => setNewA(e.target.value)} />
+                        </Field>
+                        <div className="flex justify-end">
+                            <button type="button" onClick={addKBEntry}
+                                className="flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 rounded-md text-sm font-medium transition-colors">
+                                <Plus className="h-4 w-4" /> Add Entry
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                {/* Save button                                                         */}
+                {/* ─────────────────────────────────────────────────────────────────── */}
+                <div className="flex justify-end pt-6">
+                    <button type="submit" disabled={saving}
+                        className="bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-8 rounded-md text-sm font-medium transition-colors disabled:opacity-50">
+                        {saving ? "Saving…" : "Save Profile"}
+                    </button>
+                </div>
+            </form>
+        </div>
     );
 }

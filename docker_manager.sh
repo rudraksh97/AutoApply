@@ -50,29 +50,6 @@ determine_env() {
 # Initial determination
 determine_env
 
-# Function to check and create .env file if missing
-check_env() {
-    if [ ! -f ".env" ]; then
-        echo "⚠️  No .env file found!"
-        echo "📝 Creating .env file..."
-        
-        # Set HOST_PROJECT_ROOT to current directory
-        echo "HOST_PROJECT_ROOT=$PWD" > .env
-        
-        # Ask for OPENROUTER_API_KEY
-        read -p "🔑 Enter your OPENROUTER_API_KEY (required): " api_key
-        echo "OPENROUTER_API_KEY=$api_key" >> .env
-        
-        echo "✅ .env file created."
-    else
-        # Optional: Check if HOST_PROJECT_ROOT is set correctly for this environment
-        if ! grep -q "HOST_PROJECT_ROOT" .env; then
-             echo "HOST_PROJECT_ROOT=$PWD" >> .env
-             echo "➕ Added HOST_PROJECT_ROOT to .env"
-        fi
-    fi
-}
-
 # Function to check for Docker Compose V2 and install if missing
 ensure_compose_v2() {
     if docker compose version >/dev/null 2>&1; then
@@ -117,11 +94,6 @@ REVAMP_FRONTEND_Image="devhaxcodes/autoapply-frontend-revamp:$TAG"
 
 # Function to run docker compose command
 compose_cmd() {
-    # Check enviroment file before running commands that might need it (up/build)
-    if [[ "$1" == "up" ]] || [[ "$1" == "build" ]]; then
-        check_env
-    fi
-
     # Ensure we have the right compose command (V2 preferred)
     if [ -z "$COMPOSE_CMD" ]; then
         ensure_compose_v2
@@ -157,7 +129,7 @@ show_menu() {
     echo "   AutoApply Docker Management Script"
     echo "======================================"
     echo "1) 🏗️  Build Images (docker compose build)"
-    echo "2) 🚀 Run Containers (docker compose up -d)"
+    echo "2) 🚀 Run Containers (docker compose up)"
     echo "3) 🛑 Stop Containers (docker compose down)"
     echo "4) 📜 View Logs (docker compose logs -f)"
     echo "5) ♻️  Restart (down + up)"
@@ -179,7 +151,7 @@ execute_choice() {
             ;;
         2|up)
             echo "🚀 Starting services..."
-            compose_cmd up -d
+            compose_cmd up
             echo "✅ Services started."
             echo "   Frontend: http://localhost:3000"
             echo "   New Frontend: http://localhost:3001"
@@ -198,7 +170,7 @@ execute_choice() {
             echo "♻️  Restarting..."
             compose_cmd down
             sleep 1
-            compose_cmd up -d
+            compose_cmd up
             ;;
         6|clean)
             echo "⚠️  WARNING: This will delete the database volume."

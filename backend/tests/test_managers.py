@@ -17,7 +17,7 @@ class TestJobManager:
     
     @pytest.fixture
     def temp_data_dir(self):
-        """Create a temp directory for test data."""
+        """Create a temp directory for test data (kept for non-DB file tests if any)."""
         temp_dir = tempfile.mkdtemp()
         data_dir = os.path.join(temp_dir, "data")
         os.makedirs(data_dir)
@@ -25,27 +25,20 @@ class TestJobManager:
         shutil.rmtree(temp_dir)
     
     @pytest.fixture
-    def job_manager(self, temp_data_dir):
-        """Create a JobManager with patched file path."""
-        with patch('src.job_manager.JOBS_FILE', os.path.join(temp_data_dir, "data", "jobs.json")):
-            with patch('src.job_manager.os.path.exists') as mock_exists:
-                # First call for "data" dir check, second for file
-                mock_exists.side_effect = [True, False]
-                from src.job_manager import JobManager
-                # Reset to actually use our temp path
-                import src.job_manager as jm_module
-                original = jm_module.JOBS_FILE
-                jm_module.JOBS_FILE = os.path.join(temp_data_dir, "data", "jobs.json")
-                manager = JobManager()
-                yield manager
-                jm_module.JOBS_FILE = original
-    
-    def test_add_job(self, job_manager):
+    def job_manager(self, db_session):
+        """Create a JobManager using test DB via patched SessionLocal."""
+        from src.job_manager import JobManager
+        # Ensure we pass user_id in tests or update tests to simulate user
+        manager = JobManager()
+        yield manager
+
+    def test_add_job(self, job_manager, test_user):
         """Test adding a new job."""
-        result = job_manager.add_job("https://example.com/job1")
+        user_id = test_user.id
+        result = job_manager.add_job("https://example.com/job1", "Pending", user_id=user_id)
         assert result is True
         
-        jobs = job_manager.get_all_jobs()
+        jobs = job_manager.get_all_jobs(user_id=user_id)
         assert len(jobs) == 1
         assert jobs[0]["url"] == "https://example.com/job1"
         assert jobs[0]["status"] == "Pending"

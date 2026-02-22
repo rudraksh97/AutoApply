@@ -47,8 +47,10 @@ class JobManagerProtocol(Protocol):
     def add_job(
         self,
         url: str,
+        user_id: str,
         status: str = "Pending",
         source_feed: Optional[str] = None,
+        source_feed_name: Optional[str] = None,
         company_name: Optional[str] = None,
         job_title: Optional[str] = None
     ) -> bool:
@@ -57,6 +59,7 @@ class JobManagerProtocol(Protocol):
 
         Args:
             url: The unique URL of the job posting.
+            user_id: The ID of the user the job belongs to.
             status: Initial processing status.
             source_feed: URL of the RSS feed that sourced this job.
             company_name: Name of the company.
@@ -67,12 +70,13 @@ class JobManagerProtocol(Protocol):
         """
         ...
     
-    def job_exists(self, url: str) -> bool:
+    def job_exists(self, url: str, user_id: str) -> bool:
         """
-        Checks if a job with the given URL already exists.
+        Checks if a job with the given URL already exists for the user.
 
         Args:
             url: The unique URL of the job.
+            user_id: The ID of the user.
 
         Returns:
             True if the job exists, False otherwise.
@@ -167,24 +171,26 @@ class Deduplicator(Protocol):
     """
     Interface for idempotent deduplication of incoming items.
     """
-    def is_new(self, key: str) -> bool:
+    def is_new(self, key: str, user_id: Optional[str] = None) -> bool:
         """
-        Checks if the given key has been seen before.
+        Checks if the given key has been seen before for the user.
 
         Args:
             key: Unique identifier for the item.
+            user_id: Optional user context.
 
         Returns:
             True if the item is new, False otherwise.
         """
         ...
 
-    def mark_seen(self, key: str) -> None:
+    def mark_seen(self, key: str, user_id: Optional[str] = None) -> None:
         """
         Marks the key as seen to prevent future duplicates.
 
         Args:
             key: Unique identifier for the item.
+            user_id: Optional user context.
         """
         ...
 

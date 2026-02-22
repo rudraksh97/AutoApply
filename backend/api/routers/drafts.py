@@ -5,16 +5,23 @@ This router provides endpoints for managing application drafts in the
 draft-first workflow. Users can list, view, and open drafts for manual completion.
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import FileResponse
 from typing import List, Optional
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 import os
 import json
 
-from src.draft_manager import DraftManager
 from api.schemas.form_state import ApplicationDraft, DraftSummary, DraftStatus, ResumeVersion
-from src.services import get_user_profile_text
+from api.dependencies import get_profile_service, get_current_user
+from api.services.domain_services import ProfileService
+from src.models import User
+from src.draft_manager import DraftManager
+from src.job_manager import JobManager
+from src.resume_builder import ResumeBuilder
+from src.agent import BrowserAgent
+from src.services import DraftPreparationService, get_user_profile_text
 
 router = APIRouter(prefix="/drafts", tags=["Drafts"])
 
@@ -33,6 +40,31 @@ class DraftOpenResponse(BaseModel):
     fields_restored: int
     fields_failed: int
     notes: Optional[str] = None
+
+
+class ResumeEditRequest(BaseModel):
+    """Request body for refining a resume."""
+    prompt: str
+
+
+class ManualResumeEditRequest(BaseModel):
+    """Request body for manual LaTeX edit."""
+    latex: str
+
+
+class RemoteFillRequest(BaseModel):
+    """Request body for remote browser fill."""
+    chrome_host: str = "host.docker.internal"  # For Docker to host connection
+    chrome_port: int = 9222
+
+
+class RemoteFillResponse(BaseModel):
+    """Response for remote browser fill."""
+    success: bool
+    fields_filled: int
+    fields_failed: int
+    message: str
+    errors: List[str] = []
 
 
 @router.get("", response_model=List[DraftSummary])
@@ -110,7 +142,11 @@ async def delete_draft(draft_id: str):
 
 
 @router.post("/{draft_id}/open", response_model=DraftOpenResponse)
-async def open_draft_in_browser(draft_id: str, request: DraftOpenRequest = None):
+async def open_draft_in_browser(
+    draft_id: str, 
+    request: DraftOpenRequest = None,
+    profile_service: ProfileService = Depends(get_profile_service)
+):
     """
     Open a saved draft in the browser for manual completion.
     
@@ -131,11 +167,6 @@ async def open_draft_in_browser(draft_id: str, request: DraftOpenRequest = None)
     Returns:
         Status of the rehydration attempt
     """
-    from src.agent import BrowserAgent
-    from src.services import DraftPreparationService
-    from src.job_manager import JobManager
-    from src.resume_builder import ResumeBuilder
-    
     draft = draft_manager.get_draft(draft_id)
     
     if not draft:
@@ -156,7 +187,8 @@ async def open_draft_in_browser(draft_id: str, request: DraftOpenRequest = None)
     service = DraftPreparationService(
         job_manager=JobManager(),
         browser_agent=browser_agent,
-        resume_builder=ResumeBuilder(),
+        resume_builder=ResumeBuilder(user_email=current_user.email),
+        profile_service=profile_service,
         draft_manager=draft_manager
     )
     
@@ -185,6 +217,172 @@ async def open_draft_in_browser(draft_id: str, request: DraftOpenRequest = None)
     )
 
 
+@router.post("/{draft_id}/resume/versions")
+async def refine_resume(
+    draft_id: str, 
+    request: ResumeEditRequest, 
+    background_tasks: BackgroundTasks,
+    profile_service: ProfileService = Depends(get_profile_service),
+    current_user: User = Depends(get_current_user) # Needed for profile access
+):
+    """
+    Generate a new version of the resume based on user prompt.
+    """
+    from src.services import DraftPreparationService
+    from src.job_manager import JobManager
+    from src.resume_builder import ResumeBuilder
+    from src.agent import BrowserAgent
+    
+    draft = draft_manager.get_draft(draft_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+        
+    versions = draft_manager.get_resume_versions(draft_id)
+    if not versions:
+        raise HTTPException(status_code=400, detail="No base version found to refine")
+        
+    # Get the latest/current version to refine from
+    current_version = next((v for v in versions if v.is_current), versions[0])
+    new_version_num = max(v.version_number for v in versions) + 1
+    
+    # Initialize service
+    service = DraftPreparationService(
+        job_manager=JobManager(),
+        browser_agent=BrowserAgent(),
+        resume_builder=ResumeBuilder(user_email=current_user.email),
+        profile_service=profile_service,
+        draft_manager=draft_manager
+    )
+    
+    refinement_prompt = f"""
+    USER REFINEMENT INSTRUCTIONS:
+    {request.prompt}
+    
+    Please incorporate these instructions while maintaining the quality and structure.
+    """
+    
+    # Create version entry first with GENERATING status
+    import uuid
+    version_id = str(uuid.uuid4())
+    
+    # Use accurate job ID from URL
+    from src.url_utils import get_stable_job_id
+    job_id = get_stable_job_id(draft.job_url)
+
+    # Fetch profile text
+    profile = profile_service.get_profile(current_user.id)
+    user_profile_text = get_user_profile_text(profile)
+
+    # Add build task to background
+    background_tasks.add_task(
+        service.resume_builder.build,
+        job_description=draft.job_details,
+        user_profile_text=user_profile_text, # Use actual profile text
+        job_id=job_id,
+        template_path=current_version.tex_path,
+        tailoring_prompt=refinement_prompt,
+        version=f"v{new_version_num}",
+        version_id=version_id,
+        draft_manager=draft_manager,
+        job_manager=service.job_manager,
+        job_url=draft.job_url
+    )
+    
+    # Define predicted paths (per-user structure)
+    tex_path = os.path.join("data", current_user.email, "tex_resumes", job_id, f"v{new_version_num}", f"Resume_{job_id}_v{new_version_num}.tex")
+    pdf_path = os.path.join("data", current_user.email, "generated_resumes", job_id, f"v{new_version_num}", f"Resume_{job_id}_v{new_version_num}.pdf")
+    
+    # Create the record in DB (status will be GENERATING because PDF is still cooking)
+    new_v = ResumeVersion(
+        id=version_id,
+        draft_id=draft_id,
+        version_number=new_version_num,
+        tex_path=tex_path,
+        pdf_path=pdf_path,
+        ats_score=0, # Score can be updated after PDF text extraction if needed
+        justification="Generating...",
+        keywords_added="",
+        changes_summary=request.prompt,
+        status="GENERATING",
+        is_current=True
+    )
+    draft_manager.create_resume_version(new_v)
+    return new_v
+
+
+@router.post("/{draft_id}/resume/versions/manual")
+async def create_manual_version(
+    draft_id: str, 
+    request: ManualResumeEditRequest, 
+    background_tasks: BackgroundTasks,
+    profile_service: ProfileService = Depends(get_profile_service),
+    current_user: User = Depends(get_current_user)
+):
+    """Create a new resume version from provided LaTeX."""
+    from src.services import DraftPreparationService
+    from src.job_manager import JobManager
+    from src.resume_builder import ResumeBuilder
+    from src.agent import BrowserAgent
+    
+    draft = draft_manager.get_draft(draft_id)
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draft not found")
+        
+    versions = draft_manager.get_resume_versions(draft_id)
+    new_version_num = (max(v.version_number for v in versions) + 1) if versions else 1
+    
+    # Initialize service
+    service = DraftPreparationService(
+        job_manager=JobManager(),
+        browser_agent=BrowserAgent(),
+        resume_builder=ResumeBuilder(user_email=current_user.email),
+        profile_service=profile_service,
+        draft_manager=draft_manager
+    )
+    
+    import uuid
+    version_id = str(uuid.uuid4())
+    
+    from src.url_utils import get_stable_job_id
+    job_id = get_stable_job_id(draft.job_url)
+
+    # Fetch profile text
+    profile = profile_service.get_profile(current_user.id)
+    user_profile_text = get_user_profile_text(profile)
+
+    # Add build task to background
+    background_tasks.add_task(
+        service.resume_builder.build,
+        job_description=draft.job_details,
+        user_profile_text=user_profile_text,
+        job_id=job_id,
+        raw_latex=request.latex,
+        version=f"v{new_version_num}",
+        version_id=version_id,
+        draft_manager=draft_manager,
+        job_manager=service.job_manager,
+        job_url=draft.job_url
+    )
+    
+    tex_path = f"data/tex_resumes/{job_id}/v{new_version_num}/Resume_{job_id}_v{new_version_num}.tex"
+    pdf_path = f"data/generated_resumes/{job_id}/v{new_version_num}/Resume_{job_id}_v{new_version_num}.pdf"
+    
+    new_v = ResumeVersion(
+        id=version_id,
+        draft_id=draft_id,
+        version_number=new_version_num,
+        tex_path=tex_path,
+        pdf_path=pdf_path,
+        ats_score=0,
+        justification="Manual Edit",
+        changes_summary="User provided LaTeX manually",
+        status="GENERATING",
+        is_current=True
+    )
+    draft_manager.create_resume_version(new_v)
+    return new_v
+
+
 @router.get("/by-url/{job_url:path}", response_model=ApplicationDraft)
 async def get_draft_by_url(job_url: str):
     """
@@ -204,19 +402,7 @@ async def get_draft_by_url(job_url: str):
     return draft
 
 
-class RemoteFillRequest(BaseModel):
-    """Request body for remote browser fill."""
-    chrome_host: str = "host.docker.internal"  # For Docker to host connection
-    chrome_port: int = 9222
 
-
-class RemoteFillResponse(BaseModel):
-    """Response for remote browser fill."""
-    success: bool
-    fields_filled: int
-    fields_failed: int
-    message: str
-    errors: List[str] = []
 
 
 @router.post("/{draft_id}/fill-remote", response_model=RemoteFillResponse)
@@ -444,14 +630,7 @@ async def get_fill_script(draft_id: str):
             "5. Review the form and submit manually"
         ]
     }
-class ResumeEditRequest(BaseModel):
-    """Request body for refining a resume."""
-    prompt: str
 
-
-class ManualResumeEditRequest(BaseModel):
-    """Request body for manual LaTeX edit."""
-    latex: str
 
 
 @router.get("/{draft_id}/resume/versions", response_model=List[ResumeVersion])
@@ -460,100 +639,29 @@ async def get_resume_versions(draft_id: str):
     return draft_manager.get_resume_versions(draft_id)
 
 
-@router.post("/{draft_id}/resume/versions")
-async def refine_resume(draft_id: str, request: ResumeEditRequest, background_tasks: BackgroundTasks):
-    """
-    Generate a new version of the resume based on user prompt.
-    """
-    from src.services import DraftPreparationService
-    from src.job_manager import JobManager
-    from src.resume_builder import ResumeBuilder
-    from src.agent import BrowserAgent
-    
-    draft = draft_manager.get_draft(draft_id)
-    if not draft:
-        raise HTTPException(status_code=404, detail="Draft not found")
-        
-    versions = draft_manager.get_resume_versions(draft_id)
-    if not versions:
-        raise HTTPException(status_code=400, detail="No base version found to refine")
-        
-    # Get the latest/current version to refine from
-    current_version = next((v for v in versions if v.is_current), versions[0])
-    new_version_num = max(v.version_number for v in versions) + 1
-    
-    # Initialize service
-    service = DraftPreparationService(
-        job_manager=JobManager(),
-        browser_agent=BrowserAgent(),
-        resume_builder=ResumeBuilder(),
-        draft_manager=draft_manager
-    )
-    
-    refinement_prompt = f"""
-    USER REFINEMENT INSTRUCTIONS:
-    {request.prompt}
-    
-    Please incorporate these instructions while maintaining the quality and structure.
-    """
-    
-    # Create version entry first with GENERATING status
-    import uuid
-    version_id = str(uuid.uuid4())
-    
-    # Use accurate job ID from URL
-    from src.url_utils import get_stable_job_id
-    job_id = get_stable_job_id(draft.job_url)
-
-    # Add build task to background
-    background_tasks.add_task(
-        service.resume_builder.build,
-        job_description=draft.job_details,
-        user_profile_text=get_user_profile_text(), # Use actual profile text
-        job_id=job_id,
-        template_path=current_version.tex_path,
-        tailoring_prompt=refinement_prompt,
-        version=f"v{new_version_num}",
-        version_id=version_id,
-        draft_manager=draft_manager,
-        job_manager=service.job_manager,
-        job_url=draft.job_url
-    )
-    
-    # Define predicted paths
-    tex_path = f"data/tex_resumes/{job_id}/v{new_version_num}/Resume_{job_id}_v{new_version_num}.tex"
-    pdf_path = f"data/generated_resumes/{job_id}/v{new_version_num}/Resume_{job_id}_v{new_version_num}.pdf"
-    
-    # Create the record in DB (status will be GENERATING because PDF is still cooking)
-    new_v = ResumeVersion(
-        id=version_id,
-        draft_id=draft_id,
-        version_number=new_version_num,
-        tex_path=tex_path,
-        pdf_path=pdf_path,
-        ats_score=0, # Score can be updated after PDF text extraction if needed
-        justification="Generating...",
-        keywords_added="",
-        changes_summary=request.prompt,
-        status="GENERATING",
-        is_current=True
-    )
-    draft_manager.create_resume_version(new_v)
-    return new_v
-
-
 @router.post("/{draft_id}/resume/use_original")
-async def use_original_resume(draft_id: str):
+async def use_original_resume(
+    draft_id: str, 
+    current_user: User = Depends(get_current_user),
+    profile_service: ProfileService = Depends(get_profile_service)
+):
     """Adds the user's original uploaded PDF as a new resume version."""
     draft = draft_manager.get_draft(draft_id)
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
         
-    from src.profile_manager import ProfileManager
-    pm = ProfileManager()
-    profile = pm.get_profile()
+    profile = profile_service.get_profile(current_user.id)
     
-    orig_path = pm.get_current_resume_path("pdf")
+    # Helper to find path (simulating get_current_resume_path logic from ProfileManager)
+    def get_path(resumes_list, current_id, fallback_path):
+         if not current_id: return fallback_path
+         for r in resumes_list:
+             if r["id"] == current_id:
+                 return r["path"]
+         return fallback_path
+
+    orig_path = get_path(profile.get("pdf_resumes", []), profile.get("current_pdf_resume_id"), profile.get("uploaded_pdf_path"))
+
     if not orig_path or not os.path.exists(orig_path):
         raise HTTPException(status_code=400, detail="No original PDF resume uploaded in profile")
         
@@ -614,10 +722,13 @@ async def preview_resume(draft_id: str, version_id: Optional[str] = None):
 
 
 @router.get("/{draft_id}/resume/versions/{version_id}/prompt")
-async def get_version_prompt(draft_id: str, version_id: str):
+async def get_version_prompt(
+    draft_id: str, 
+    version_id: str,
+    current_user: User = Depends(get_current_user),
+    profile_service: ProfileService = Depends(get_profile_service)
+):
     """Reconstruct the prompt used for this version."""
-    from src.resume_builder import ResumeBuilder
-    from src.job_manager import JobManager
     
     draft = draft_manager.get_draft(draft_id)
     if not draft:
@@ -637,7 +748,7 @@ async def get_version_prompt(draft_id: str, version_id: str):
     source_latex = ""
     if version.version_number == 1:
         # Get base template
-        rb = ResumeBuilder()
+        rb = ResumeBuilder(user_email=current_user.email)
         if os.path.exists(rb.base_template_path):
             with open(rb.base_template_path, 'r', encoding='utf-8') as f:
                 source_latex = f.read()
@@ -657,7 +768,7 @@ async def get_version_prompt(draft_id: str, version_id: str):
     if not source_latex:
          raise HTTPException(status_code=400, detail="LaTeX source not available")
          
-    rb = ResumeBuilder()
+    rb = ResumeBuilder(user_email=current_user.email)
     
     # Reconstruct prompt variables
     ats_context = {
@@ -667,76 +778,18 @@ async def get_version_prompt(draft_id: str, version_id: str):
         "justification": version.justification or ""
     }
     
+    # Get profile text using service
+    profile = profile_service.get_profile(current_user.id)
+    user_profile_text = get_user_profile_text(profile)
+    
     prompt = await rb.get_formatted_prompt(
         latex_template=source_latex,
         job_description=draft.job_details or "",
-        user_profile_text=get_user_profile_text(),
+        user_profile_text=user_profile_text,
         ats_context=ats_context
     )
     
     return {"prompt": prompt}
-
-
-@router.post("/{draft_id}/resume/versions/manual")
-async def create_manual_version(draft_id: str, request: ManualResumeEditRequest, background_tasks: BackgroundTasks):
-    """Create a new resume version from provided LaTeX."""
-    from src.services import DraftPreparationService
-    from src.job_manager import JobManager
-    from src.resume_builder import ResumeBuilder
-    from src.agent import BrowserAgent
-    
-    draft = draft_manager.get_draft(draft_id)
-    if not draft:
-        raise HTTPException(status_code=404, detail="Draft not found")
-        
-    versions = draft_manager.get_resume_versions(draft_id)
-    new_version_num = (max(v.version_number for v in versions) + 1) if versions else 1
-    
-    # Initialize service
-    service = DraftPreparationService(
-        job_manager=JobManager(),
-        browser_agent=BrowserAgent(),
-        resume_builder=ResumeBuilder(),
-        draft_manager=draft_manager
-    )
-    
-    import uuid
-    version_id = str(uuid.uuid4())
-    
-    from src.url_utils import get_stable_job_id
-    job_id = get_stable_job_id(draft.job_url)
-
-    # Add build task to background
-    background_tasks.add_task(
-        service.resume_builder.build,
-        job_description=draft.job_details,
-        user_profile_text=get_user_profile_text(),
-        job_id=job_id,
-        raw_latex=request.latex,
-        version=f"v{new_version_num}",
-        version_id=version_id,
-        draft_manager=draft_manager,
-        job_manager=service.job_manager,
-        job_url=draft.job_url
-    )
-    
-    tex_path = f"data/tex_resumes/{job_id}/v{new_version_num}/Resume_{job_id}_v{new_version_num}.tex"
-    pdf_path = f"data/generated_resumes/{job_id}/v{new_version_num}/Resume_{job_id}_v{new_version_num}.pdf"
-    
-    new_v = ResumeVersion(
-        id=version_id,
-        draft_id=draft_id,
-        version_number=new_version_num,
-        tex_path=tex_path,
-        pdf_path=pdf_path,
-        ats_score=0,
-        justification="Manual Edit",
-        changes_summary="User provided LaTeX manually",
-        status="GENERATING",
-        is_current=True
-    )
-    draft_manager.create_resume_version(new_v)
-    return new_v
 
 
 @router.get("/{draft_id}/resume/versions/{version_id}/tex")

@@ -9,6 +9,8 @@ from typing import List, Dict, Any, Optional
 from src.infrastructure import JobManagerEventPublisher, JobManagerDeduplicator
 from src.job_manager import JobManager
 from src.config import ConfigManager
+from src.db import SessionLocal
+from src.models import Feed, User
 from src.rss_utils import (
     needs_llm_extraction,
     extract_company_from_feed,
@@ -36,7 +38,7 @@ class FeedPollService:
 
     def __init__(self):
         self.job_manager = JobManager()
-        self.config_manager = ConfigManager()
+        # self.config_manager = ConfigManager() # Removed
         self.event_publisher = JobManagerEventPublisher(self.job_manager)
         self.deduplicator = JobManagerDeduplicator(self.job_manager)
 
@@ -45,93 +47,179 @@ class FeedPollService:
         Polls all configured RSS feeds (skipping test feeds) for new jobs.
         """
         FeedPollService._is_polling = True
+        db = SessionLocal()
         try:
-            all_feeds = self.config_manager.get_feeds()
-            logger.info(f"All feeds: {all_feeds}")
-            # Filter out test feeds for the "Poll All" action
-            feeds_to_poll = [f for f in all_feeds if TEST_FEED_PATTERN not in f["url"]]
-            skipped_feeds = [f for f in all_feeds if TEST_FEED_PATTERN in f["url"]]
-            logger.info(f"Feeds to poll: {feeds_to_poll}")
-            logger.info(f"Skipped feeds: {skipped_feeds}")
-            if not feeds_to_poll:
-                return {
-                    "status": "no_feeds", 
-                    "message": "No real RSS feeds configured (test feeds are skipped)", 
-                    "jobs_found": 0,
-                    "skipped": skipped_feeds
-                }
+            # 1. Fetch all feeds
+            all_feeds_db = db.query(Feed).all()
             
+            # 2. Fetch all users and their settings to determine global opt-in
+            users = db.query(User).all()
+            user_settings_map = {}
+            for u in users:
+                # Default include_global = True if no settings row
+                if u.settings:
+                    user_settings_map[u.id] = u.settings.include_global_feeds
+                else:
+                    user_settings_map[u.id] = True
+
+            # 3. Group users by Feed URL
+            # Map: feed_url -> { "name": str, "target_users": Set[str], "is_global": bool }
+            feed_map = {}
+
+            for f in all_feeds_db:
+                if TEST_FEED_PATTERN in f.url:
+                    continue
+                
+                if f.url not in feed_map:
+                    feed_map[f.url] = {
+                        "name": f.name,
+                        "target_users": set(),
+                        "is_global": False
+                    }
+                
+                # Update metadata
+                # If any entry is global, mark URL as global source
+                if f.is_global:
+                    feed_map[f.url]["is_global"] = True
+                
+                # Add owner to target
+                feed_map[f.url]["target_users"].add(f.user_id)
+
+            # 4. Add Global subscribers
+            # For every feed that is global, add ALL users who opted in (excluding those who already have it private to avoid double count, strictly set ensures uniqueness)
+            for url, data in feed_map.items():
+                if data["is_global"]:
+                    for u in users:
+                        if user_settings_map.get(u.id, True):
+                            data["target_users"].add(u.id)
+
+            feeds_to_poll = list(feed_map.items())
+            logger.info(f"Feeds to poll: {[u for u, _ in feeds_to_poll]}")
+            
+            if not feeds_to_poll:
+                 return {
+                    "status": "no_feeds", 
+                    "message": "No feeds configured.", 
+                    "jobs_found": 0
+                }
+
             jobs_found = 0
             feeds_polled = []
-            logger.info(f"Feeds to poll: {feeds_to_poll}")
-            for feed_obj in feeds_to_poll:
-                logger.info(f"Polling feed: {feed_obj['url']}")
-                result = await self.poll_feed(feed_obj["url"], feed_obj["name"])
+            
+            for url, data in feeds_to_poll:
+                logger.info(f"Polling feed: {url} for users: {len(data['target_users'])}")
+                result = await self.poll_feed(url, data["name"], list(data["target_users"]))
                 if result.get("status") == "success":
                     jobs_found += result.get("jobs_found", 0)
-                    feeds_polled.append(feed_obj["url"])
+                    feeds_polled.append(url)
                 else:
-                    logger.warning(f"Failed to poll {feed_obj['url']}: {result.get('message')}")
+                    logger.warning(f"Failed to poll {url}: {result.get('message')}")
 
-            # Update stats (write to file)
+            # Update stats (write to DB)
             FeedPollService._last_poll_time = time.time()
             FeedPollService._total_polls += 1
             FeedPollService._last_jobs_found = jobs_found
             logger.info(f"Jobs found: {jobs_found}")
-            FeedPollService._save_status_to_file()
+            FeedPollService._save_status_to_db()
 
             return {
                 "status": "success",
-                "message": f"Polled {len(feeds_to_poll)} feed(s), found {jobs_found} new job(s)",
+                "message": f"Polled {len(feeds_to_poll)} unique feed(s), found {jobs_found} new job(s)",
                 "feeds_polled": feeds_polled,
-                "jobs_found": jobs_found,
-                "skipped": [f["url"] for f in skipped_feeds]
+                "jobs_found": jobs_found
             }
             
         finally:
+            db.close()
             FeedPollService._is_polling = False
-            FeedPollService._save_status_to_file()
+            FeedPollService._save_status_to_db()
 
     @classmethod
-    def _save_status_to_file(cls):
-        """Writes current status to the shared JSON file."""
+    def _save_status_to_db(cls):
+        """Writes current poller status to the SystemState DB. Non-fatal on error."""
+        from datetime import datetime
         status_data = {
             "last_poll_time": cls._last_poll_time,
             "total_polls": cls._total_polls,
             "last_jobs_found": cls._last_jobs_found,
-            "is_polling": cls._is_polling
+            "is_polling": cls._is_polling,
         }
-        
         try:
-            with open(cls.STATUS_FILE, 'w') as f:
-                json.dump(status_data, f)
+            db = SessionLocal()
+            try:
+                from src.models import SystemState
+                row = db.query(SystemState).filter(SystemState.key == "poller_status").first()
+                if row:
+                    row.value = status_data
+                    row.updated_at = datetime.utcnow()
+                else:
+                    db.add(SystemState(key="poller_status", value=status_data))
+                db.commit()
+            finally:
+                db.close()
         except Exception as e:
-            logger.error(f"Failed to write poller status: {e}")
+            logger.error(f"Failed to write poller status to DB: {e}")
 
     @staticmethod
     def get_status() -> Dict[str, Any]:
-        """Get the current status of the background poller (reads from file)."""
-        # Try to read from file first (for the API to see Worker's status)
-        if os.path.exists(FeedPollService.STATUS_FILE):
+        """Get the current poller status from the SystemState DB."""
+        try:
+            db = SessionLocal()
             try:
-                with open(FeedPollService.STATUS_FILE, 'r') as f:
-                     return json.load(f)
-            except Exception as e:
-                logger.error(f"Failed to read poller status: {e}")
-        
-        # Fallback to defaults
-        return {
-            "last_poll_time": 0,
-            "total_polls": 0,
-            "last_jobs_found": 0,
-            "is_polling": False
-        }
+                from src.models import SystemState
+                row = db.query(SystemState).filter(SystemState.key == "poller_status").first()
+                return row.value if row and row.value else {
+                    "last_poll_time": 0, "total_polls": 0,
+                    "last_jobs_found": 0, "is_polling": False
+                }
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Failed to read poller status from DB: {e}")
+            return {"last_poll_time": 0, "total_polls": 0, "last_jobs_found": 0, "is_polling": False}
 
-    async def poll_feed(self, feed_url: str, feed_name: str = None) -> Dict[str, Any]:
+    async def poll_feed_by_url(self, feed_url: str) -> Dict[str, Any]:
         """
-        Polls a single RSS feed.
+        Helper to poll a single feed by URL, resolving target users from DB.
         """
-        # Handle Test Feed URL mapping
+        FeedPollService._is_polling = True
+        db = SessionLocal()
+        try:
+            # 1. Check if feed exists and get properties
+            # There could be multiple entries for same URL (private feeds)
+            # and potentially global flag.
+            feeds = db.query(Feed).filter(Feed.url == feed_url).all()
+            if not feeds:
+                 return {"status": "error", "message": "Feed not found in database", "feed": feed_url}
+            
+            # 2. Resolve Users
+            users = db.query(User).all()
+            user_settings_map = {u.id: (u.settings.include_global_feeds if u.settings else True) for u in users}
+            
+            target_user_ids = set()
+            feed_name = feeds[0].name # Pick first name
+            is_global = False
+
+            for f in feeds:
+                target_user_ids.add(f.user_id)
+                if f.is_global:
+                    is_global = True
+                    # Use name from global def if available?
+                    if f.name: feed_name = f.name
+            
+            if is_global:
+                for u in users:
+                    if user_settings_map.get(u.id, True):
+                        target_user_ids.add(u.id)
+            
+            return await self.poll_feed(feed_url, feed_name, list(target_user_ids))
+        finally:
+             db.close()
+             FeedPollService._is_polling = False
+             FeedPollService._save_status_to_db()
+             
+    async def poll_feed(self, feed_url: str, feed_name: str = None, target_user_ids: List[str] = []) -> Dict[str, Any]:
+    # ... rest of poll_feed ...
         if TEST_FEED_PATTERN in feed_url:
             logger.info(f"Polling test feed: {feed_url}")
             feed_name = "Test" if not feed_name else feed_name
@@ -139,43 +227,27 @@ class FeedPollService:
             real_feed_url = "http://localhost:8000/test/feed.xml"
         else:
             real_feed_url = feed_url
-            logger.info(f"Polling feed: {real_feed_url}")
-            # If name not provided, try to look it up (though usually passed in)
-            if not feed_name:
-                logger.info(f"Feed name not provided, looking it up")
-                all_feeds = self.config_manager.get_feeds()
-                logger.info(f"All feeds: {all_feeds}")
-                for f in all_feeds:
-                    if f["url"] == feed_url:
-                        feed_name = f["name"]
-                        break
-                logger.info(f"Feed name: {feed_name}")
+            # logger.info(f"Polling feed: {real_feed_url}")
         
-        logger.info(f"Polling feed: {feed_name}")
         jobs_found = 0
         skipped_entries = 0
         
         try:
             loop = asyncio.get_event_loop()
-            logger.info(f"Polling feed: {real_feed_url}")
             parsed_feed = await loop.run_in_executor(None, feedparser.parse, real_feed_url)
-            logger.info(f"Parsed feed: {parsed_feed}")
-            if parsed_feed.get("bozo"):
-                return {
-                    "status": "warning",
-                    "message": f"Feed parsed with warnings: {parsed_feed.bozo_exception}",
-                    "feed": feed_url,
-                    "jobs_found": 0
-                }
             
+            if parsed_feed.get("bozo"):
+                 # Log warning but try to proceed? 
+                 # Often bozo=1 is just encoding issue but content is parsable.
+                 logger.warning(f"Feed {feed_url} parsed with warnings: {parsed_feed.bozo_exception}")
+
             # Check if this feed needs LLM-based extraction
             use_llm = needs_llm_extraction(feed_url)
             
             # Try to extract company name from feed title or URL
             feed_title = parsed_feed.feed.get("title", "")
             company_name = extract_company_from_feed(feed_url, feed_title)
-            logger.info(f"Feed title: {feed_title}")
-            logger.info(f"Company name: {company_name}")
+            
             for entry in parsed_feed.entries:
                 original_link = entry.get("link")
                 if not original_link:
@@ -183,16 +255,15 @@ class FeedPollService:
                 
                 # Use LLM to extract actual job URL if needed
                 if use_llm:
-                    extraction = await extract_job_link_with_llm(entry)
+                    # Attribution: use the first target user as the "payer" or global if none
+                    attribution_id = target_user_ids[0] if target_user_ids else None
+                    extraction = await extract_job_link_with_llm(entry, user_id=attribution_id)
                     job_link = extraction.get("job_url")
                     
-                    # Skip if no valid job URL found
                     if not job_link:
-                        logger.info(f"Skipping entry - no job URL extracted: {entry.get('title', '')[:50]}")
                         skipped_entries += 1
                         continue
                     
-                    # Use extracted metadata
                     job_title = extraction.get("job_title") or entry.get("title", "Unknown Title")
                     entry_company = extraction.get("company_name") or company_name
                 else:
@@ -200,29 +271,27 @@ class FeedPollService:
                     job_title = entry.get("title", "Unknown Title")
                     entry_company = entry.get("author") or entry.get("dc_creator") or company_name
                 
-                if self.deduplicator.is_new(job_link):
-                    await self.event_publisher.publish("new_job_ingested", {
-                        "job_link": job_link,
-                        "title": job_title,
-                        "feed_url": feed_url,
-                        "feed_name": feed_name,
-                        "company_name": entry_company
-                    })
-                    self.deduplicator.mark_seen(job_link)
-                    jobs_found += 1
+                # Distribute to target users
+                for uid in target_user_ids:
+                    if self.deduplicator.is_new(job_link, user_id=uid):
+                        await self.event_publisher.publish("new_job_ingested", {
+                            "job_link": job_link,
+                            "title": job_title,
+                            "feed_url": feed_url,
+                            "feed_name": feed_name,
+                            "company_name": entry_company,
+                            "user_id": uid
+                        })
+                        # self.deduplicator.mark_seen(job_link, user_id=uid) # Handled by add_job
+                        jobs_found += 1
             
-            result = {
+            return {
                 "status": "success",
-                "message": f"Found {jobs_found} new job(s)",
+                "message": f"Found {jobs_found} new job(s) across {len(target_user_ids)} users",
                 "feed": feed_url,
-                "jobs_found": jobs_found,
+                "jobs_found": jobs_found,  # This might be total NEW assignments (job * users)
                 "llm_extraction": use_llm
             }
-            if skipped_entries > 0:
-                result["skipped_entries"] = skipped_entries
-                result["message"] += f" (skipped {skipped_entries} without valid job URLs)"
-            
-            return result
             
         except Exception as e:
             logger.error(f"Error polling feed {feed_url}: {e}")
