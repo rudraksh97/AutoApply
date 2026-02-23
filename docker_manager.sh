@@ -15,12 +15,29 @@ DOCKER_USER="devhaxcodes"
 
 # Determine current environment
 determine_env() {
-    # Default to dev unless TAG is already set in shell
-    if [ -z "$TAG" ]; then
-        export TAG="dev"
+    # If TAG is already set, use it
+    if [ -n "$TAG" ]; then
+        CURRENT_ENV=$TAG
+        echo "✅ Environment set via variable to: $CURRENT_ENV"
+        return
     fi
+
+    echo "Select Environment:"
+    echo "1) Development (dev)"
+    echo "2) Production (prod)"
+    read -p "Select [1-2, default: 1]: " env_choice
+
+    case $env_choice in
+        2|prod)
+            export TAG="prod"
+            ;;
+        1|dev|*)
+            export TAG="dev"
+            ;;
+    esac
+
     CURRENT_ENV=$TAG
-    echo "✅ Environment set to: $CURRENT_ENV (Tag: $TAG)"
+    echo "✅ Environment set to: $CURRENT_ENV"
 }
 
 # Initial determination
