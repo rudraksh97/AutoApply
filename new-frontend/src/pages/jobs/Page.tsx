@@ -13,7 +13,6 @@ interface Job {
   status: string;
   timestamp: string;
   job_title?: string;
-  company_name?: string;
   source_feed?: string;
   source_feed_name?: string;
   apply_link?: string;
@@ -23,21 +22,21 @@ interface Job {
 }
 
 interface Draft {
-   id: string;
-   job_url: string;
-   status: string;
-   field_count: number;
-   filled_field_count: number;
+  id: string;
+  job_url: string;
+  status: string;
+  field_count: number;
+  filled_field_count: number;
 }
 
 export default function JobsPage() {
   const [managerRunning, setManagerRunning] = useState(false);
   const [managerLoading, setManagerLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'drafts' | 'sent'>('drafts');
-  
+
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [previewJob, setPreviewJob] = useState<Job | null>(null);
-  
+
   // Draft Details State
   const [viewDraftOpen, setViewDraftOpen] = useState(false);
   const [selectedDraft, setSelectedDraft] = useState<FullDraft | null>(null);
@@ -91,11 +90,11 @@ export default function JobsPage() {
 
   const markAsSent = async (url: string, sent: boolean) => {
     try {
-        await axios.post(`${API_URL}/jobs/sent`, { url, sent });
-        fetchJobs();
-        toast.success(sent ? "Marked as sent" : "Unmarked as sent");
+      await axios.post(`${API_URL}/jobs/sent`, { url, sent });
+      fetchJobs();
+      toast.success(sent ? "Marked as sent" : "Unmarked as sent");
     } catch {
-        toast.error("Failed to update job");
+      toast.error("Failed to update job");
     }
   };
 
@@ -116,38 +115,38 @@ export default function JobsPage() {
       fetchJobs();
       toast.success("Job queued for retry");
     } catch {
-        toast.error("Failed to retry job");
+      toast.error("Failed to retry job");
     }
   };
 
   const addJob = async (url: string) => {
     try {
-        const res = await axios.post(`${API_URL}/jobs/`, { url });
-        setShowAddDialog(false);
-        fetchJobs();
-        if (res.data.status === 'exists') {
-            toast.info("Job already exists (restarted)");
-        } else {
-            toast.success("Job added successfully");
-        }
+      const res = await axios.post(`${API_URL}/jobs/`, { url });
+      setShowAddDialog(false);
+      fetchJobs();
+      if (res.data.status === 'exists') {
+        toast.info("Job already exists (restarted)");
+      } else {
+        toast.success("Job added successfully");
+      }
     } catch {
-        toast.error("Failed to add job");
+      toast.error("Failed to add job");
     }
   };
 
   const viewDraft = async (draftId: string) => {
-      setLoadingDraft(true);
-      setViewDraftOpen(true);
-      try {
-          const res = await axios.get(`${API_URL}/drafts/${draftId}`);
-          setSelectedDraft(res.data);
-      } catch (e) {
-          console.error(e);
-          toast.error("Failed to load draft details");
-          setViewDraftOpen(false);
-      } finally {
-          setLoadingDraft(false);
-      }
+    setLoadingDraft(true);
+    setViewDraftOpen(true);
+    try {
+      const res = await axios.get(`${API_URL}/drafts/${draftId}`);
+      setSelectedDraft(res.data);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to load draft details");
+      setViewDraftOpen(false);
+    } finally {
+      setLoadingDraft(false);
+    }
   };
 
   const getDraftForJob = (jobUrl: string) => {
@@ -160,14 +159,14 @@ export default function JobsPage() {
     let label = status;
 
     if (s.includes('running') || s.includes('pending')) {
-        styles = 'bg-blue-100 text-blue-700';
+      styles = 'bg-blue-100 text-blue-700';
     } else if (s.includes('failed') || s.includes('error')) {
-        styles = 'bg-red-100 text-red-700';
+      styles = 'bg-red-100 text-red-700';
     } else if (s.includes('completed') || s.includes('applied') || s.includes('sent')) {
-        styles = 'bg-green-100 text-green-700';
+      styles = 'bg-green-100 text-green-700';
     } else if (s.includes('draft')) {
-        styles = 'bg-yellow-100 text-yellow-800';
-        label = 'Draft Ready';
+      styles = 'bg-yellow-100 text-yellow-800';
+      label = 'Draft Ready';
     }
 
     return (
@@ -177,7 +176,7 @@ export default function JobsPage() {
     );
   };
 
-  const filteredJobs = jobs.filter(job => 
+  const filteredJobs = jobs.filter(job =>
     activeTab === 'sent' ? job.sent : !job.sent
   );
 
@@ -212,8 +211,8 @@ export default function JobsPage() {
                   Job Manager: {managerRunning ? 'Running' : 'Paused'}
                 </p>
                 <p className="text-sm text-[#296374]">
-                  {managerRunning 
-                    ? 'Automatically processing application drafts' 
+                  {managerRunning
+                    ? 'Automatically processing application drafts'
                     : 'Background processing is paused'
                   }
                 </p>
@@ -222,14 +221,13 @@ export default function JobsPage() {
             <button
               onClick={toggleManager}
               disabled={managerLoading}
-              className={`px-6 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-                managerRunning 
-                  ? 'bg-[#629FAD]/20 text-[#0C2C55] hover:bg-[#629FAD]/30' 
-                  : 'bg-[#0C2C55] text-[#E8E2DB] hover:bg-[#0C2C55]/90'
-              }`}
+              className={`px-6 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${managerRunning
+                ? 'bg-[#629FAD]/20 text-[#0C2C55] hover:bg-[#629FAD]/30'
+                : 'bg-[#0C2C55] text-[#E8E2DB] hover:bg-[#0C2C55]/90'
+                }`}
             >
               {managerLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {managerRunning ? 'Pause' : 'Start'}
+              {managerRunning ? 'Pause Manager' : 'Start Processing'}
             </button>
           </div>
         </div>
@@ -239,21 +237,19 @@ export default function JobsPage() {
           <div className="flex gap-8">
             <button
               onClick={() => setActiveTab('drafts')}
-              className={`pb-3 px-1 border-b-2 font-medium transition-colors ${
-                activeTab === 'drafts'
-                  ? 'border-[#0C2C55] text-[#0C2C55]'
-                  : 'border-transparent text-[#629FAD] hover:text-[#296374]'
-              }`}
+              className={`pb-3 px-1 border-b-2 font-medium transition-colors ${activeTab === 'drafts'
+                ? 'border-[#0C2C55] text-[#0C2C55]'
+                : 'border-transparent text-[#629FAD] hover:text-[#296374]'
+                }`}
             >
               Application Drafts ({jobs.filter(j => !j.sent).length})
             </button>
             <button
               onClick={() => setActiveTab('sent')}
-              className={`pb-3 px-1 border-b-2 font-medium transition-colors ${
-                activeTab === 'sent'
-                  ? 'border-[#0C2C55] text-[#0C2C55]'
-                  : 'border-transparent text-[#629FAD] hover:text-[#296374]'
-              }`}
+              className={`pb-3 px-1 border-b-2 font-medium transition-colors ${activeTab === 'sent'
+                ? 'border-[#0C2C55] text-[#0C2C55]'
+                : 'border-transparent text-[#629FAD] hover:text-[#296374]'
+                }`}
             >
               Sent Applications ({jobs.filter(j => j.sent).length})
             </button>
@@ -262,7 +258,7 @@ export default function JobsPage() {
 
         {/* Jobs Table */}
         {loading && jobs.length === 0 ? (
-            <div className="text-center py-12 text-[#296374]">Loading jobs...</div>
+          <div className="text-center py-12 text-[#296374]">Loading jobs...</div>
         ) : filteredJobs.length === 0 ? (
           <div className="bg-white rounded-lg border border-[#629FAD]/30 p-12 text-center shadow-sm">
             <FileText className="w-12 h-12 text-[#629FAD] mx-auto mb-4" />
@@ -270,8 +266,8 @@ export default function JobsPage() {
               No {activeTab === 'sent' ? 'sent applications' : 'drafts'} yet
             </h3>
             <p className="text-[#296374]">
-              {activeTab === 'sent' 
-                ? 'Mark applications as sent to track them here' 
+              {activeTab === 'sent'
+                ? 'Mark applications as sent to track them here'
                 : 'Add job URLs or enable RSS feeds to start tracking applications'
               }
             </p>
@@ -295,66 +291,63 @@ export default function JobsPage() {
                   {filteredJobs.map((job) => {
                     const draft = getDraftForJob(job.url);
                     const isDraft = activeTab === 'drafts';
-                    
+
                     return (
-                    <tr key={job.url} className="hover:bg-[#629FAD]/10 transition-colors">
-                      <td className="px-6 py-4 text-center">
-                        <button 
+                      <tr key={job.url} className="hover:bg-[#629FAD]/10 transition-colors">
+                        <td className="px-6 py-4 text-center">
+                          <button
                             onClick={() => markAsSent(job.url, !isDraft)}
                             className="text-[#0C2C55] hover:text-[#296374] disabled:opacity-50"
-                        >
-                            {isDraft ? <Circle className="w-5 h-5" /> : <CheckCircle className="w-5 h-5 text-green-600" />}
-                        </button>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-[#296374] whitespace-nowrap">
-                        {new Date(job.timestamp).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-[#0C2C55]">{job.job_title || 'Untitled'}</div>
-                        <div className="text-sm text-[#296374]">{job.company_name || 'Unknown Company'}</div>
-                        {job.source_feed_name && (
-                            <div className="text-xs text-[#629FAD] mt-1">via {job.source_feed_name}</div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <div className="flex justify-center gap-2">
-                          <a
-                            href={job.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-1.5 text-[#296374] hover:bg-[#629FAD]/10 rounded transition-colors"
-                            title="Job URL"
                           >
-                            <ExternalLink className="w-4 h-4" />
-                          </a>
-                          {job.apply_link && (
+                            {isDraft ? <Circle className="w-5 h-5" /> : <CheckCircle className="w-5 h-5 text-green-600" />}
+                          </button>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-[#296374] whitespace-nowrap">
+                          {new Date(job.timestamp).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm font-medium text-slate-900">{job.job_title}</div>
+                          <div className="text-xs text-slate-500 mt-1">{job.source_feed_name || 'Manual Ingestion'}</div>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex justify-center gap-2">
                             <a
+                              href={job.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 text-[#296374] hover:bg-[#629FAD]/10 rounded transition-colors"
+                              title="Job URL"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </a>
+                            {job.apply_link && (
+                              <a
                                 href={job.apply_link}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="p-1.5 text-green-600 hover:bg-green-50 rounded transition-colors"
                                 title="Apply Page"
-                            >
+                              >
                                 <Play className="w-4 h-4" />
-                            </a>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        {getStatusBadge(draft?.status || job.status)}
-                      </td>
-                      <td className="px-6 py-4 text-center text-sm text-[#296374]">
-                        {draft ? (
+                              </a>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          {getStatusBadge(draft?.status || job.status)}
+                        </td>
+                        <td className="px-6 py-4 text-center text-sm text-[#296374]">
+                          {draft ? (
                             <span className={draft.filled_field_count === draft.field_count ? 'text-green-600 font-medium' : ''}>
-                             {draft.filled_field_count} / {draft.field_count}
+                              {draft.filled_field_count} / {draft.field_count}
                             </span>
-                        ) : (
+                          ) : (
                             <span className="text-muted-foreground/50">--</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex justify-center gap-1">
-                          {draft && (
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex justify-center gap-1">
+                            {draft && (
                               <button
                                 onClick={() => viewDraft(draft.id)}
                                 className="p-1.5 text-[#296374] hover:bg-[#629FAD]/10 rounded transition-colors"
@@ -362,31 +355,31 @@ export default function JobsPage() {
                               >
                                 <Code className="w-4 h-4" />
                               </button>
-                           )}
-                           <button
-                             onClick={() => setPreviewJob(job)}
-                             className="p-1.5 text-[#296374] hover:bg-[#629FAD]/10 rounded transition-colors"
-                             title="Preview"
-                           >
-                             <Eye className="w-4 h-4" />
-                           </button>
-                          <button
-                            onClick={() => rerunJob(job.url)}
-                            className="p-1.5 text-orange-600 hover:bg-orange-50 rounded transition-colors"
-                            title="Rerun"
-                          >
-                            <RotateCw className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => deleteJob(job.url)}
-                            className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                            )}
+                            <button
+                              onClick={() => setPreviewJob(job)}
+                              className="p-1.5 text-[#296374] hover:bg-[#629FAD]/10 rounded transition-colors"
+                              title="Preview"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => rerunJob(job.url)}
+                              className="p-1.5 text-orange-600 hover:bg-orange-50 rounded transition-colors"
+                              title="Start Processing"
+                            >
+                              <Play className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => deleteJob(job.url)}
+                              className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
                     );
                   })}
                 </tbody>
@@ -397,21 +390,21 @@ export default function JobsPage() {
       </div>
 
       {/* Modals */}
-      <DraftDetailsModal 
-        draft={selectedDraft} 
-        isOpen={viewDraftOpen} 
+      <DraftDetailsModal
+        draft={selectedDraft}
+        isOpen={viewDraftOpen}
         onClose={() => setViewDraftOpen(false)}
         loading={loadingDraft}
       />
 
       {showAddDialog && (
-        <AddJobDialog 
+        <AddJobDialog
           onClose={() => setShowAddDialog(false)}
           onAdd={addJob}
         />
       )}
       {previewJob && (
-        <ResumePreviewPopup 
+        <ResumePreviewPopup
           isOpen={!!previewJob}
           onClose={() => setPreviewJob(null)}
           draftId={getDraftForJob(previewJob.url)?.id || ''}

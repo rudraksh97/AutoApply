@@ -17,7 +17,6 @@ interface ResumePreviewPopupProps {
   job: {
     id: string;
     title: string;
-    company: string;
     jobDescription: string;
   };
   onClose: () => void;
@@ -108,7 +107,7 @@ export function ResumePreviewPopup({ job, onClose }: ResumePreviewPopupProps) {
 
   const refineResume = () => {
     if (!refinementInstructions.trim()) return;
-    
+
     const newVersion: ResumeVersion = {
       id: Date.now().toString(),
       timestamp: new Date().toISOString().slice(0, 16).replace('T', ' '),
@@ -120,15 +119,15 @@ export function ResumePreviewPopup({ job, onClose }: ResumePreviewPopupProps) {
       latexSource: '',
       promptUsed: `Refine based on: ${refinementInstructions}`
     };
-    
+
     setVersions([newVersion, ...versions]);
     setSelectedVersion(newVersion.id);
     setRefinementInstructions('');
-    
+
     // Simulate generation
     setTimeout(() => {
-      setVersions(prev => prev.map(v => 
-        v.id === newVersion.id 
+      setVersions(prev => prev.map(v =>
+        v.id === newVersion.id
           ? { ...v, status: 'current', atsScore: Math.floor(Math.random() * 15) + 85 }
           : { ...v, status: v.status === 'current' ? 'archived' : v.status }
       ));
@@ -171,7 +170,7 @@ export function ResumePreviewPopup({ job, onClose }: ResumePreviewPopupProps) {
         <div className="flex items-center justify-between p-6 border-b border-[#629FAD]/30">
           <div>
             <h2 className="text-xl font-semibold text-[#0C2C55]">Resume Preview</h2>
-            <p className="text-sm text-[#296374] mt-1">{job.title} at {job.company}</p>
+            <p className="text-sm text-[#296374] mt-1">{job.title}</p>
           </div>
           <button
             onClick={onClose}
@@ -195,17 +194,16 @@ export function ResumePreviewPopup({ job, onClose }: ResumePreviewPopupProps) {
                 Use Original
               </button>
             </div>
-            
+
             <div className="space-y-3">
               {versions.map((version) => (
                 <div
                   key={version.id}
                   onClick={() => setSelectedVersion(version.id)}
-                  className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                    selectedVersion === version.id
+                  className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${selectedVersion === version.id
                       ? 'border-[#0C2C55] bg-[#0C2C55]/10'
                       : 'border-[#629FAD]/30 bg-white hover:border-[#296374]'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1">
@@ -218,17 +216,16 @@ export function ResumePreviewPopup({ job, onClose }: ResumePreviewPopupProps) {
                       {version.status !== 'generating' && (
                         <div className="flex items-center gap-2 mt-2">
                           <span className="text-xs font-medium text-[#296374]">ATS Score:</span>
-                          <span className={`text-sm font-bold ${
-                            version.atsScore >= 90 ? 'text-green-600' : 
-                            version.atsScore >= 80 ? 'text-yellow-600' : 'text-red-600'
-                          }`}>
+                          <span className={`text-sm font-bold ${version.atsScore >= 90 ? 'text-green-600' :
+                              version.atsScore >= 80 ? 'text-yellow-600' : 'text-red-600'
+                            }`}>
                             {version.atsScore}/100
                           </span>
                         </div>
                       )}
                     </div>
                   </div>
-                  
+
                   {version.status === 'generating' ? (
                     <div className="flex items-center gap-2 text-[#296374]">
                       <div className="w-4 h-4 border-2 border-[#296374] border-t-transparent rounded-full animate-spin" />
@@ -239,7 +236,7 @@ export function ResumePreviewPopup({ job, onClose }: ResumePreviewPopupProps) {
                       <p className="text-xs text-[#0C2C55] mb-3 line-clamp-3">
                         {version.changesSummary}
                       </p>
-                      
+
                       {version.keywordsAdded.length > 0 && (
                         <div className="mb-3">
                           <p className="text-xs font-medium text-[#296374] mb-1">Keywords Added:</p>
@@ -255,7 +252,7 @@ export function ResumePreviewPopup({ job, onClose }: ResumePreviewPopupProps) {
                           </div>
                         </div>
                       )}
-                      
+
                       {version.status !== 'current' && (
                         <button
                           onClick={(e) => {
@@ -281,26 +278,24 @@ export function ResumePreviewPopup({ job, onClose }: ResumePreviewPopupProps) {
               <div className="flex gap-2">
                 <button
                   onClick={() => setViewMode('resume')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    viewMode === 'resume'
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${viewMode === 'resume'
                       ? 'bg-[#0C2C55] text-[#E8E2DB]'
                       : 'bg-white text-[#0C2C55] border border-[#629FAD]/30 hover:bg-[#E8E2DB]/50'
-                  }`}
+                    }`}
                 >
                   Resume Preview
                 </button>
                 <button
                   onClick={() => setViewMode('job')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    viewMode === 'job'
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${viewMode === 'job'
                       ? 'bg-[#0C2C55] text-[#E8E2DB]'
                       : 'bg-white text-[#0C2C55] border border-[#629FAD]/30 hover:bg-[#E8E2DB]/50'
-                  }`}
+                    }`}
                 >
                   Job Description
                 </button>
               </div>
-              
+
               <div className="flex gap-2">
                 <button
                   onClick={copyPrompt}
@@ -320,11 +315,10 @@ export function ResumePreviewPopup({ job, onClose }: ResumePreviewPopupProps) {
                 </button>
                 <button
                   onClick={toggleEditMode}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                    editMode
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${editMode
                       ? 'bg-[#0C2C55] text-[#E8E2DB]'
                       : 'bg-white text-[#0C2C55] border border-[#629FAD]/30 hover:bg-[#E8E2DB]/50'
-                  }`}
+                    }`}
                 >
                   <Code className="w-4 h-4" />
                   {editMode ? 'View Mode' : 'Manual Edit'}
@@ -373,7 +367,7 @@ export function ResumePreviewPopup({ job, onClose }: ResumePreviewPopupProps) {
                   <h3 className="text-lg font-semibold text-[#0C2C55] mb-4">Job Description</h3>
                   <div className="prose prose-sm max-w-none">
                     <p className="text-[#0C2C55] whitespace-pre-wrap">
-                      {job.jobDescription || `Position: ${job.title}\\nCompany: ${job.company}\\n\\nWe are seeking a talented ${job.title} to join our team. The ideal candidate will have extensive experience with modern web technologies including React, TypeScript, and Node.js.\\n\\nResponsibilities:\\n- Develop and maintain high-quality web applications\\n- Collaborate with cross-functional teams\\n- Write clean, maintainable code\\n- Participate in code reviews\\n\\nRequirements:\\n- 5+ years of frontend development experience\\n- Expert knowledge of React and TypeScript\\n- Strong understanding of web performance optimization\\n- Experience with CI/CD pipelines\\n- Excellent communication skills`}
+                      {job.jobDescription || `Position: ${job.title}\\n\\nWe are seeking a talented ${job.title} to join our team. The ideal candidate will have extensive experience with modern web technologies including React, TypeScript, and Node.js.\\n\\nResponsibilities:\\n- Develop and maintain high-quality web applications\\n- Collaborate with cross-functional teams\\n- Write clean, maintainable code\\n- Participate in code reviews\\n\\nRequirements:\\n- 5+ years of frontend development experience\\n- Expert knowledge of React and TypeScript\\n- Strong understanding of web performance optimization\\n- Experience with CI/CD pipelines\\n- Excellent communication skills`}
                     </p>
                   </div>
                 </div>

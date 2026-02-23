@@ -50,102 +50,7 @@ DATA_DIRECTORIES = [
     # are created on-demand by the profile router and resume_builder.
 ]
 
-# =============================================================================
-# Background Tasks
-# =============================================================================
 
-async def _process_pending_jobs(job_manager, service: DraftPreparationService):
-    """Process all jobs with 'Pending' or 'Retried' status."""
-    # Note: get_all_jobs without user_id returns ALL jobs (admin view), which is what we want here
-    # provided backend logic can handle it.
-    all_jobs = job_manager.get_all_jobs()
-    
-    # Pick up both Pending (new) and Retried (requested retry)
-    processing_jobs = [j for j in all_jobs if j.get('status') in ['Pending', 'Retried']]
-
-    if not processing_jobs:
-        # logging.debug("No jobs to process.")
-        return
-    
-    logging.info(f"Processing {len(processing_jobs)} jobs...")
-
-    for job in processing_jobs:
-        url = job.get('url')
-        status = job.get('status')
-        # We need user_id to process the job correctly (fetch profile etc)
-        # implementation details of get_all_jobs returns dict, let's see if user_id is in it?
-        # JobManager._to_dict DOES NOT include user_id. We need to fetch it or update JobManager.
-        # Wait, if we use the service, we need user_id.
-        
-        # Quick fix: Fetch the job object directly or update get_all_jobs to include user_id
-        # For efficiency, let's retrieve the job details including user_id from DB here
-        # But we don't have easy access to Session here unless we open one.
-        
-        # Better: Update JobManager to include user_id in _to_dict or add a method for "get_pending_jobs_for_processing"
-        # However, modifying JobManager touches many things.
-        
-        # Let's iterate and fetch user_id via a helper or direct DB access.
-        pass # Placeholder until we fix JobManager or loop logic
-
-async def automation_loop():
-    """Background loop to process pending jobs (Draft Creation)."""
-    job_manager = JobManager()
-    
-    # We need a browser agent for the service
-    browser_agent = BrowserAgent(headless=True)
-    
-    # We need a profile service, which needs a repo, which calls DB.
-    # Service needs a Session. We should create a fresh session for the background task?
-    # Or scoped session.
-    
-    while True:
-        try:
-            db = SessionLocal()
-            profile_repo = SqlProfileRepository(db)
-            profile_service = ProfileService(profile_repo)
-            
-            resume_builder = ResumeBuilder()
-            
-            service = DraftPreparationService(
-                job_manager=job_manager,
-                browser_agent=browser_agent,
-                resume_builder=resume_builder,
-                profile_service=profile_service
-            )
-            
-            # Custom processing logic that grabs user_id
-            # 1. Get pending jobs from DB directly to get user_id
-            from src.models import Job
-            pending_jobs = db.query(Job).filter(Job.status.in_(['Pending', 'Retried'])).all()
-            
-            if pending_jobs:
-                 logging.info(f"Processing {len(pending_jobs)} pending jobs...")
-            
-            for job in pending_jobs:
-                try:
-                    user_id = job.user_id
-                    url = job.url
-                    status = job.status
-                    
-                    if status == 'Retried':
-                        job.retry_count = (job.retry_count or 0) + 1
-                        db.commit() # Commit retry increment
-                    
-                    logging.info(f"🚀 Processing: {url} for user {user_id}")
-                    
-                    # We must run this async
-                    # DraftPreparationService.prepare_draft is async
-                    await service.prepare_draft(url, user_id, log_callback=logging.info)
-                    
-                except Exception as e:
-                    logging.error(f"Error processing job {job.url}: {e}")
-            
-            db.close()
-            
-        except Exception as e:
-            logging.error(f"Error in automation loop: {e}")
-            
-        await asyncio.sleep(10)
 
 # =============================================================================
 # Application Setup
@@ -266,14 +171,9 @@ async def lifespan(app: FastAPI):
     except Exception:
         logging.exception("Could not check/reset job manager state.")
 
-    # ── Step 5: Start background task ────────────────────────────────────────
-    task = asyncio.create_task(automation_loop())
+    # ── Step 5: Background tasks handled externally ────────────────────────
     yield
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        logging.info("Background automation task stopped.")
+    logging.info("API Server shutting down.")
 
 
 app = FastAPI(

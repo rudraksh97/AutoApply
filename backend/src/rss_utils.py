@@ -23,41 +23,6 @@ def needs_llm_extraction(feed_url: str) -> bool:
     """Check if this feed needs LLM-based job link extraction."""
     return any(pattern in feed_url.lower() for pattern in AGGREGATOR_FEED_PATTERNS)
 
-def extract_company_from_feed(feed_url: str, feed_title: str) -> str:
-    """Extract company name from feed URL or title."""
-    # Try from feed title first
-    if feed_title:
-        # Remove common suffixes like "Jobs", "Careers", "RSS"
-        company = re.sub(
-            r'\s*(Jobs|Careers|RSS|Feed|Openings).*$',
-            '',
-            feed_title,
-            flags=re.IGNORECASE
-        ).strip()
-        if company:
-            return company
-
-    # Try from URL patterns
-    parsed = urlparse(feed_url)
-    domain = parsed.netloc.lower()
-
-    patterns = [
-        (r'greenhouse\.io/(\w+)', "greenhouse.io"),
-        (r'ashbyhq\.com/([^/]+)', "ashbyhq.com"),
-        (r'lever\.co/([^/]+)', "lever.co"),
-        (r'apply\.workable\.com/([^/]+)', "workable.com"),
-    ]
-
-    for pattern, domain_match in patterns:
-        if domain_match in domain:
-            match = re.search(pattern, feed_url)
-            if match:
-                return match.group(1).replace('-', ' ').title()
-
-    # Fallback: use cleaned domain
-    domain = re.sub(r'^(www\.|jobs\.|careers\.|boards\.)', '', domain)
-    domain = domain.split('.')[0]
-    return domain.replace('-', ' ').title() if domain else None
 
 async def extract_job_link_with_llm(entry: dict, user_id: Optional[str] = None) -> dict:
     """
@@ -106,7 +71,6 @@ async def extract_job_link_with_llm(entry: dict, user_id: Optional[str] = None) 
         logger.error(f"LLM RSS extraction failed: {e}\nStack trace:\n{tb}")
         return {
             "job_url": entry_link, # Fallback to original
-            "company_name": None,
             "job_title": entry_title,
             "location": None,
             "confidence": 0.0,

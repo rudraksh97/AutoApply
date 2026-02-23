@@ -95,7 +95,6 @@ class Job(Base):
     user_id = Column(String, ForeignKey("users.id"))
     feed_id = Column(String, ForeignKey("feeds.id"), nullable=True)
     
-    company = Column(String, nullable=False)
     role = Column(String, nullable=False)
     status = Column(String, default="APPLIED") # APPLIED, PENDING, FAILED
     url = Column(String, nullable=True)

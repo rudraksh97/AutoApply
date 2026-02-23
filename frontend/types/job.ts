@@ -2,11 +2,12 @@ export interface Job {
     id: string;
     user_id: string;
     feed_id?: string;
-    company: string;
     role: string;
     status: string; // APPLIED, PENDING, FAILED
     url: string;
     created_at: string;
+    timestamp?: string;
+    source_feed_name?: string;
 
     // Legacy/Parity
     pdf_path?: string;

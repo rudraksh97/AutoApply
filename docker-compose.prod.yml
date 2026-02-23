@@ -14,12 +14,9 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/app/data
-    env_file:
-      - .env
     environment:
       - HEADLESS=true
       - PYTHONUNBUFFERED=1
-      - HOST_PROJECT_ROOT=${HOST_PROJECT_ROOT}
     shm_size: '4gb' # Required for Chromium browser automation in Docker
 
   frontend:
@@ -43,10 +40,20 @@ services:
     command: python poll_worker.py
     volumes:
       - ./data:/app/data
-    env_file:
-      - .env
     environment:
       - HEADLESS=true
       - PYTHONUNBUFFERED=1
+    depends_on:
+      - backend
+
+  job-processor:
+    image: devhaxcodes/autoapply-backend:${TAG:-prod}
+    command: python automation_worker.py
+    volumes:
+      - ./data:/app/data
+    environment:
+      - HEADLESS=true
+      - PYTHONUNBUFFERED=1
+    shm_size: '4gb'
     depends_on:
       - backend

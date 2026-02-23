@@ -21,7 +21,6 @@ class JobManagerEventPublisher(EventPublisher):
             job_title = data.get("title")
             feed_url = data.get("feed_url")
             feed_name = data.get("feed_name")
-            company_name = data.get("company_name")
             user_id = data.get("user_id")
             
             if not user_id:
@@ -32,10 +31,9 @@ class JobManagerEventPublisher(EventPublisher):
             self.job_manager.add_job(
                 job_link,
                 user_id=user_id,
-                status="Pending",
+                status="PENDING",
                 source_feed=feed_url,
                 source_feed_name=feed_name,
-                company_name=company_name,
                 job_title=job_title
             )
             if self.log_callback:

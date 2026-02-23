@@ -219,7 +219,7 @@ TASK: Extract job details and find the apply link from {job_link}
 • DO NOT use write_file action - return all data directly in the done action
 • DO NOT create file attachments
 • ALL fields in the JSON must be populated with actual values
-• Empty strings ("") are NOT acceptable for job_description, company_name, job_title
+• Empty strings ("") are NOT acceptable for job_description and job_title
 
 ═══════════════════════════════════════════════════════════════════════════════
 STEP 1: Navigate and wait
@@ -233,7 +233,6 @@ STEP 2: Extract job details FIRST (before any clicks!)
 ═══════════════════════════════════════════════════════════════════════════════
 Read and memorize:
 • job_title: The main heading (usually h1)
-• company_name: Company name near the title or logo
 • location: City/state/country or "Remote"
 • job_description: The FULL job posting text including:
   - Role overview / About the role
@@ -277,7 +276,6 @@ Call done with this EXACT JSON structure. ALL fields must have values:
 {{
   "job_description": "< PASTE THE FULL JOB DESCRIPTION TEXT HERE - must be 100+ words >",
   "apply_link": "< URL where the application form is - from Step 3 >",
-  "company_name": "< company name >",
   "job_title": "< job title >",
   "location": "< location or Remote >",
   "notes": "< what you observed: was form visible? did you click Apply? did URL change? >"
@@ -295,7 +293,7 @@ Call done with this EXACT JSON structure. ALL fields must have values:
 ═══════════════════════════════════════════════════════════════════════════════
 • job_description MUST contain the actual job posting text (100+ words)
 • apply_link MUST be a valid URL
-• company_name and job_title MUST be filled in
+• job_title MUST be filled in
 • Return ALL data directly in the done action JSON
 """
 
@@ -746,7 +744,6 @@ Return a JSON object:
 
 {{
   "job_url": "<extracted job application URL or null if not found>",
-  "company_name": "<company name extracted from content>",
   "job_title": "<job title extracted from content>",
   "location": "<job location if mentioned>",
   "confidence": <0.0-1.0 how confident you are this is the right URL>,
@@ -757,7 +754,7 @@ RULES:
 - Return the FIRST best matching job URL
 - If multiple job URLs exist, pick the most direct application link
 - If only email application is available, set job_url to null
-- Extract company name and job title from the content
+- Extract job title from the content
 - Set confidence based on how clear the URL extraction was
 
 EXAMPLE INPUT:
@@ -767,7 +764,6 @@ Description: "Acme Corp | Senior Engineer | SF | https://jobs.ashbyhq.com/acme/1
 EXAMPLE OUTPUT:
 {{
   "job_url": "https://jobs.ashbyhq.com/acme/12345",
-  "company_name": "Acme Corp",
   "job_title": "Senior Engineer",
   "location": "SF",
   "confidence": 1.0,

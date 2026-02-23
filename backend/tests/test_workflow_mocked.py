@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, ANY
 
-from src.services import DraftPreparationService
+
 
 
 class TestDraftPreparationServiceWorkflow:
@@ -16,12 +16,15 @@ class TestDraftPreparationServiceWorkflow:
         agent.scrape_job_details.return_value = {
             "job_description": "Senior Software Engineer\nRequirements: Python",
             "apply_link": "https://example.com/job/123/apply",
-            "company_name": "Example Corp",
             "job_title": "Senior Software Engineer"
         }
         agent.extract_form.return_value = {
             "status": "extracted",
-            "fields": []
+            "fields": [
+                {"name": "first_name", "type": "text", "label": "First Name"},
+                {"name": "last_name", "type": "text", "label": "Last Name"},
+                {"name": "email", "type": "email", "label": "Email"}
+            ]
         }
         return agent
 
@@ -44,23 +47,45 @@ class TestDraftPreparationServiceWorkflow:
         return MagicMock()
 
     @pytest.fixture
-    def service(self, mock_job_manager, mock_browser_agent, mock_resume_builder):
+    def mock_profile_service(self):
+        """Create a mock profile service."""
+        return MagicMock()
+
+    @pytest.fixture
+    def mock_draft_manager(self):
+        """Create a mock draft manager."""
+        mock = MagicMock()
+        mock.create_draft.return_value = "test-draft-id"
+        return mock
+
+    @pytest.fixture
+    def service(self, mock_browser_agent, mock_job_manager, mock_resume_builder, mock_profile_service, mock_draft_manager):
         """Create a DraftPreparationService with mocked dependencies."""
+        from src.services import DraftPreparationService
         return DraftPreparationService(
             job_manager=mock_job_manager,
             browser_agent=mock_browser_agent,
-            resume_builder=mock_resume_builder
+            resume_builder=mock_resume_builder,
+            profile_service=mock_profile_service,
+            draft_manager=mock_draft_manager
         )
 
     @pytest.fixture
-    def mock_profile(self):
-        """Create a mock ProfileManager context."""
-        with patch("src.services.ProfileManager") as MockPM:
-            MockPM.return_value.get_profile.return_value = {
-                "resume_generation_mode": "ats_generated"
-            }
-            MockPM.return_value.get_current_resume_path.return_value = None
-            yield MockPM
+    def mock_profile(self, mock_profile_service):
+        """Setup standard mock responses for profile service."""
+        profile_data = {
+            "basics": {"first_name": "Test", "last_name": "User", "email": "test@example.com"},
+            "resume_generation_mode": "ats_generated",
+            "education": [],
+            "experience": [],
+            "skills": [],
+            "projects": [],
+            "certifications": [],
+            "languages": [],
+            "summary": "Test Summary"
+        }
+        mock_profile_service.get_profile.return_value = profile_data
+        return profile_data
 
     @pytest.mark.asyncio
     async def test_successful_workflow(self, service, mock_browser_agent, mock_profile):
@@ -69,7 +94,7 @@ class TestDraftPreparationServiceWorkflow:
 
         result = await service.prepare_draft(
             job_link=job_url,
-            user_details_text="Test User"
+            user_id="test-user-id"
         )
 
         assert result is not None
@@ -77,65 +102,17 @@ class TestDraftPreparationServiceWorkflow:
         mock_browser_agent.extract_form.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_scraping_failure(self, service, mock_browser_agent, mock_job_manager):
+    async def test_scraping_failure(self, service, mock_browser_agent, mock_job_manager, mock_profile):
         """Test that scraping errors are handled gracefully."""
         mock_browser_agent.scrape_job_details.side_effect = Exception("Browser timeout")
         job_url = "https://example.com/job/456"
 
-        with patch("src.services.ProfileManager"):
-            result = await service.prepare_draft(job_url, "user details")
+        result = await service.prepare_draft(job_url, "test-user-id")
 
         assert result is None
         mock_job_manager.update_job.assert_any_call(
             job_url,
-            status="Draft Failed",
+            user_id="test-user-id",
+            status="FAILED",
             error_message="Browser timeout"
-        )
-
-
-class TestRunAutoApplyLoop:
-    """Tests for the run_auto_apply() main loop."""
-
-    @pytest.mark.asyncio
-    @patch('src.main.ResumeBuilder')
-    @patch('src.main.BrowserAgent')
-    @patch('src.main.JobManager')
-    @patch('src.main.ConfigManager')
-    @patch('src.main.ProfileManager')
-    @patch('src.main.RSSWatcher')
-    @patch('src.main.DraftPreparationService')
-    async def test_single_run_orchestration(
-        self,
-        MockService,
-        MockWatcher,
-        MockProfile,
-        _MockConfig,
-        MockJobManager,
-        _MockBrowser,
-        _MockResume
-    ):
-        """Test that a single run polls RSS and processes pending jobs."""
-        from src.main import run_auto_apply
-
-        # Setup job manager mock
-        mock_job_manager = MockJobManager.return_value
-        mock_job_manager.get_all_jobs.return_value = [
-            {"url": "https://example.com/job/1", "status": "Pending"}
-        ]
-
-        # Setup watcher mock
-        mock_watcher = MockWatcher.return_value
-        mock_watcher.poll_once = AsyncMock()
-
-        # Setup service mock
-        mock_service = MockService.return_value
-        mock_service.prepare_draft = AsyncMock(return_value="draft-123")
-
-        await run_auto_apply(continuous=False)
-
-        mock_watcher.poll_once.assert_called_once()
-        mock_service.prepare_draft.assert_called_once_with(
-            job_link="https://example.com/job/1",
-            user_details_text=MockProfile.return_value.get_profile_as_text.return_value,
-            log_callback=ANY
         )

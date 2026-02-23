@@ -88,7 +88,6 @@ class ResumeParserOutput(BaseModel):
 class RSSLinkExtractionOutput(BaseModel):
     """Output schema for RSS job link extraction."""
     job_url: Optional[str] = Field(description="The extracted job application URL or null if not found")
-    company_name: Optional[str] = Field(description="Company name extracted from content")
     job_title: Optional[str] = Field(description="Job title extracted from content")
     location: Optional[str] = Field(description="Job location if mentioned")
     confidence: float = Field(description="Confidence score between 0.0 and 1.0")

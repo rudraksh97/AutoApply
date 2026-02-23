@@ -131,7 +131,6 @@ def _extract_json_from_response(response: str, fallback_as_text: bool = False) -
         return {
             "job_description": response,
             "apply_link": None,
-            "company_name": None,
             "job_title": None,
             "location": None
         }
@@ -319,7 +318,7 @@ class BrowserAgent:
             job_link: URL of the job posting.
 
         Returns:
-            Dict with job_description, apply_link, company_name, job_title, location.
+            Dict with job_description, apply_link, job_title, location.
         """
         task = self._create_scrape_task(job_link)
         result = await self._run_agent(task)
@@ -329,8 +328,7 @@ class BrowserAgent:
         # Validate we got useful data
         has_data = any([
             parsed.get("job_description"),
-            parsed.get("apply_link"),
-            parsed.get("company_name")
+            parsed.get("apply_link")
         ])
 
         if not has_data:
@@ -339,7 +337,6 @@ class BrowserAgent:
         return {
             "job_description": parsed.get("job_description", result),
             "apply_link": parsed.get("apply_link"),
-            "company_name": parsed.get("company_name"),
             "job_title": parsed.get("job_title"),
             "location": parsed.get("location")
         }

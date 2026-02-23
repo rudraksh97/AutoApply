@@ -31,7 +31,6 @@ class JobManager:
         return {
             "url": job.url,
             "status": job.status,
-            "company": job.company,
             "role": job.role,
             "feed_id": job.feed_id,
             "timestamp": job.created_at.isoformat() if job.created_at else "",
@@ -54,7 +53,7 @@ class JobManager:
         finally:
             db.close()
 
-    def add_job(self, url, user_id, status="Pending", source_feed=None, source_feed_name=None, company_name=None, job_title=None):
+    def add_job(self, url, user_id, status="PENDING", source_feed=None, source_feed_name=None, job_title=None):
         url = normalize_job_url(url)
         if not user_id:
             logger.error("Attempted to add job without user_id")
@@ -76,10 +75,9 @@ class JobManager:
             
             job = Job(
                 url=url,
-                status=status,
+                status="PENDING",
                 feed_id=feed_id,
                 user_id=user_id,
-                company=company_name or "Unknown",
                 role=job_title or "Unknown Role",
                 created_at=datetime.utcnow()
             )
@@ -95,7 +93,7 @@ class JobManager:
             db.close()
 
     def update_job(self, url, user_id, status=None, pdf_path=None, details=None, error_message=None, 
-                   source_feed=None, source_feed_name=None, company_name=None, job_title=None, apply_link=None):
+                   source_feed=None, source_feed_name=None, job_title=None, apply_link=None):
         url = normalize_job_url(url)
         db = SessionLocal()
         try:
@@ -107,7 +105,6 @@ class JobManager:
             if pdf_path: job.pdf_path = pdf_path
             if details: job.details = str(details)
             if error_message is not None: job.error_message = str(error_message) if error_message else None
-            if company_name: job.company = company_name
             if job_title: job.role = job_title
             if apply_link: job.apply_link = apply_link
             

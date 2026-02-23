@@ -15,36 +15,12 @@ DOCKER_USER="devhaxcodes"
 
 # Determine current environment
 determine_env() {
-    if [ -f ".docker_env" ]; then
-        CURRENT_ENV=$(cat .docker_env)
-    else
-        # No environment set, prompt user
-        echo "⚠️  No environment selected."
-        echo "1) Development (Builds from Source, Tag: :dev)"
-        echo "2) Production (Uses Pre-built Images, Tag: :prod)"
-        read -p "Select environment [1-2]: " env_choice
-        case $env_choice in
-            1)
-                CURRENT_ENV="dev"
-                ;;
-            2)
-                CURRENT_ENV="prod"
-                ;;
-            *)
-                echo "Invalid choice. Defaulting to Development."
-                CURRENT_ENV="dev"
-                ;;
-        esac
-        echo "$CURRENT_ENV" > .docker_env
-        echo "✅ Environment set to: $CURRENT_ENV"
-    fi
-
-    # Set TAG based on environment
-    if [ "$CURRENT_ENV" == "prod" ]; then
-        export TAG="prod"
-    else
+    # Default to dev unless TAG is already set in shell
+    if [ -z "$TAG" ]; then
         export TAG="dev"
     fi
+    CURRENT_ENV=$TAG
+    echo "✅ Environment set to: $CURRENT_ENV (Tag: $TAG)"
 }
 
 # Initial determination
@@ -157,6 +133,7 @@ execute_choice() {
             echo "   New Frontend: http://localhost:3001"
             echo "   Revamp Frontend: http://localhost:3002"
             echo "   Backend: http://localhost:8000"
+            echo "   Services Running: API, RSS Poller, Job Processor"
             ;;
         3|down)
             echo "🛑 Stopping services..."
@@ -243,18 +220,9 @@ execute_choice() {
             exit 0
             ;;
         10)
-            if [ "$CURRENT_ENV" == "dev" ]; then
-                echo "prod" > .docker_env
-                echo "✅ Switched to Production (Tag: :prod)"
-            else
-                echo "dev" > .docker_env
-                echo "✅ Switched to Development (Tag: :dev)"
-            fi
-            determine_env # Refresh variable & TAG
+            echo "ℹ️  Environment switching via menu is disabled."
+            echo "   Please set the TAG environment variable instead: export TAG=prod"
             read -p "Press Enter to continue..."
-            show_menu
-            read -p "Select an option [1-10]: " choice
-            execute_choice "$choice"
             ;;
         # 10|dev)
         #     echo "🛠️  Starting in Dev Mode..."

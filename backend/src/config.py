@@ -18,6 +18,7 @@ from typing import Optional, Any
 logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
 DATA_DIR = os.path.join(BASE_DIR, "data")
 LLMS_FILE = os.path.join(DATA_DIR, "llms.json")
 GLOBAL_CONFIG_FILE = os.path.join(BASE_DIR, "configs", "development.json")

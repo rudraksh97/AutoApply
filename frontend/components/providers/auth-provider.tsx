@@ -70,8 +70,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             roles
         });
         axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-        // Customer-only users land on /jobs; everyone else on /dashboard
-        router.push(isBasic ? "/dashboard" : "/jobs");
+        // Everyone lands on /dashboard (Jobs History) by default
+        router.push("/dashboard");
     };
 
     const logout = () => {
@@ -99,8 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (user && publicRoutes.includes(pathname)) {
-            const isBasic = user.roles.includes("admin") || user.roles.includes("basic");
-            router.push(isBasic ? "/dashboard" : "/jobs");
+            router.push("/dashboard");
             return;
         }
 
@@ -109,9 +108,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const isAdmin = user.roles.includes("admin");
             const isBasic = user.roles.includes("basic") || isAdmin;
             const isCustomerOnly = !isBasic && user.roles.includes("customer");
-            const CUSTOMER_ALLOWED = ["/jobs"];
+            const CUSTOMER_ALLOWED = ["/dashboard", "/feeds"];
             if (isCustomerOnly && !CUSTOMER_ALLOWED.includes(pathname)) {
-                router.push("/jobs");
+                router.push("/dashboard");
             }
         }
     }, [user, loading, pathname, router]);

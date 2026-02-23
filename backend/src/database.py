@@ -62,11 +62,11 @@ def init_db() -> None:
 @contextmanager
 def get_connection():
     """
-    Context manager for database sessions.
-    Always closes the session on exit, even on exception.
+    Context manager for raw database connections.
+    Required by DraftManager for raw SQL operations.
     """
-    db = SessionLocal()
+    conn = engine.raw_connection()
     try:
-        yield db
+        yield conn
     finally:
-        db.close()
+        conn.close()

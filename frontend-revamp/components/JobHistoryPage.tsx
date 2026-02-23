@@ -11,7 +11,6 @@ interface Job {
   sent: boolean;
   date: string;
   title: string;
-  company: string;
   source: string;
   jobUrl: string;
   applyUrl: string;
@@ -34,7 +33,6 @@ export function JobHistoryPage() {
       sent: false,
       date: '2026-01-27 10:30',
       title: 'Senior Frontend Developer',
-      company: 'TechCorp Inc.',
       source: 'LinkedIn Jobs',
       jobUrl: 'https://example.com/job/123',
       applyUrl: 'https://example.com/apply/123',
@@ -52,7 +50,6 @@ export function JobHistoryPage() {
       sent: false,
       date: '2026-01-27 09:15',
       title: 'React Developer',
-      company: 'StartupXYZ',
       source: 'Test Feed',
       jobUrl: 'https://example.com/job/456',
       applyUrl: 'https://example.com/apply/456',
@@ -84,7 +81,7 @@ export function JobHistoryPage() {
   };
 
   const toggleSent = (id: string) => {
-    setJobs(jobs.map(job => 
+    setJobs(jobs.map(job =>
       job.id === id ? { ...job, sent: !job.sent } : job
     ));
   };
@@ -94,17 +91,17 @@ export function JobHistoryPage() {
   };
 
   const rerunJob = (id: string) => {
-    setJobs(jobs.map(job => 
+    setJobs(jobs.map(job =>
       job.id === id ? { ...job, status: 'running', retryCount: job.retryCount + 1 } : job
     ));
     setTimeout(() => {
-      setJobs(jobs.map(job => 
+      setJobs(jobs.map(job =>
         job.id === id ? { ...job, status: 'completed' } : job
       ));
     }, 2000);
   };
 
-  const filteredJobs = jobs.filter(job => 
+  const filteredJobs = jobs.filter(job =>
     activeTab === 'sent' ? job.sent : !job.sent
   );
 
@@ -139,8 +136,8 @@ export function JobHistoryPage() {
                   Job Manager: {managerRunning ? 'Running' : 'Paused'}
                 </p>
                 <p className="text-sm text-[#296374]">
-                  {managerRunning 
-                    ? 'Automatically processing application drafts' 
+                  {managerRunning
+                    ? 'Automatically processing application drafts'
                     : 'Background processing is paused'
                   }
                 </p>
@@ -148,11 +145,10 @@ export function JobHistoryPage() {
             </div>
             <button
               onClick={() => setManagerRunning(!managerRunning)}
-              className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                managerRunning 
-                  ? 'bg-[#629FAD]/20 text-[#0C2C55] hover:bg-[#629FAD]/30' 
+              className={`px-6 py-2 rounded-lg font-medium transition-colors ${managerRunning
+                  ? 'bg-[#629FAD]/20 text-[#0C2C55] hover:bg-[#629FAD]/30'
                   : 'bg-[#0C2C55] text-[#E8E2DB] hover:bg-[#0C2C55]/90'
-              }`}
+                }`}
             >
               {managerRunning ? 'Pause' : 'Start'}
             </button>
@@ -164,21 +160,19 @@ export function JobHistoryPage() {
           <div className="flex gap-8">
             <button
               onClick={() => setActiveTab('drafts')}
-              className={`pb-3 px-1 border-b-2 font-medium transition-colors ${
-                activeTab === 'drafts'
+              className={`pb-3 px-1 border-b-2 font-medium transition-colors ${activeTab === 'drafts'
                   ? 'border-[#0C2C55] text-[#0C2C55]'
                   : 'border-transparent text-[#629FAD] hover:text-[#296374]'
-              }`}
+                }`}
             >
               Application Drafts ({jobs.filter(j => !j.sent).length})
             </button>
             <button
               onClick={() => setActiveTab('sent')}
-              className={`pb-3 px-1 border-b-2 font-medium transition-colors ${
-                activeTab === 'sent'
+              className={`pb-3 px-1 border-b-2 font-medium transition-colors ${activeTab === 'sent'
                   ? 'border-[#0C2C55] text-[#0C2C55]'
                   : 'border-transparent text-[#629FAD] hover:text-[#296374]'
-              }`}
+                }`}
             >
               Sent Applications ({jobs.filter(j => j.sent).length})
             </button>
@@ -193,8 +187,8 @@ export function JobHistoryPage() {
               No {activeTab === 'sent' ? 'sent applications' : 'drafts'} yet
             </h3>
             <p className="text-[#296374]">
-              {activeTab === 'sent' 
-                ? 'Mark applications as sent to track them here' 
+              {activeTab === 'sent'
+                ? 'Mark applications as sent to track them here'
                 : 'Add job URLs or enable RSS feeds to start tracking applications'
               }
             </p>
@@ -229,7 +223,6 @@ export function JobHistoryPage() {
                       <td className="px-6 py-4 text-sm text-[#296374] whitespace-nowrap">{job.date}</td>
                       <td className="px-6 py-4">
                         <div className="text-sm font-medium text-[#0C2C55]">{job.title}</div>
-                        <div className="text-sm text-[#296374]">{job.company}</div>
                         <div className="text-xs text-[#629FAD] mt-1">{job.source}</div>
                       </td>
                       <td className="px-6 py-4">
@@ -313,7 +306,7 @@ export function JobHistoryPage() {
         <JobJsonModal job={selectedJob} onClose={() => setSelectedJob(null)} />
       )}
       {showAddDialog && (
-        <AddJobDialog 
+        <AddJobDialog
           onClose={() => setShowAddDialog(false)}
           onAdd={(url) => {
             const newJob: Job = {
@@ -321,7 +314,6 @@ export function JobHistoryPage() {
               sent: false,
               date: new Date().toISOString().slice(0, 16).replace('T', ' '),
               title: 'Processing...',
-              company: 'Unknown',
               source: 'Manual',
               jobUrl: url,
               applyUrl: url,
@@ -336,14 +328,13 @@ export function JobHistoryPage() {
         />
       )}
       {previewJob && (
-        <ResumePreviewPopup 
+        <ResumePreviewPopup
           job={{
             id: previewJob.id,
             title: previewJob.title,
-            company: previewJob.company,
-            jobDescription: `Position: ${previewJob.title}\nCompany: ${previewJob.company}\n\nWe are seeking a talented ${previewJob.title} to join our team. The ideal candidate will have extensive experience with modern web technologies including React, TypeScript, and Node.js.\n\nResponsibilities:\n- Develop and maintain high-quality web applications\n- Collaborate with cross-functional teams\n- Write clean, maintainable code\n- Participate in code reviews\n\nRequirements:\n- 5+ years of frontend development experience\n- Expert knowledge of React and TypeScript\n- Strong understanding of web performance optimization\n- Experience with CI/CD pipelines\n- Excellent communication skills`
-          }} 
-          onClose={() => setPreviewJob(null)} 
+            jobDescription: `Position: ${previewJob.title}\n\nWe are seeking a talented ${previewJob.title} to join our team. The ideal candidate will have extensive experience with modern web technologies including React, TypeScript, and Node.js.\n\nResponsibilities:\n- Develop and maintain high-quality web applications\n- Collaborate with cross-functional teams\n- Write clean, maintainable code\n- Participate in code reviews\n\nRequirements:\n- 5+ years of frontend development experience\n- Expert knowledge of React and TypeScript\n- Strong understanding of web performance optimization\n- Experience with CI/CD pipelines\n- Excellent communication skills`
+          }}
+          onClose={() => setPreviewJob(null)}
         />
       )}
     </div>

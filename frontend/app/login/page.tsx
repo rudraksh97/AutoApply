@@ -90,7 +90,29 @@ export default function LoginPage() {
                         </Button>
                     </form>
                 </CardContent>
-                <CardFooter className="flex justify-center">
+                <CardFooter className="flex flex-col space-y-4">
+                    <div className="pt-4 border-t w-full">
+                        <p className="text-xs text-center text-slate-500 uppercase font-bold tracking-wider mb-3">Test Access</p>
+                        <div className="flex flex-col gap-2">
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-center justify-between">
+                                <div className="text-sm">
+                                    <span className="font-semibold text-slate-700">Username:</span> testuser<br />
+                                    <span className="font-semibold text-slate-700">Password:</span> password123
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        setUsername("testuser");
+                                        setPassword("password123");
+                                    }}
+                                    className="text-xs"
+                                >
+                                    Auto-fill
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
                     <p className="text-sm text-gray-500">
                         Don't have an account?{" "}
                         <Link href="/register" className="text-blue-600 hover:underline">

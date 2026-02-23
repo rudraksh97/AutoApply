@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 
-from src.services import DraftPreparationService
+
 
 
 class TestDraftPreparationWithResume:
@@ -15,22 +15,27 @@ class TestDraftPreparationWithResume:
         return {
             "job_manager": MagicMock(),
             "browser_agent": AsyncMock(),
-            "resume_builder": MagicMock()
+            "resume_builder": MagicMock(),
+            "profile_service": MagicMock()
         }
 
     @pytest.fixture
     def service(self, mock_dependencies):
         """Create a DraftPreparationService with mocked dependencies."""
+        from src.services import DraftPreparationService
         deps = mock_dependencies
         deps["browser_agent"].scrape_job_details.return_value = {
             "job_description": "Test job description",
             "apply_link": "https://example.com/apply",
-            "company_name": "Test Corp",
             "job_title": "Engineer"
         }
         deps["browser_agent"].extract_form.return_value = {
             "status": "extracted",
-            "fields": []
+            "fields": [
+                {"name": "first_name", "type": "text", "label": "First Name"},
+                {"name": "last_name", "type": "text", "label": "Last Name"},
+                {"name": "email", "type": "email", "label": "Email"}
+            ]
         }
         deps["resume_builder"].build = AsyncMock(return_value=(
             "/path/to/resume.pdf",
@@ -43,23 +48,24 @@ class TestDraftPreparationWithResume:
         return DraftPreparationService(
             job_manager=deps["job_manager"],
             browser_agent=deps["browser_agent"],
-            resume_builder=deps["resume_builder"]
+            resume_builder=deps["resume_builder"],
+            profile_service=deps["profile_service"]
         )
 
     @pytest.mark.asyncio
     async def test_prepare_draft_uses_uploaded_pdf(self, service, mock_dependencies):
         """Test that uploaded PDF resumes are used when configured."""
-        with patch("src.services.ProfileManager") as MockPM:
-            MockPM.return_value.get_profile.return_value = {
-                "resume_generation_mode": "uploaded_pdf"
-            }
-            MockPM.return_value.get_current_resume_path.return_value = "/tmp/uploaded.pdf"
+        mock_dependencies["profile_service"].get_profile.return_value = {
+            "resume_generation_mode": "uploaded_pdf",
+            "pdf_resumes": [{"id": "res-1", "path": "/tmp/uploaded.pdf"}],
+            "current_pdf_resume_id": "res-1"
+        }
 
-            with patch("os.path.exists", return_value=True):
-                result = await service.prepare_draft(
-                    job_link="https://example.com/job",
-                    user_details_text="Test User"
-                )
+        with patch("os.path.exists", return_value=True):
+            result = await service.prepare_draft(
+                job_link="https://example.com/job",
+                user_id="test-user"
+            )
 
         assert result is not None
         # Resume builder should not be called when using uploaded PDF
@@ -68,17 +74,17 @@ class TestDraftPreparationWithResume:
     @pytest.mark.asyncio
     async def test_prepare_draft_falls_back_when_upload_missing(self, service, mock_dependencies):
         """Test fallback to ATS generation when uploaded file is missing."""
-        with patch("src.services.ProfileManager") as MockPM:
-            MockPM.return_value.get_profile.return_value = {
-                "resume_generation_mode": "uploaded_pdf"
-            }
-            MockPM.return_value.get_current_resume_path.return_value = "/tmp/missing.pdf"
+        mock_dependencies["profile_service"].get_profile.return_value = {
+            "resume_generation_mode": "uploaded_pdf",
+            "pdf_resumes": [{"id": "res-1", "path": "/tmp/missing.pdf"}],
+            "current_pdf_resume_id": "res-1"
+        }
 
-            with patch("os.path.exists", return_value=False):
-                result = await service.prepare_draft(
-                    job_link="https://example.com/job",
-                    user_details_text="Test User"
-                )
+        with patch("os.path.exists", return_value=False):
+            result = await service.prepare_draft(
+                job_link="https://example.com/job",
+                user_id="test-user"
+            )
 
         assert result is not None
         # Should fall back to generating resume
@@ -87,16 +93,14 @@ class TestDraftPreparationWithResume:
     @pytest.mark.asyncio
     async def test_prepare_draft_generates_ats_resume(self, service, mock_dependencies):
         """Test ATS resume generation mode."""
-        with patch("src.services.ProfileManager") as MockPM:
-            MockPM.return_value.get_profile.return_value = {
-                "resume_generation_mode": "ats_generated"
-            }
-            MockPM.return_value.get_current_resume_path.return_value = None
+        mock_dependencies["profile_service"].get_profile.return_value = {
+            "resume_generation_mode": "ats_generated"
+        }
 
-            result = await service.prepare_draft(
-                job_link="https://example.com/job",
-                user_details_text="Test User"
-            )
+        result = await service.prepare_draft(
+            job_link="https://example.com/job",
+            user_id="test-user"
+        )
 
         assert result is not None
         mock_dependencies["resume_builder"].build.assert_called_once()

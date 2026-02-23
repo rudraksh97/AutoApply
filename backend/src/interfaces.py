@@ -51,7 +51,6 @@ class JobManagerProtocol(Protocol):
         status: str = "Pending",
         source_feed: Optional[str] = None,
         source_feed_name: Optional[str] = None,
-        company_name: Optional[str] = None,
         job_title: Optional[str] = None
     ) -> bool:
         """
@@ -62,7 +61,6 @@ class JobManagerProtocol(Protocol):
             user_id: The ID of the user the job belongs to.
             status: Initial processing status.
             source_feed: URL of the RSS feed that sourced this job.
-            company_name: Name of the company.
             job_title: Title of the job role.
 
         Returns:

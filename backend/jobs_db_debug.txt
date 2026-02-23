@@ -1,0 +1,17 @@
+SCHEMA:
+(0, 'url', 'TEXT', 0, None, 1)
+(1, 'status', 'TEXT', 0, None, 0)
+(2, 'pdf_path', 'TEXT', 0, None, 0)
+(3, 'timestamp', 'TEXT', 0, None, 0)
+(4, 'details', 'TEXT', 0, None, 0)
+(5, 'error_message', 'TEXT', 0, None, 0)
+(6, 'source_feed', 'TEXT', 0, None, 0)
+(7, 'source_feed_name', 'TEXT', 0, None, 0)
+(8, 'company_name', 'TEXT', 0, None, 0)
+(9, 'job_title', 'TEXT', 0, None, 0)
+(10, 'apply_link', 'TEXT', 0, None, 0)
+(11, 'sent', 'INTEGER', 0, '0', 0)
+(12, 'retry_count', 'INTEGER', 0, '0', 0)
+
+SAMPLE:
+[('https://jobs.lever.co/slate/41518324-7696-4147-9ad7-aa8beae09767/apply', 'Pending', None, '2026-02-17 21:02:22', None, None, 'https://www.google.com/alerts/feeds/16255412850507629906/4300840954695178388', 'SE Lever', 'Google Alert - "Software Engineer" site:lever.co', '<b>Software Engineer</b> - Slate - Lever', None, 0, 0)]

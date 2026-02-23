@@ -243,7 +243,7 @@ class DraftPreparationService:
             logger.error(f"Draft preparation failed: {e}\n{tb}")
             
             self.draft_manager.update_status(draft_id, DraftStatus.FAILED)
-            self.job_manager.update_job(job_link, status="Draft Failed", error_message=str(e))
+            self.job_manager.update_job(job_link, user_id=user_id, status="FAILED", error_message=str(e))
             return None
 
     # -------------------------------------------------------------------------
@@ -256,7 +256,7 @@ class DraftPreparationService:
             job_url=job_link,
             status=DraftStatus.JOB_FOUND
         )
-        self.job_manager.update_job(job_link, status="Running - Scraping")
+        self.job_manager.update_job(job_link, status="RUNNING_SCRAPING")
         return draft_id
 
     # -------------------------------------------------------------------------
@@ -276,7 +276,6 @@ class DraftPreparationService:
         return {
             "description": result.get("job_description", ""),
             "apply_link": apply_link or job_link,
-            "company": result.get("company_name"),
             "title": result.get("job_title"),
         }
 
@@ -358,7 +357,7 @@ class DraftPreparationService:
 
         # Update draft with resume path
         self.draft_manager.update_draft(draft_id, resume_path=pdf_path)
-        self.job_manager.update_job(job_link, pdf_path=pdf_path, status="Running - Extracting Form")
+        self.job_manager.update_job(job_link, pdf_path=pdf_path, status="RUNNING_EXTRACTING")
 
         return pdf_path, relative_path
 
@@ -367,21 +366,23 @@ class DraftPreparationService:
         if not pdf_path:
             return None, None
 
-        host_root = self.config.get_global_setting("host_project_root")
-
-        # Compute project-relative path
+        # Compute project-relative path (always stored relative to /app or PROJECT_ROOT)
         rel_path = pdf_path
         if os.path.isabs(pdf_path):
-            rel_path = os.path.relpath(pdf_path, "/app")
+            # In Docker, absolute paths start with /app
+            if pdf_path.startswith("/app"):
+                rel_path = os.path.relpath(pdf_path, "/app")
+            else:
+                # Outside Docker, try relative to project root
+                from src.config import PROJECT_ROOT
+                if pdf_path.startswith(PROJECT_ROOT):
+                    rel_path = os.path.relpath(pdf_path, PROJECT_ROOT)
+
         rel_path = rel_path.replace("\\", "/")
-
-        # Compute final path
-        if host_root:
-            final_path = os.path.join(host_root, rel_path).replace("\\", "/")
-        else:
-            final_path = rel_path
-
-        return final_path, rel_path
+        
+        # We now return the same relative path for both values to encourage 
+        # consumers to handle their own root resolution based on context.
+        return rel_path, rel_path
 
     async def _generate_resume(
         self,
@@ -397,7 +398,7 @@ class DraftPreparationService:
         from src.config import ConfigManager
         from src.url_utils import get_stable_job_id
 
-        self.job_manager.update_job(job_link, status="Running - Generating Resume")
+        self.job_manager.update_job(job_link, status="RUNNING_RESUME")
 
         job_id = get_stable_job_id(job_link)
         config = ConfigManager()
@@ -505,7 +506,7 @@ class DraftPreparationService:
         log_callback(f"📋 Found {field_count} form fields")
 
         # Generate answers
-        self.job_manager.update_job(job_link, status="Running - Generating Answers")
+        self.job_manager.update_job(job_link, status="RUNNING_ANSWERS")
         form_state = await self._generate_form_answers(
             form_state, job_description, user_details_text, log_callback, user_id=user_id
         )
@@ -696,7 +697,7 @@ class DraftPreparationService:
             status=DraftStatus.DRAFT_SAVED,
             form_state=form_state
         )
-        self.job_manager.update_job(job_link, status="Draft Saved", error_message="")
+        self.job_manager.update_job(job_link, status="DRAFT_SAVED", error_message="")
 
         filled = sum(1 for f in form_state.fields if f.value and not f.skipped)
         skipped = sum(1 for f in form_state.fields if f.skipped)

@@ -14,13 +14,15 @@ import tempfile
 import shutil
 from pathlib import Path
 from unittest.mock import Mock, AsyncMock
+from contextlib import contextmanager
 
 # Ensure backend imports work
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+import src.database  # Import this to ensure all models are registered with Base.metadata
 from src.database import Base
 from src.models import User
 
@@ -32,21 +34,19 @@ engine = create_engine(
     connect_args={"check_same_thread": False},
     poolclass=StaticPool,
 )
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, expire_on_commit=False)
 
 @pytest.fixture(scope="function")
 def db_session():
     """
-    Creates a fresh in-memory SQLite database for each test.
-    Returns a SQLAlchemy session.
+    Returns a SQLAlchemy session for the shared test database.
+    Tables are created by the autouse patch_db_components fixture.
     """
-    Base.metadata.create_all(bind=engine)
     session = TestingSessionLocal()
     try:
         yield session
     finally:
         session.close()
-        Base.metadata.drop_all(bind=engine)
 
 @pytest.fixture(scope="function")
 def test_user(db_session):
@@ -56,20 +56,117 @@ def test_user(db_session):
     # Create user with all roles to pass permission checks by default
     user = User(
         email="test@example.com",
+        username="testuser",
         hashed_password="hashed_secret",
         roles=["customer", "basic", "admin"] 
     )
     db_session.add(user)
     db_session.commit()
-    db_session.refresh(user)
+    # Refresh to ensure ID is populated, but avoid lazy load later
+    try:
+        db_session.refresh(user)
+    except:
+        pass
     return user
 
-@pytest.fixture(autouse=True)
-def patch_session_local(monkeypatch):
+@pytest.fixture(autouse=True, scope="function")
+def patch_db_components(monkeypatch):
     """
-    Ensure all code using src.db.SessionLocal gets the test session.
+    Ensure all code using src.db.SessionLocal or src.db.engine gets the test database.
+    This is critical for DraftManager which uses raw connections from the engine.
+    Also ensures all tables are created for every test.
     """
     monkeypatch.setattr("src.db.SessionLocal", TestingSessionLocal)
+    monkeypatch.setattr("src.db.engine", engine)
+    
+    # Also patch modules that might have imported them already
+    try:
+        import src.job_manager
+        monkeypatch.setattr("src.job_manager.SessionLocal", TestingSessionLocal)
+    except (ImportError, AttributeError):
+        pass
+        
+    try:
+        import src.services.draft_services
+        monkeypatch.setattr("src.services.draft_services.SessionLocal", TestingSessionLocal)
+    except (ImportError, AttributeError):
+        pass
+    
+    # Ensure tables exist for every test
+    # Use bind=engine to ensure it uses the shared in-memory DB
+    Base.metadata.create_all(bind=engine)
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS drafts (
+                id TEXT PRIMARY KEY,
+                job_url TEXT UNIQUE,
+                apply_link TEXT,
+                status TEXT,
+                form_state_json TEXT,
+                resume_path TEXT,
+                job_details TEXT,
+                initial_ats_score INTEGER,
+                created_at TEXT,
+                updated_at TEXT
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS resume_versions (
+                id TEXT PRIMARY KEY,
+                draft_id TEXT,
+                version_number INTEGER,
+                tex_path TEXT,
+                pdf_path TEXT,
+                ats_score INTEGER,
+                justification TEXT,
+                keywords_added TEXT,
+                changes_summary TEXT,
+                status TEXT,
+                is_current INTEGER,
+                created_at TEXT,
+                FOREIGN KEY(draft_id) REFERENCES drafts(id)
+            )
+        """))
+
+    @contextmanager
+    def mock_get_connection():
+        """Mock version of get_connection that uses the test engine."""
+        # Use .connection to get the raw sqlite3.Connection object
+        raw_conn = engine.raw_connection()
+        conn = raw_conn.connection
+        old_row_factory = conn.row_factory
+        try:
+            yield conn
+        finally:
+            # CRITICAL: Reset row_factory because StaticPool shares the same connection.
+            # If not reset, it breaks SQLAlchemy's internal result processing (KeyError: 0).
+            conn.row_factory = old_row_factory
+            raw_conn.close()
+            
+    monkeypatch.setattr("src.database.get_connection", mock_get_connection)
+    
+    # Patch in modules that might have already imported it
+    try:
+        import src.draft_manager
+        monkeypatch.setattr("src.draft_manager.get_connection", mock_get_connection)
+    except (ImportError, AttributeError):
+        pass
+        
+    try:
+        import src.services.draft_services
+        monkeypatch.setattr("src.services.draft_services.get_connection", mock_get_connection)
+    except (ImportError, AttributeError):
+        pass
+        
+    try:
+        yield
+    finally:
+        # Clear the database after each test to avoid IntegrityError (UNIQUE constraint failed)
+        # since we are using StaticPool which shares the DB in memory.
+        Base.metadata.drop_all(bind=engine)
+        with engine.begin() as conn:
+            conn.execute(text("DROP TABLE IF EXISTS drafts"))
+            conn.execute(text("DROP TABLE IF EXISTS resume_versions"))
 
 
 
@@ -257,7 +354,6 @@ def stub_browser_agent(job_posting_html):
     agent.scrape_job_details = AsyncMock(return_value={
         "job_description": job_description,
         "apply_link": "https://example.com/jobs/apply",
-        "company_name": "Test Company Inc.",
         "job_title": "Senior Software Engineer"
     })
 

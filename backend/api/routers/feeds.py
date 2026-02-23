@@ -23,27 +23,41 @@ router = APIRouter(prefix="/feeds", tags=["Feeds"])
 
 @router.get("", response_model=List[FeedResponse])
 def get_feeds(
+    mode: str = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Get user settings
+    # Mode "system": Returns absolutely everything in the DB
+    if mode == "system":
+        return db.query(Feed).all()
+
+    # Mode "all": Returns everything (Global + Mine)
+    if mode == "all":
+        return db.query(Feed).filter(
+            or_(
+                Feed.user_id == current_user.id,
+                Feed.is_global == True
+            )
+        ).all()
+        
+    # Mode "mine": Only my private feeds
+    if mode == "mine":
+        return db.query(Feed).filter(Feed.user_id == current_user.id, Feed.is_global == False).all()
+        
+    # Default: Existing logic based on user settings
     user_settings = db.query(Settings).filter(Settings.user_id == current_user.id).first()
     include_global = True
     if user_settings:
         include_global = user_settings.include_global_feeds
     
-    # Base query: My feeds
     query = db.query(Feed).filter(Feed.user_id == current_user.id)
-    
     if include_global:
-        # Fetch my feeds OR global feeds
         query = db.query(Feed).filter(
             or_(
                 Feed.user_id == current_user.id,
                 Feed.is_global == True
             )
         )
-    
     return query.all()
 
 @router.post("", response_model=FeedResponse)

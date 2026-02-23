@@ -1,0 +1,181 @@
+{
+  "rss_feeds": [
+    {
+      "url": "https://www.google.com/alerts/feeds/16255412850507629906/17694372667093467017",
+      "name": "SE Greenhouse"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/16255412850507629906/4300840954695178388",
+      "name": "SE Lever"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/16255412850507629906/9019125835789273557",
+      "name": "SE Ashby"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/16255412850507629906/10956961233803871459",
+      "name": "SE_Workday"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/16255412850507629906/726450358869198302",
+      "name": "SE SmartRecruiters"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/16255412850507629906/2889090043883492593",
+      "name": "SE ICIMS"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/16255412850507629906/218743430007534620",
+      "name": "SE Wellfound"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/16255412850507629906/6365267547920822315",
+      "name": "SE WorkAtAStartup"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/16255412850507629906/17766786241180492385",
+      "name": "Careers Page"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/16255412850507629906/931641559393224086",
+      "name": "SE Workable"
+    },
+    {
+      "url": "<feed xmlns=\"http://www.w3.org/2005/Atom\" xmlns:idx=\"urn:atom-extension:indexing\"> <id>tag:google.com,2005:reader/user/14331641387255426813/state/com.google/alerts/676181565088978148</id> <title>Google Alert - Data Scientist site:oraclecloud.com</title> <link href=\"https://www.google.com/alerts/feeds/14331641387255426813/676181565088978148\" rel=\"self\"/> </feed>",
+      "name": "DS Oracle"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/676181565088978148",
+      "name": "DSA Oracle"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/1088229346318867189",
+      "name": "DS Workday"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/10092537683826978495",
+      "name": "DS Lever"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/12982993108893420941",
+      "name": "DS Workable"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/16567961253047144230",
+      "name": "DS Smartrecruiters"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/16995030755336610113",
+      "name": "DS ICIMS"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/15936981637516772802",
+      "name": "DS Green House"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/15527552221740356130",
+      "name": "DS Ashby"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/8034331056907141609",
+      "name": "DS Rippling"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/3601928189539321634",
+      "name": "DS All careers"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/9889857979063391431",
+      "name": "DS recruiter"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/17340822469726817102",
+      "name": "DA Pinpoint"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/1961425428405003329",
+      "name": "DA Oracle"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/5645492014825243294",
+      "name": "DA Workday"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/3982228542700260257",
+      "name": "DA lever"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/6917250320270923618",
+      "name": "DA Workable"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/18245352057556435416",
+      "name": "DA smart recruiter"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/938736578403046454",
+      "name": "DA Jobs"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/3100664950608616847",
+      "name": "DA Icimis"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/4760220189197346939",
+      "name": "DA greenhouse"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/6851848059576174247",
+      "name": "DA Ashby"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/11921531310576796619",
+      "name": "DA Rippling"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/574517537451828209",
+      "name": "DA Career"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/6203293526606269493",
+      "name": "Analyst Oracle"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/5532149813564114240",
+      "name": "Analyst Workday"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/5565588062288886313",
+      "name": "Analyst Lever"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/9152483933560472196",
+      "name": "Analyst Workable"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/8624425120401263434",
+      "name": "Analyst Smart recruiter"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/7945226820950938204",
+      "name": "Analyst ICMIS"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/6583051960145912186",
+      "name": "Analyst Greenhouse"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/3409590828612465385",
+      "name": "Analyst Ashby"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/301162711654377114",
+      "name": "Analyt Rippling"
+    },
+    {
+      "url": "https://www.google.com/alerts/feeds/14331641387255426813/5571901071427062724",
+      "name": "Analyst Careers"
+    }
+  ],
+  "user_llm_configs": []
+}

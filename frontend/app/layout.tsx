@@ -26,6 +26,7 @@ export const metadata: Metadata = {
 import { Sidebar } from "@/components/layout/sidebar";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/components/providers/auth-provider";
+import { FeedProvider } from "@/components/providers/feed-provider";
 
 export default function RootLayout({
   children,
@@ -38,13 +39,15 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${merriweather.variable} antialiased flex h-screen overflow-hidden bg-background text-foreground`}
       >
         <AuthProvider>
-          <Sidebar className="flex-none w-[170px] border-r" />
-          <main className="flex-1 overflow-y-auto bg-background relative">
-            <div className="container-tight px-6 py-8 md:px-8 md:py-12">
-              {children}
-            </div>
-          </main>
-          <Toaster />
+          <FeedProvider>
+            <Sidebar className="flex-none w-[170px] border-r" />
+            <main className="flex-1 overflow-y-auto bg-background relative">
+              <div className="container-tight px-6 py-8 md:px-8 md:py-12">
+                {children}
+              </div>
+            </main>
+            <Toaster />
+          </FeedProvider>
         </AuthProvider>
       </body>
     </html>

@@ -63,3 +63,18 @@ services:
       - PYTHONUNBUFFERED=1
     depends_on:
       - backend
+
+  job-processor:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: devhaxcodes/autoapply-backend:${TAG:-latest}
+    command: python automation_worker.py
+    volumes:
+      - ./data:/app/data
+    environment:
+      - HEADLESS=true
+      - PYTHONUNBUFFERED=1
+    shm_size: '4gb'
+    depends_on:
+      - backend

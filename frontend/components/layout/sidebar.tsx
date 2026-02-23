@@ -20,17 +20,17 @@ export function Sidebar({ className, ...props }: React.HTMLAttributes<HTMLDivEle
     // Customer: Jobs (Simple), Profile
 
     const isAdmin = user?.roles?.includes('admin') ?? false;
-    const isBasic = user?.roles?.includes('basic') || isAdmin;
+    const isBasic = user?.roles?.includes('basic') || user?.roles?.includes('test') || isAdmin;
     // A pure customer sees only Jobs — no Profile, no Settings, no Feeds.
     const isCustomerOnly = !isBasic && (user?.roles?.includes('customer') ?? false);
 
     const items = [
         // Full-access users
         { href: "/profile", title: "My Profile", icon: User, show: isBasic },
-        { href: "/jobs", title: "Jobs", icon: Briefcase, show: isBasic || isCustomerOnly },
-        { href: "/dashboard", title: "Job History", icon: LayoutDashboard, show: isBasic },
-        { href: "/feeds", title: "RSS Feeds", icon: Rss, show: isBasic },
-        { href: "/ats-config", title: "ATS Config", icon: Cpu, show: isBasic },
+        { href: "/dashboard", title: "Dashboard", icon: LayoutDashboard, show: isBasic || isCustomerOnly },
+        { href: "/jobs", title: "Your Jobs", icon: Briefcase, show: isBasic },
+        { href: "/feeds", title: "RSS Feeds", icon: Rss, show: isBasic || isCustomerOnly },
+        { href: "/ats-config", title: "ATS Config", icon: Cpu, show: isBasic},
         // Admin only
         { href: "/admin/users", title: "User Mgmt", icon: Users, show: isAdmin },
         // Settings visible only to basic+ users

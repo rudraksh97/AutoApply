@@ -13,7 +13,6 @@ from src.db import SessionLocal
 from src.models import Feed, User
 from src.rss_utils import (
     needs_llm_extraction,
-    extract_company_from_feed,
     extract_job_link_with_llm,
     TEST_FEED_PATTERN
 )
@@ -52,18 +51,12 @@ class FeedPollService:
             # 1. Fetch all feeds
             all_feeds_db = db.query(Feed).all()
             
-            # 2. Fetch all users and their settings to determine global opt-in
+            # 2. Fetch all users
             users = db.query(User).all()
-            user_settings_map = {}
-            for u in users:
-                # Default include_global = True if no settings row
-                if u.settings:
-                    user_settings_map[u.id] = u.settings.include_global_feeds
-                else:
-                    user_settings_map[u.id] = True
+            user_ids = [u.id for u in users]
 
-            # 3. Group users by Feed URL
-            # Map: feed_url -> { "name": str, "target_users": Set[str], "is_global": bool }
+            # 3. Group users by Feed URL (Simplifying to use all users for all unique feeds)
+            # Map: feed_url -> { "name": str, "target_users": List[str] }
             feed_map = {}
 
             for f in all_feeds_db:
@@ -73,25 +66,8 @@ class FeedPollService:
                 if f.url not in feed_map:
                     feed_map[f.url] = {
                         "name": f.name,
-                        "target_users": set(),
-                        "is_global": False
+                        "target_users": user_ids
                     }
-                
-                # Update metadata
-                # If any entry is global, mark URL as global source
-                if f.is_global:
-                    feed_map[f.url]["is_global"] = True
-                
-                # Add owner to target
-                feed_map[f.url]["target_users"].add(f.user_id)
-
-            # 4. Add Global subscribers
-            # For every feed that is global, add ALL users who opted in (excluding those who already have it private to avoid double count, strictly set ensures uniqueness)
-            for url, data in feed_map.items():
-                if data["is_global"]:
-                    for u in users:
-                        if user_settings_map.get(u.id, True):
-                            data["target_users"].add(u.id)
 
             feeds_to_poll = list(feed_map.items())
             logger.info(f"Feeds to poll: {[u for u, _ in feeds_to_poll]}")
@@ -192,25 +168,10 @@ class FeedPollService:
             if not feeds:
                  return {"status": "error", "message": "Feed not found in database", "feed": feed_url}
             
-            # 2. Resolve Users
+            # 2. Resolve Users - Target all users for globalization
             users = db.query(User).all()
-            user_settings_map = {u.id: (u.settings.include_global_feeds if u.settings else True) for u in users}
-            
-            target_user_ids = set()
+            target_user_ids = [u.id for u in users]
             feed_name = feeds[0].name # Pick first name
-            is_global = False
-
-            for f in feeds:
-                target_user_ids.add(f.user_id)
-                if f.is_global:
-                    is_global = True
-                    # Use name from global def if available?
-                    if f.name: feed_name = f.name
-            
-            if is_global:
-                for u in users:
-                    if user_settings_map.get(u.id, True):
-                        target_user_ids.add(u.id)
             
             return await self.poll_feed(feed_url, feed_name, list(target_user_ids))
         finally:
@@ -246,7 +207,6 @@ class FeedPollService:
             
             # Try to extract company name from feed title or URL
             feed_title = parsed_feed.feed.get("title", "")
-            company_name = extract_company_from_feed(feed_url, feed_title)
             
             for entry in parsed_feed.entries:
                 original_link = entry.get("link")
@@ -265,11 +225,9 @@ class FeedPollService:
                         continue
                     
                     job_title = extraction.get("job_title") or entry.get("title", "Unknown Title")
-                    entry_company = extraction.get("company_name") or company_name
                 else:
                     job_link = original_link
                     job_title = entry.get("title", "Unknown Title")
-                    entry_company = entry.get("author") or entry.get("dc_creator") or company_name
                 
                 # Distribute to target users
                 for uid in target_user_ids:
@@ -279,7 +237,6 @@ class FeedPollService:
                             "title": job_title,
                             "feed_url": feed_url,
                             "feed_name": feed_name,
-                            "company_name": entry_company,
                             "user_id": uid
                         })
                         # self.deduplicator.mark_seen(job_link, user_id=uid) # Handled by add_job
