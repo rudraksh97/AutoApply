@@ -191,15 +191,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include Routers with global /api prefix
-app.include_router(admin.router, prefix="/api")
-app.include_router(auth.router, prefix="/api")
-app.include_router(feeds.router, prefix="/api")
-app.include_router(jobs.router, prefix="/api")
-app.include_router(profile.router, prefix="/api")
-app.include_router(drafts.router, prefix="/api")
-app.include_router(settings.router, prefix="/api")
-app.include_router(test_feed.router, prefix="/api")
+# Include Routers — Next.js proxy already maps /api to root
+app.include_router(admin.router)
+app.include_router(auth.router)
+app.include_router(feeds.router)
+app.include_router(jobs.router)
+app.include_router(profile.router)
+app.include_router(drafts.router)
+app.include_router(settings.router)
+app.include_router(test_feed.router)
 
 # Static Files moved to after router inclusion for clarity
 _ensure_directories()

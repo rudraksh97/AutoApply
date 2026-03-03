@@ -196,13 +196,105 @@ class ConfigManager:
     # =========================================================================
 
     def get_ats_prompts(self) -> dict:
-        """Returns custom ATS prompts from SystemState DB."""
+        """Returns custom ATS prompts from SystemState DB with fallback to defaults."""
         from src.db import SessionLocal
         from src.models import SystemState
+        
+        defaults = {
+            "calculate_score": (
+                "You are an Applicant Tracking System (ATS) used by Fortune-500 companies.\n\n"
+                "Your task is to score how well a candidate’s resume matches a job description using the same logic "
+                "as modern ATS platforms (Workday, Greenhouse, Lever, iCIMS).\n\n"
+                "You must analyze the resume exactly like an ATS parser would — keyword matching, semantic matching, "
+                "experience relevance, and role fit — not like a human recruiter.\n\n"
+                "--------------------------------\n"
+                "SCORING METHODOLOGY (must follow strictly)\n\n"
+                "Total Score = 100 points\n"
+                "A. Keyword Match (70 points)\n"
+                "B. Skill Coverage Depth (20 points)\n"
+                "C. Job Title & Role Match (2 points)\n"
+                "D. Experience Relevance (7 points)\n"
+                "E. Education & Domain Fit (1 point)\n\n"
+                "--------------------------------\n"
+                "OUTPUT FORMAT (STRICT JSON — NO EXTRA TEXT)\n\n"
+                "{\n"
+                "  \"ats_score\": number between 0 and 100,\n"
+                "  \"missing_keywords\": [\n"
+                "     list of important skills or phrases in JOB_DESCRIPTION that are missing or weak in the resume. "
+                "Focus on Technical Skills Keywords and Soft skills keywords.\n"
+                "  ],\n"
+                "  \"matched_keywords\": [\n"
+                "     list of important skills that were successfully matched\n"
+                "  ],\n"
+                "  \"justification\": {\n"
+                "     \"keyword_match\": \"...\",\n"
+                "     \"skill_depth\": \"...\",\n"
+                "     \"role_fit\": \"...\",\n"
+                "     \"experience_relevance\": \"...\",\n"
+                "     \"education_fit\": \"...\",\n"
+                "     \"parsing_quality\": \"...\"\n"
+                "  }\n"
+                "}\n\n"
+                "--------------------------------\n"
+                "INPUTS\n\n"
+                "RESUME_CODE (LaTeX):\n{{resume_text}}\n\n"
+                "JOB_DESCRIPTION:\n{{job_description}}"
+            ),
+            "tailor_resume": (
+                "You are an ATS-optimization engine used by Big Tech recruiting platforms.\n\n"
+                "Your task is to rewrite a LaTeX resume so that its ATS score becomes at least 90% for a given job "
+                "description, while preserving structure, honesty, and formatting.\n\n"
+                "--------------------------------\n"
+                "STRICT RULES\n"
+                "1) DO NOT: change section structure, remove existing sections, or rename headers.\n"
+                "2) YOU MUST: Add missing keywords which are Technical in Nature to Technical Skills and Experience. "
+                "Do not Touch Projects\n"
+                "3) If a technical skill is missing, enhance bullets with relevant frameworks (e.g., Java with Spring Boot, "
+                "Python with Django, Flask, FASTAPI).\n"
+                "4) If & or % is written in latex code, replace with \\& and \\% as these punctuations throws error in Latex.\n"
+                "5) Make sure, You are not making syntactical errors in the latex code.\n"
+                "6) Latex tags should have \\tagname instead of \\\\tagname.\n"
+                "7) Technical Section should not look like a paragraph. For Subsections of Technical Skills Section, "
+                "use \\\\ for line break instead of \\.\n"
+                "8) Try to mix Missing Technical Keywords with the Existing Skills, for eg. PostgresSQL is already there, "
+                "and one of the Missing Keyword is Relational Database, then don't add Relation Database as a separate skills, "
+                "Just Edit PostgresSQL to PostgresSQL Relational Database.\n"
+                "9) If a Keyword is a Technical Skill, then only add it in the Technical Skill Section, else try to add that in Experience.\n"
+                "10) YOU MUST: If a Missing Keyword is Non-Technical - DO NOT add that in Technical Section. Add those in Experience. "
+                "Try to Create another Bullet point in Euler Motors Experience.\n"
+                "11) If a Technical Skill is missing from my Resume: Try to add both in Skills and Experience Section of "
+                "Euler Motors by adding another Bullet Point at the Start of Euler Motors Section.\n"
+                "12) Very Important: Make Sure there is no Compilation Error in the Produced Latex File.\n\n"
+                "--------------------------------\n"
+                "REQUIRED OUTPUT (JSON — NO EXTRA TEXT)\n"
+                "{\n"
+                "  \"final_score\": number between 0 and 100,\n"
+                "  \"new_latex_code\": \"FULL optimized LaTeX resume\",\n"
+                "  \"summary\": [\n"
+                "     \"Added 'Next.js' to skills\",\n"
+                "     \"Updated project description\"\n"
+                "  ]\n"
+                "}\n\n"
+                "--------------------------------\n"
+                "INPUTS\n"
+                "initial_ats_score: {{initial_ats_score}}\n"
+                "missing_keywords: {{missing_keywords}}\n"
+                "matched_keywords: {{matched_keywords}}\n"
+                "justification: {{justification}}\n"
+                "job_description: {{job_description}}\n"
+                "old_resume_code (LaTeX): {{resume_text}}"
+            )
+        }
+        
         db = SessionLocal()
         try:
             row = db.query(SystemState).filter(SystemState.key == "ats_prompts").first()
-            return row.value if row and row.value else {}
+            prompts = row.value if row and row.value else {}
+            # Overlay defaults for any missing keys
+            for k, v in defaults.items():
+                if k not in prompts or not prompts[k]:
+                    prompts[k] = v
+            return prompts
         finally:
             db.close()
 
